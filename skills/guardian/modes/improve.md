@@ -4,7 +4,7 @@ Fix exactly one approved finding, by ladder position (`reference/enforcement.md`
 
 1. Resolve the reference to a durable key (the canonical identity): a `G-NNN` present in this session's finding list → its key; a full key **or an unambiguous suffix of one** (e.g. `applyDiscount:verification-loop:missing-test`) → that finding — a suffix matching more than one known finding is ambiguous, so list the matches (interactive: offer them as a menu, `reference/bindings.md`) and ask; a stale or cross-session `G-NNN` that doesn't resolve → ask for the key or re-run the diagnostic. Then read the key right-to-left: last segment is the rule, second-last must be one of the 8 dimension slugs (if not, the key is malformed — stop and ask); the remainder is the path, then the symbol/heading.
 2. Read the path; locate the symbol/heading.
-3. Re-verify the violation still exists; if absent, report `ALREADY_RESOLVED` with the evidence and stop (no write).
+3. Re-verify the violation still exists; if absent, report `ALREADY_RESOLVED` with the evidence and stop (no write). If it exists but the evidence points to an undeclared invariant — the diverging behavior is intentional and the rule is stale (`reference/baseline.md` Reconciliation) — stop and report the reclassification instead of writing.
 4. If the path or symbol no longer exists, stop and ask (or propose a narrow re-audit).
 
 Then fix:

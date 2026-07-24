@@ -8,6 +8,7 @@ Use after implementation, before commit. Steps:
 4. Review the relevant dimensions (`reference/methodology.md`, incl. the relevance rule); on instruction surfaces apply the instruction-artifact syndromes; flag basis-form drift in both directions (case-enumeration where an axis is visible; empty/speculative axis — `reference/basis-form.md`); reconcile touched rules (`reference/baseline.md`).
 5. Classify with the SKILL finding format (headline + detail tier, incl. fix-class and `Key:`); render per **Output discipline** (SKILL: strict severity order, P1 capped at top 3 full + rest one-line, P2/P3 one line each); note missing verification; write a correction prompt.
 6. End the Summary with `reviewed N/N changed files`; name any unreviewed file under Missing verification — never sample silently.
+7. On a PASS-class verdict (`PASS`/`PASS_WITH_FIXES`/`PASS_WITH_ACCEPTED_RISK`), append `### PR package`: suggested title + description sourced from the Summary, the verification evidence, and reviewer focus (risks + non-goals). Prepare, never approve; omit the section on `BLOCK`.
 
 ```md
 ### Verdict PASS | PASS_WITH_FIXES | PASS_WITH_ACCEPTED_RISK | BLOCK
@@ -23,6 +24,8 @@ Use after implementation, before commit. Steps:
 ### Missing verification
 
 ### Docs/instructions impact
+
+### PR package (PASS-class verdicts only) title · description · verification evidence · reviewer focus
 
 ### Correction prompt
 ```

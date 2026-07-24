@@ -1,19 +1,19 @@
 # Mode: docs
 
-Review/improve the repo's context/instruction surfaces. A **surface = one file** (for a JSDoc/TSDoc target, one file's doc blocks). Submodes: `review` (diagnose one surface), `instructions` (diagnose all surfaces — the instruction-surface projection of `audit`; Deep baseline), `improve` (edit one approved surface; `jsdoc` is an alias for `improve` targeting a JSDoc/TSDoc surface; Core rule 7 applies). The Action axis (`SKILL.md`) governs which submodes write.
+Review/improve the repo's context/instruction surfaces. A **surface = one file** (for a JSDoc/TSDoc target, one file's doc blocks). Submodes: `review` (diagnose — with a surface, that one file; without one, the **full review**: every instruction surface, the instruction-surface projection of `audit`, always Deep baseline), `improve` (edit one approved surface — a JSDoc/TSDoc target is just a surface whose doc blocks are the content; Core rule 7 applies). The Action axis (`SKILL.md`) governs which submodes write.
 
 Steps: inspect the surfaces in scope; run the instruction-artifact syndromes on each (`reference/methodology.md`); identify the ambiguity/failure mode the doc should reduce; choose the smallest correct surface (stewardship table in `reference/methodology.md`); ensure surfaces are themselves written in basis-form and, where a basis-form rule belongs in a durable surface and is missing, write it there (propagate — `reference/basis-form.md`); prefer enforceable structure over prose; remove/propose removal of stale/duplicated text (stale criteria in methodology); verify any asserted behavior or recommend a test.
 
 Required/Optional changes entries use the SKILL finding format and **Output discipline** (SKILL) — instruction findings anchor as `path:heading:dimension:rule`.
 
-Verdicts: `review` and `improve` use the four ranked verdicts from `SKILL.md`. `instructions` always emits `DOCS_BACKLOG` — the instruction-surface mirror of `audit`'s `AUDIT_BACKLOG`: the verdict names the run's shape, not its severity; every P0 still surfaces in full under Required changes.
+Verdicts: a single-surface `review` and `improve` use the four ranked verdicts from `SKILL.md`. The full review always emits `DOCS_BACKLOG` — the instruction-surface mirror of `audit`'s `AUDIT_BACKLOG`: the verdict names the run's shape (an inventory, not a gate on one unit), not its severity; every P0 still surfaces in full under Required changes.
 
-For `instructions`, prepend `### Surfaces found / reviewed`: one line per surface from the Deep baseline list — disposition `reviewed | absent`, and for reviewed surfaces the enforced/prose-only status. A discovered surface missing from this section means unchecked — a defect in the run, not an allowed omission.
+For the full review, prepend `### Surfaces found / reviewed`: one line per surface from the Deep baseline list — disposition `reviewed | absent`, and for reviewed surfaces the enforced/prose-only status. A discovered surface missing from this section means unchecked — a defect in the run, not an allowed omission.
 
 ```md
-### Documentation verdict PASS | PASS_WITH_FIXES | PASS_WITH_ACCEPTED_RISK | BLOCK (`review`/`improve`) | DOCS_BACKLOG (`instructions`)
+### Documentation verdict PASS | PASS_WITH_FIXES | PASS_WITH_ACCEPTED_RISK | BLOCK (single surface / `improve`) | DOCS_BACKLOG (full review)
 
-### Surfaces found / reviewed (`instructions` submode only)
+### Surfaces found / reviewed (full review only)
 
 ### Context cost LOW | MEDIUM | HIGH
 

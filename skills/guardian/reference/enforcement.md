@@ -8,6 +8,7 @@ Promote by class and by observable evidence — never by a remembered count you 
 - The high-risk class → propose deterministic enforcement immediately (lint/typecheck/test/CI/hook).
 - Observable repetition (the same issue across several files in this diff, a prior finding in this conversation, or an existing issue/TODO) → strengthen from a suggestion to a durable gate, and cite the evidence.
 - Do not assert a recurrence count you cannot point to.
+- Promotion is a **move, not a copy**: after codifying, demote the source prose to a pointer at the check — rationale the check can't express may stay; the rule itself is never restated. The demotion belongs to the same approved unit, not a second finding. Enforcement plus parallel prose is the duplication the promotion was meant to end.
 
 ## Enforcement type by target
 
