@@ -1,6 +1,6 @@
 # Mode: audit
 
-Bounded health review; require a scope (ask if missing). Probe first: `git ls-files <scope> | wc -l` — more than ~30 files or more than 1 package → too large (heuristics; the human may override): propose 2–4 sub-scopes by seam (package/layer/domain) — interactive: offer them as a menu (`reference/bindings.md`) — and audit one. Steps:
+Bounded health review; require a scope (ask if missing). Probe first — files and volume: `git ls-files <scope> | wc -l` and `git ls-files <scope> | xargs wc -l | tail -1`. The bound is the **exhaustive contract** — every file read, every syndrome applied, all 8 dimensions scored with a cited check — not a fixed count; beyond ~100 files or ~30k total lines the contract degrades silently (heuristics; the human may override): propose 2–4 sub-scopes by seam (package/layer/domain) — interactive: offer them as a menu (`reference/bindings.md`) — and audit one. Narrowing trades holism for depth: the syndromes that live **between** sub-scopes — duplication across them (irreducible), dependency cycles between them (orthogonal) — are invisible to every sub-audit. So when narrowing, still run any repo-wide mechanical check the repo already has (duplication detector, import/dependency-graph lint) at full width, and record cross-scope checks not run under Coverage. Steps:
 
 1. Run the Deep baseline (`reference/baseline.md`); disposition every item (`enforced`/`prose-only`/`absent`).
 2. Enumerate every file in scope; apply the applicable syndrome set to each — code: the crosswalk checks (`reference/basis-form.md`); instruction surfaces incl. skill files: the instruction-artifact syndromes (`reference/methodology.md`). When the scope is itself an instruction artifact, its files are the surface set for reconciliation.
@@ -40,7 +40,7 @@ Scope `src/payments` (a slice — a full `src/` would be narrowed first via the 
 ### Verdict AUDIT_BACKLOG
 
 ### Scope audited
-src/payments (probe: 14 files, 1 package)
+src/payments (probe: 14 files, 2.1k lines)
 
 ### Coverage
 Read 14/14 files; checks: per-file syndrome sweep, tsc config resolved, CI workflow read, claim diff CLAUDE.md vs scripts. Not checked: runtime behavior (no focused check exists — proposed as a follow-up).
