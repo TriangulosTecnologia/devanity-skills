@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { parseRun } from './guardian-record.mjs';
+import { parseRun, verifyRun } from './guardian-record.mjs';
 
 test('full-form finding: headline + detail tier parses with class and key', () => {
   const md = [
@@ -80,18 +80,55 @@ test('trivial PASS maps to PASS_TRIVIAL with no findings', () => {
   assert.deepEqual(r.findings, []);
 });
 
+// --- verifyRun: the format contract, mechanically ---
+
+test('verify: key jammed into the alias slot is a malformed headline (field regression)', () => {
+  const md = [
+    '### Verdict PASS',
+    'Reviewed 3/3 changed files.',
+    '[P3][dominant][generators.py:free_text:executable-spec:dead-branch] Unreachable branch — Key: pkg/generators.py:free_text:executable-spec:dead-branch',
+  ].join('\n');
+  const errors = verifyRun(md);
+  assert.ok(errors.some((e) => e.includes('malformed headline')), `expected malformed-headline error, got: ${errors}`);
+});
+
+test('verify: one-line dominant without an inline basis is rejected; with it, passes', () => {
+  const base = ['### Verdict PASS', 'Reviewed 1/1 changed files.'];
+  const noBasis = verifyRun([...base,
+    '[P3][dominant][G-002][executable-spec][enforcement] Dead branch — Key: pkg/g.py:free_text:executable-spec:dead-branch',
+  ].join('\n'));
+  assert.ok(noBasis.some((e) => e.includes('dominant without a basis')), `expected basis error, got: ${noBasis}`);
+  const withBasis = verifyRun([...base,
+    '[P3][dominant][G-002][executable-spec][enforcement] Dead branch — Key: pkg/g.py:free_text:executable-spec:dead-branch — basis: traced zero-span control flow this session',
+  ].join('\n'));
+  assert.deepEqual(withBasis, []);
+});
+
+test('verify: keyless finding and missing coverage line are both flagged on a review', () => {
+  const errors = verifyRun('### Verdict PASS\n[P1][trade][G-001][pattern-hygiene][prose] No key here\n');
+  assert.ok(errors.some((e) => e.includes('no Key:')));
+  assert.ok(errors.some((e) => e.includes('reviewed N/N')));
+});
+
+test('verify: trivial PASS needs no coverage line; improve output needs no verdict', () => {
+  assert.deepEqual(verifyRun('PASS (trivial: comment-only; checked: not misleading)'), []);
+  assert.deepEqual(verifyRun('### Finding fixed [G-001]\n### Trade-off\ndominant (checked: behavior-preserving)\n'), []);
+});
+
 // Kit/skill sync: when run inside this repo, the skill's worked examples must parse under the
-// current format. Portable copies (kit dropped into another repo) find no skill dir and skip.
-test('skill mode examples parse in this repo (portable copies skip)', () => {
+// current format AND conform to the verify contract. Portable copies (no skill dir) skip.
+test('skill mode examples parse and verify in this repo (portable copies skip)', () => {
   const modesDir = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'skills', 'guardian', 'modes');
   if (!existsSync(modesDir)) return;
   for (const f of ['review.md', 'audit.md', 'docs.md']) {
-    const r = parseRun(readFileSync(join(modesDir, f), 'utf8'));
+    const text = readFileSync(join(modesDir, f), 'utf8');
+    const r = parseRun(text);
     assert.ok(r.findings.length >= 1, `${f}: expected >=1 parseable finding`);
     for (const fnd of r.findings) {
       assert.match(fnd.sev, /^P[0-3]$/, `${f}: bad severity ${fnd.sev}`);
       assert.ok(fnd.class === 'dominant' || fnd.class === 'trade', `${f}: bad class ${fnd.class}`);
       assert.ok(fnd.key, `${f}: finding ${fnd.id} parsed without a key`);
     }
+    assert.deepEqual(verifyRun(text), [], `${f}: worked examples must pass the verify contract`);
   }
 });

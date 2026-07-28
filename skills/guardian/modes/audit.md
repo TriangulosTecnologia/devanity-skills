@@ -1,5 +1,7 @@
 # Mode: audit
 
+Contract: `SKILL.md` governs this run — if the host does not keep it loaded in context (`reference/bindings.md`), re-read it before anything else.
+
 Bounded health review; require a scope (ask if missing). Probe first — files and volume: `git ls-files <scope> | wc -l` and `git ls-files <scope> | xargs wc -l | tail -1`. The bound is the **exhaustive contract** — every file read, every syndrome applied, all 8 dimensions scored with a cited check — not a fixed count; beyond ~100 files or ~30k total lines the contract degrades silently (heuristics; the human may override): propose 2–4 sub-scopes by seam (package/layer/domain) — interactive: offer them as a menu (`reference/bindings.md`) — and audit one. Narrowing trades holism for depth: the syndromes that live **between** sub-scopes — duplication across them (irreducible), dependency cycles between them (orthogonal) — are invisible to every sub-audit. So when narrowing, still run any repo-wide mechanical check the repo already has (duplication detector, import/dependency-graph lint) at full width, and record cross-scope checks not run under Coverage. Steps:
 
 1. Run the Deep baseline (`reference/baseline.md`); disposition every item (`enforced`/`prose-only`/`absent`).

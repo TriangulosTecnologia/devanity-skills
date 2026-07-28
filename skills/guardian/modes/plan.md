@@ -1,8 +1,10 @@
 # Mode: plan
 
+Contract: `SKILL.md` governs this run — if the host does not keep it loaded in context (`reference/bindings.md`), re-read it before anything else.
+
 Turn a task into a small, verifiable, bounded plan before any code.
 
-Steps: restate the task; run the Light baseline to reconcile the task against existing repo rules/contracts (`reference/baseline.md`) so the plan can't silently contradict a `CLAUDE.md`/`.claude/rules` rule; identify relevant files, contracts, tests, boundaries; derive the 1–3 axes native to this change's decision space (fill `### Axes`; write "none — trivial" if the change has no decision space) and put scope along them — parametrize over the axis, don't branch per case; define scope + non-goals; classify risk with the skill's vocabulary — **high-risk class** (→ propose, no autonomy) and/or **architecture/product ambiguity** (→ needs human judgment), else routine; define required tests/commands; surface blocking questions; when a human answer resolves one with a decision that will recur (a rule or durable intent — not a one-off choice), record it under `### Open questions` as `decided: <rule> → codify at <surface>` (smallest correct surface — stewardship table, `reference/methodology.md`, read on demand) so the next session inherits a constraint, not a question — propose only (Action axis); produce plan + implementation prompt.
+Steps: restate the task; run the Light baseline to reconcile the task against existing repo rules/contracts (`reference/baseline.md`) so the plan can't silently contradict a `CLAUDE.md`/`.claude/rules` rule; identify relevant files, contracts, tests, boundaries; derive the 1–3 axes native to this change's decision space (fill `### Axes`; write "none — trivial" if the change has no decision space) and put scope along them — parametrize over the axis, don't branch per case; define scope + non-goals; classify risk with the skill's vocabulary — **high-risk class** (→ propose, no autonomy) and/or **architecture/product ambiguity** (→ needs human judgment), else routine; define required tests/commands; surface blocking questions; when a human answer resolves one with a decision that will recur (a rule or durable intent — not a one-off choice), record it under `### Decided rules` as `<rule> → codify at <surface>` (smallest correct surface — stewardship table, `reference/methodology.md`, read on demand) so the next session inherits a constraint, not a question — a rule Guardian noticed but no human decided is never a decided entry (raise it as a finding or an open question), and a decided rule left uncaptured is caught by the next run's Reconciliation (`reference/baseline.md`) — propose only (Action axis); before emitting `READY` on a revision, (a) quote each previously-open question beside the answer that resolved it — an answer that doesn't address its question keeps it open — and (b) run the quantifier audit (`reference/methodology.md`) on the plan's own Scope and Non-goals: every always/never/only/zero/all claim must hold against every other line of the plan; produce plan + implementation prompt.
 
 ```md
 ### Verdict READY | NEEDS_CLARIFICATION | TOO_RISKY_FOR_DIRECT_IMPLEMENTATION
@@ -22,6 +24,8 @@ Steps: restate the task; run the Light baseline to reconcile the task against ex
 ### Required tests and verification
 
 ### Open questions
+
+### Decided rules
 
 ### Implementation plan
 
@@ -59,6 +63,9 @@ Unit test: filtered rows → expected CSV string (incl. comma/quote escaping). `
 
 ### Open questions
 None blocking.
+
+### Decided rules
+None — no human decision this session established a recurring rule.
 
 ### Implementation plan
 1. `toCsv(rows)` in `csv.ts` if missing. 2. Button calls it on current rows. 3. Test escaping.

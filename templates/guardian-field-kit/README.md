@@ -23,7 +23,10 @@ Why: Guardian's success metric is *"problems that stop recurring"*. This kit mak
    node scripts/guardian-record.mjs review-output.md          # record a run
    node scripts/guardian-record.mjs --improve <durable-key>   # a finding was fixed
    node scripts/guardian-record.mjs --fp <durable-key> [why]  # mark a false positive
+   node scripts/guardian-record.mjs --verify review-output.md # gate: exit 1 if the output violates the format contract
    ```
+
+   `--verify` is the enforcement rung for Guardian's own output contract (malformed headlines, findings without a `Key:`, a `dominant` with no recorded `basis:` check, a review without its `reviewed N/N` line). Wire it into CI or a hook to make format drift fail a check instead of a reader.
 
    Sink: `$GUARDIAN_STATS_FILE` (default `./guardian-stats.jsonl` — point it at your stats repo clone).
 5. **CI recording (optional):** copy `workflows/guardian-review.yml`, set `STATS_REPO`, add secrets `ANTHROPIC_API_KEY` and `GUARDIAN_STATS_TOKEN` (PAT with write access to the stats repo). Trigger by adding the `guardian` label to a PR — label-gating keeps token cost deliberate.

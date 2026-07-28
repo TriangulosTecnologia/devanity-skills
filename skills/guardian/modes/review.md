@@ -1,14 +1,17 @@
 # Mode: review
 
+Contract: `SKILL.md` governs this run — if the host does not keep it loaded in context (`reference/bindings.md`), re-read it before anything else.
+
 Use after implementation, before commit. Steps:
 
 1. Apply the trivial fast path first (`SKILL.md` Scope control).
 2. Run the Light baseline; escalate to Deep per the triggers in `reference/baseline.md`. Record the choice and trigger for Coverage.
-3. Large diff (>~15 files or >~800 changed lines): list every changed file, group by package/domain, review group by group. The same rule violated in N places → one finding; list all instances under Evidence; anchor the key at the owning rule/config where one exists.
+3. List every changed file from the step-2 baseline commands — the Summary's `reviewed N/N` derives from that list, never from memory, and a file whose read failed or was cut short counts as unreviewed (name it under Missing verification). Large diff (>~15 files or >~800 changed lines): group by package/domain, review group by group. The same rule violated in N places → one finding; list all instances under Evidence; anchor the key at the owning rule/config where one exists.
 4. Review the relevant dimensions (`reference/methodology.md`, incl. the relevance rule); on instruction surfaces apply the instruction-artifact syndromes; flag basis-form drift in both directions (case-enumeration where an axis is visible; empty/speculative axis — `reference/basis-form.md`); reconcile touched rules (`reference/baseline.md`).
-5. Classify with the SKILL finding format (headline + detail tier, incl. fix-class and `Key:`); render per **Output discipline** (SKILL: strict severity order, P1 capped at top 3 full + rest one-line, P2/P3 one line each); note missing verification; write a correction prompt.
-6. End the Summary with `reviewed N/N changed files`; name any unreviewed file under Missing verification — never sample silently.
-7. On a PASS-class verdict (`PASS`/`PASS_WITH_FIXES`/`PASS_WITH_ACCEPTED_RISK`), append `### PR package`: suggested title + description sourced from the Summary, the verification evidence, and reviewer focus (risks + non-goals). Prepare, never approve; omit the section on `BLOCK`.
+5. If a `plan` from this session covers this diff, reconcile the delivery against its Scope, Non-goals, and Implementation prompt: an undeclared deviation is a finding (scope creep, or a stale plan — judge which on the evidence); a declared one is reviewed on its merits.
+6. Classify with the SKILL finding format (headline + detail tier, incl. fix-class and `Key:`); render per **Output discipline** (SKILL: strict severity order, P1 capped at top 3 full + rest one-line, P2/P3 one line each); note missing verification; write a correction prompt.
+7. End the Summary with `reviewed N/N changed files` (N from the step-3 list); name any unreviewed file under Missing verification — never sample silently.
+8. On a PASS-class verdict (`PASS`/`PASS_WITH_FIXES`/`PASS_WITH_ACCEPTED_RISK`), append `### PR package`: suggested title + description sourced from the Summary, the verification evidence, and reviewer focus (risks + non-goals). Prepare, never approve; omit the section on `BLOCK`.
 
 ```md
 ### Verdict PASS | PASS_WITH_FIXES | PASS_WITH_ACCEPTED_RISK | BLOCK
