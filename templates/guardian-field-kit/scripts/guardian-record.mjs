@@ -72,12 +72,62 @@ export const parseRun = (text) => {
   };
 };
 
+// Verify one Guardian output against the format contract the skill states in prose.
+// Mechanical checks only — never judgment calls. Returns an array of error strings (empty = conforms).
+export const verifyRun = (text) => {
+  const errors = [];
+  const run = parseRun(text);
+  const headlineRe = /\[P(\d)\]\[(dominant|trade)\]\[G-(\d+)\]\[([a-z-]+)\]\[([a-z-]+)\]/;
+
+  // 1. Near-miss headlines: a line that starts a finding ([Pn][...) but fails the five-axis
+  //    contract — e.g. the key jammed into the alias slot, or a missing rung. Template
+  //    placeholders are excluded two ways: [P0/P1][…] never matches \[P\d\]\[, and a line
+  //    spelling out the format itself ("dominant|trade", "G-###") is a template, not a finding.
+  for (const line of text.split('\n')) {
+    if (/\[P\d\]\[/.test(line) && !headlineRe.test(line) && !/dominant\|trade|G-#/.test(line)) {
+      errors.push(`malformed headline (must be [Pn][class][G-NNN][dimension][rung]): ${line.trim().slice(0, 100)}`);
+    }
+  }
+
+  // 2. Every finding carries a durable Key.
+  for (const f of run.findings) {
+    if (!f.key) errors.push(`${f.id}: no Key: in the finding's span`);
+  }
+
+  // 3. A dominant finding must show its check: `basis:` in its own span (detail tier or inline).
+  //    Without it the class was never earned — the skill's default is trade.
+  const heads = [...text.matchAll(new RegExp(headlineRe, 'g'))];
+  for (let i = 0; i < heads.length; i++) {
+    if (heads[i][2] !== 'dominant') continue;
+    const span = text.slice(heads[i].index, i + 1 < heads.length ? heads[i + 1].index : text.length);
+    if (!/basis:\s*\S/.test(span)) errors.push(`G-${heads[i][3].padStart(3, '0')}: dominant without a basis: check — class must be trade or the check recorded`);
+  }
+
+  // 4. A verdict must be present (improve reports "Finding fixed" instead).
+  if (run.mode !== 'improve' && !run.verdict) errors.push('no verdict heading found');
+
+  // 5. A non-trivial review must state its coverage.
+  if (run.mode === 'review' && run.verdict !== 'PASS_TRIVIAL' && !run.coverage) {
+    errors.push('review output without a `reviewed N/N changed files` coverage line');
+  }
+
+  return errors;
+};
+
 // CLI — only when run directly (`node guardian-record.mjs …`), not when imported by a test.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [, , arg1, arg2, ...rest] = process.argv;
   if (arg1 === '--improve' || arg1 === '--fp') {
     if (!arg2) { console.error(`usage: guardian-record.mjs ${arg1} <durable-key> [reason]`); process.exit(1); }
     emit({ type: arg1 === '--improve' ? 'improve' : 'fp', key: arg2, ...(rest.length ? { reason: rest.join(' ') } : {}) });
+  } else if (arg1 === '--verify') {
+    const errors = verifyRun(arg2 ? readFileSync(arg2, 'utf8') : readFileSync(0, 'utf8'));
+    if (errors.length) {
+      console.error(`✗ output violates the Guardian format contract (${errors.length}):`);
+      for (const e of errors) console.error(`  - ${e}`);
+      process.exit(1);
+    }
+    console.log('✓ output conforms to the Guardian format contract');
   } else {
     emit(parseRun(arg1 ? readFileSync(arg1, 'utf8') : readFileSync(0, 'utf8')));
   }
