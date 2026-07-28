@@ -20,12 +20,13 @@ Sweep rules for instruction surfaces: (1) read root/always-on surfaces in full, 
 
 ## Reconciliation — declared vs. enforced
 
-For each stated quality rule, check enforcement:
+For each quality rule **in force**, check enforcement. A rule is in force when any evidence shows it governs the repo — an instruction surface states it, enforcement runs it, or (with no surface at all) repo-owned human docs, a consistent code pattern, or a decision made this session establishes it. An `absent` surface inventory bounds only what the syndromes can run on, never what reconciliation can find:
 
 - stated + enforced → fine; don't re-flag.
 - stated + unenforced + mechanizable → finding: codify it.
 - stated + unenforced + questionable rule → finding: fix the rule (rewrite/remove); never codify badness.
 - enforced + unstated → fine; document only if surprising.
+- in force + unstated + unenforced (evidenced only by human docs, code patterns, or session decisions) → finding: declare it at the smallest correct surface (stewardship table, `reference/methodology.md`) and, where mechanizable, codify. Severity comes from the SKILL table like any finding — the ladder classes a rule held only in words as `prose` wherever the words live (README, session memory), so a core quality rule here is the P1 "enforced only by prose" case; the absence of a surface to violate never caps severity. Writing the missing surface is propagation, not an empty axis (`reference/basis-form.md` Surfaces).
 - code diverges from a stated rule → **evidence, not a verdict**. Default hypothesis: the divergence marks an **undeclared invariant** — intentional behavior the rule never captured; "fixing" it is the costliest agent failure. Discharge the hypothesis with observable evidence (tests, git history, callers/usage — or ask) before attributing fault; then judge each side on the evidence (both may be findings): code wrong → code-level finding · rule stale → rule-level finding (rewrite/remove) · both right, axis undeclared → finding: declare the invariant at the smallest correct surface (stewardship table, `reference/methodology.md`).
 - an instruction surface declares an invariant a hard rule (e.g. "hard rule", "critical", "never", "must always hold") → any change altering that invariant's guarded contract joins the **high-risk class** for this run (`SKILL.md`), even if the domain isn't among the class's listed examples — the repo's own declared priority is evidence, and the class is defined by its axis, not by the example list.
 

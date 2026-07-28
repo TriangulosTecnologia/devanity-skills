@@ -45,7 +45,7 @@ Guardian is **not a linter, not a generic code reviewer, and not a style enforce
 
 Concretely, that means three recurring motions, repeated on every unit of work:
 
-1. **Diagnose drift** — where has the code drifted from its basis (case-enumeration or empty axis)? Where has a stated rule drifted from what's actually enforced (declared-but-unenforced, or enforced-but-undocumented, or contradicted across instruction files)?
+1. **Diagnose drift** — where has the code drifted from its basis (case-enumeration or empty axis)? Where has a stated rule drifted from what's actually enforced (declared-but-unenforced, or enforced-but-undocumented, or contradicted across instruction files)? And where is a rule in force captured nowhere at all — evidenced only in human docs, code patterns, or memory? A repo with no instruction surfaces is not a repo with nothing to diagnose; it is the zero-surface end of the same axis, where every rule in force sits at the weakest possible rung.
 2. **Locate the cheapest durable fix** — not the most thorough fix, the cheapest one that actually survives the next session. See the durability ladder below.
 3. **Move the fix there, one at a time** — never batch unrelated fixes, never fix by rewriting broadly, never leave a fix as a comment when it could be a check.
 

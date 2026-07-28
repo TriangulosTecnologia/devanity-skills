@@ -4,7 +4,7 @@ description: Guard and improve a repository's AI-readiness. Run /guardian plan, 
 license: MIT
 metadata:
   author: ttoss
-  version: 0.10.0
+  version: 0.11.0
 disable-model-invocation: true
 argument-hint: 'plan|review|audit|improve|docs [task|path|finding|surface]'
 ---

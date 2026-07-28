@@ -39,7 +39,7 @@ Properties are consequences, framing only: compressible ← orthogonal + irreduc
 
 - **structure** — folders are axes, files are points; "where does X go?" and "what do I change for Y?" have one obvious answer.
 - **code / scripts** — functions, parameters, and types over branches, duplication, and partial cases.
-- **instructions** — the repo's instruction surfaces (per `bindings.md`) must themselves be written in basis-form (axes, not case-lists). Where a basis-form rule belongs in a durable surface and is missing, **propagate it there** (write it), then promote its syndrome to enforcement where one exists.
+- **instructions** — the repo's instruction surfaces (per `bindings.md`) must themselves be written in basis-form (axes, not case-lists). Where a basis-form rule belongs in a durable surface and is missing, **propagate it there** (write it), then promote its syndrome to enforcement where one exists. An evidenced rule's span already exists — its points are the observed decisions — so writing its surface is propagation, never an empty axis; the empty-axis guardrail forbids only a surface for a rule with no evidence yet.
 
 ## How Guardian applies it
 
