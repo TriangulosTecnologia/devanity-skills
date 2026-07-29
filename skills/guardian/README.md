@@ -41,7 +41,7 @@ Manual only (`disable-model-invocation`). The first token selects the mode:
 | `review`  | with a surface: diagnose that file; without: full review of all surfaces (Deep) | no     |
 | `improve` | edit one approved surface (incl. JSDoc/TSDoc blocks)                            | yes    |
 
-The contracts — routing, action axis (read-only vs write), severity, verdicts, finding format — are defined once in [`SKILL.md`](SKILL.md), the runtime source of truth; this README only mirrors the tables above, and CI validates they stay in sync. What the tables don't show: every finding is a scannable headline (severity · fix-class · id · dimension · rung) over an indented detail tier, carries a durable key that survives sessions (`improve` accepts a `G-NNN` or the key), and writes always target one approved unit at a time.
+The contracts — routing, action axis (read-only vs write), severity, verdicts, finding and decision formats — are defined once in [`SKILL.md`](SKILL.md), the runtime source of truth; this README only mirrors the tables above, and CI validates they stay in sync. What the tables don't show: every finding is a scannable headline (severity · fix-class · id · dimension · rung) over a nested detail tier — rendered as a markdown list, so the structure survives PR comments and terminals alike — and carries a durable key that survives sessions (`improve` accepts a `G-NNN` or the key); every choice owed to a human renders as a sibling `[DECIDE]` block (the decision at rule level · options with durable consequences · a labeled recommendation · the fate if undecided); and writes always target one approved unit at a time.
 
 Typical loop — the ratchet that makes it pay off:
 

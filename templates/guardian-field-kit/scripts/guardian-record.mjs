@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Guardian field kit — record one Guardian run (or event) as a JSONL line.
 // Dependency-free. The Guardian output format (verdicts, [P?][class][G-NNN][dim][rung]
-// headlines, Key: lines, coverage lines) is the parsing contract.
+// finding headlines, [DECIDE][status][G-NNN][kind] decision headlines, Key: lines,
+// coverage lines — reference/format.md) is the parsing contract.
 //
 // Usage:
 //   node guardian-record.mjs <output.md>          # record a run from a saved output
@@ -37,7 +38,7 @@ export const parseRun = (text) => {
   // Mode: inferred from the mode-specific template shapes.
   const mode =
     /### Verdict AUDIT_BACKLOG/.test(text) ? 'audit'
-    : /### Documentation verdict/.test(text) ? 'docs'
+    : /### Verdict DOCS_BACKLOG|### Documentation verdict|### Context cost/.test(text) ? 'docs'
     : /### Finding fixed/.test(text) ? 'improve'
     : /### PR title/.test(text) ? 'pr'
     : /### Verdict (READY|NEEDS_CLARIFICATION|TOO_RISKY)/.test(text) ? 'plan'
@@ -51,7 +52,7 @@ export const parseRun = (text) => {
 
   // Findings: each concrete [Pn][class][G-nnn][dim][rung] headline binds to a Key: only within
   // its OWN span (headline → next headline), so a finding missing its Key can neither steal the
-  // next finding's key nor drop it. Full form = Key on an indented line under the headline;
+  // next finding's key nor drop it. Full form = Key on a nested-list line under the headline;
   // one-line form = Key inline after "—". A keyless finding is still emitted (without `key`).
   const findings = [];
   const headlineRe = /\[P(\d)\]\[(dominant|trade)\]\[G-(\d+)\]\[([a-z-]+)\]\[([a-z-]+)\]/g;
@@ -63,12 +64,17 @@ export const parseRun = (text) => {
     findings.push({ sev: `P${h[1]}`, class: h[2], id: `G-${h[3].padStart(3, '0')}`, dim: h[4], rung: h[5], ...(key ? { key } : {}) });
   }
 
+  // Decisions: [DECIDE][status][G-nnn][kind] headlines — the finding's sibling object.
+  const decisions = [...text.matchAll(/\[DECIDE\]\[(blocking|dormant)\]\[G-(\d+)\]\[([a-z]+)\]/g)]
+    .map((d) => ({ status: d[1], id: `G-${d[2].padStart(3, '0')}`, kind: d[3] }));
+
   return {
     type: 'run',
     mode,
     ...(verdict ? { verdict } : {}),
     ...(cov ? { coverage: { reviewed: +cov[1], total: +cov[2] } } : {}),
     findings,
+    ...(decisions.length ? { decisions } : {}),
   };
 };
 
@@ -103,10 +109,32 @@ export const verifyRun = (text) => {
     if (!/basis:\s*\S/.test(span)) errors.push(`G-${heads[i][3].padStart(3, '0')}: dominant without a basis: check — class must be trade or the check recorded`);
   }
 
-  // 4. A verdict must be present (improve reports "Finding fixed" instead).
+  // 4. Decision blocks: a near-miss [DECIDE][... line must match the four-axis grammar
+  //    (template lines spelling the format — "blocking|dormant", "G-#" — are not decisions);
+  //    the kind must be a known slug; a blocking decision must carry options: and
+  //    if undecided: within its own span — without them the decision space wasn't transferred.
+  const DECIDE_KINDS = new Set(['rule', 'trade', 'acceptance', 'scope']);
+  const decideRe = /\[DECIDE\]\[(blocking|dormant)\]\[G-(\d+)\]\[([a-z]+)\]/;
+  for (const line of text.split('\n')) {
+    if (/\[DECIDE\]\[/.test(line) && !decideRe.test(line) && !/blocking\|dormant|G-#/.test(line)) {
+      errors.push(`malformed decision headline (must be [DECIDE][blocking|dormant][G-NNN][kind]): ${line.trim().slice(0, 100)}`);
+    }
+  }
+  const decides = [...text.matchAll(new RegExp(decideRe, 'g'))];
+  for (let i = 0; i < decides.length; i++) {
+    const d = decides[i];
+    const id = `G-${d[2].padStart(3, '0')}`;
+    if (!DECIDE_KINDS.has(d[3])) errors.push(`${id}: unknown decision kind "${d[3]}" (expected rule|trade|acceptance|scope)`);
+    if (d[1] !== 'blocking') continue;
+    const span = text.slice(d.index, i + 1 < decides.length ? decides[i + 1].index : text.length);
+    if (!/options:\s*\S/.test(span)) errors.push(`${id}: blocking decision without options: — each answer's consequence must be named`);
+    if (!/if undecided:\s*\S/.test(span)) errors.push(`${id}: blocking decision without if undecided: — the fate must be visible, never silent`);
+  }
+
+  // 5. A verdict must be present (improve reports "Finding fixed" instead).
   if (run.mode !== 'improve' && !run.verdict) errors.push('no verdict heading found');
 
-  // 5. A non-trivial review must state its coverage.
+  // 6. A non-trivial review must state its coverage.
   if (run.mode === 'review' && run.verdict !== 'PASS_TRIVIAL' && !run.coverage) {
     errors.push('review output without a `reviewed N/N changed files` coverage line');
   }

@@ -8,7 +8,7 @@ Bounded health review; require a scope (ask if missing). Probe first — files a
 2. Enumerate every file in scope; apply the applicable syndrome set to each — code: the crosswalk checks (`reference/basis-form.md`); instruction surfaces incl. skill files: the instruction-artifact syndromes (`reference/methodology.md`). When the scope is itself an instruction artifact, its files are the surface set for reconciliation.
 3. Score **all 8 dimensions**, one row each: examined → score + the cited performed check (command run, per-file sweep, claim diff) and its result; not examined → `UNKNOWN` + one-word reason. No cited check → `UNKNOWN`, never `GOOD`. Omitted rows are not allowed.
 4. Reconcile declared-vs-enforced; check boundary enforcement.
-5. List findings in the SKILL finding format (incl. `Key:`); propose a safe sequence.
+5. List findings in the finding format (`reference/format.md`, incl. `Key:`); emit a `[DECIDE]` block (SKILL Decisions) for each stop-and-ask owed — an unaccepted P0 and each P0/P1 whose fix is a trade; propose a safe sequence.
 
 Output — render findings per SKILL **Output discipline** (every P0 full; P1 top 3 full, each extra as a one-line finding; P2/P3 one line each, or counts per dimension when >~5); never hide blockers; name the first safe improvement as a runnable command.
 
@@ -21,11 +21,13 @@ Output — render findings per SKILL **Output discipline** (every P0 full; P1 to
 
 ### Baseline every item dispositioned enforced / prose-only / absent, where enforcement runs
 
-### AI Repo score | Dimension | Score (GOOD/WEAK/BAD/UNKNOWN) | Evidence (cited check + result, or UNKNOWN reason) | — all 8 rows
+### AI Repo score | Dimension | Score (GOOD/WEAK/BAD/UNKNOWN) | Evidence (cited check + result, or UNKNOWN reason) | — a markdown table (header + separator row), all 8 rows
 
-### Findings all P0s · top-3 P1s in full (SKILL finding format: headline + detail tier, incl. `Key:`)
+### Required fixes all P0s · top-3 P1s in full (finding format, `reference/format.md`) · every further P1 as a one-line finding
 
-### Cut findings every cut P1 as one line `[P1][dominant|trade][G-###][dim][rung] title — Key: ...` · P2/P3 one line each, or counts per dimension when >~5
+### Suggested improvements [P2/P3][dominant|trade][G-###][dimension][rung] title — one line each, or counts per dimension when >~5
+
+### Decisions [DECIDE] blocks, only when a decision is owed (SKILL Decisions)
 
 ### Suggested sequence
 
@@ -52,6 +54,7 @@ Enforced: strict TS (tsconfig), lint (CI). Prose-only: "always use money integer
 
 ### AI Repo score
 | Dimension | Score | Evidence |
+| --- | --- | --- |
 | compressibility | GOOD | per-file sweep: max file 210 lines, no cross-layer logic |
 | executable-spec | WEAK | "money integers" rule prose-only (claim diff vs enforcement) |
 | co-located-spec | GOOD | totals.spec.md present, states non-goals |
@@ -61,19 +64,27 @@ Enforced: strict TS (tsconfig), lint (CI). Prose-only: "always use money integer
 | debt-containment | GOOD | 1 TODO, visible and issue-linked |
 | instruction-hygiene | GOOD | syndrome pass on CLAUDE.md: no hits |
 
-### Findings
-[P0][dominant][G-001][verification-loop][enforcement] Float arithmetic on money in `sumLineItems`
-  fix: integer cents + test; gate in CI  ·  src/payments/totals.ts:31
-  Key: src/payments/totals.ts:sumLineItems:verification-loop:float-money
-  why: `10.10+20.20+30.30 !== 60.6`, no test — billing drift.
-  basis: checked — the failing case becomes the test; no API change.
+### Required fixes
+- **[P0][dominant][G-001][verification-loop][enforcement] Float arithmetic on money in `sumLineItems`**
+  - fix: integer cents + test; gate in CI  ·  src/payments/totals.ts:31
+  - Key: src/payments/totals.ts:sumLineItems:verification-loop:float-money
+  - why: `10.10+20.20+30.30 !== 60.6`, no test — billing drift.
+  - basis: checked — the failing case becomes the test; no API change.
+- [P1][trade][G-002][executable-spec][enforcement] "money integers" rule unenforced — Key: CLAUDE.md:money-rule:executable-spec:prose-only
 
-### Cut findings
-[P1][trade][G-002][executable-spec][enforcement] "money integers" rule unenforced — Key: CLAUDE.md:money-rule:executable-spec:prose-only
-P2/P3: none in examined dimensions (pattern-hygiene not swept — see its UNKNOWN row).
+### Suggested improvements
+none in examined dimensions (pattern-hygiene not swept — see its UNKNOWN row)
+
+### Decisions
+- **[DECIDE][blocking][G-003][trade] Is "money integers" a contract worth an enforcement gate?**
+  - decision: whether the CLAUDE.md rule is durable intent (→ enforce) or a stale preference (→ demote) — product intent, not methodology.
+  - context: anchors G-002 — the rule is in force in CLAUDE.md, but nothing can fail when it is violated.
+  - options: enforce → `/guardian improve G-002` (lint/test gate; adds a CI check) · demote → rewrite the CLAUDE.md line as guidance, close G-002 · defer → dormant, worth doing when the next money bug lands.
+  - recommendation: enforce, after G-001 — G-001's failing case already proves the pain the rule guards.
+  - if undecided: promoted to the issue tracker as an open decision; re-surfaces on the next audit.
 
 ### Suggested sequence
-G-001 first (high-risk), then the cut P1.
+G-001 first (high-risk), then G-002 per the decision above.
 
 ### First safe improvement
 Run `/guardian improve G-001` — smallest change with the highest risk reduction.
