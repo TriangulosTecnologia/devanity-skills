@@ -26,7 +26,7 @@ Why: Guardian's success metric is *"problems that stop recurring"*. This kit mak
    node scripts/guardian-record.mjs --verify review-output.md # gate: exit 1 if the output violates the format contract
    ```
 
-   `--verify` is the enforcement rung for Guardian's own output contract (malformed headlines, findings without a `Key:`, a `dominant` with no recorded `basis:` check, a review without its `reviewed N/N` line). Wire it into CI or a hook to make format drift fail a check instead of a reader.
+   `--verify` is the enforcement rung for Guardian's own output contract (malformed finding or `[DECIDE]` headlines, findings without a `Key:`, a `dominant` with no recorded `basis:` check, a blocking decision without `options:`/`if undecided:`, a review without its `reviewed N/N` line). Wire it into CI or a hook to make format drift fail a check instead of a reader.
 
    Sink: `$GUARDIAN_STATS_FILE` (default `./guardian-stats.jsonl` — point it at your stats repo clone).
 5. **CI recording (optional):** copy `workflows/guardian-review.yml`, set `STATS_REPO`, add secrets `ANTHROPIC_API_KEY` and `GUARDIAN_STATS_TOKEN` (PAT with write access to the stats repo). Trigger by adding the `guardian` label to a PR — label-gating keeps token cost deliberate.
@@ -36,7 +36,7 @@ Why: Guardian's success metric is *"problems that stop recurring"*. This kit mak
 One JSON object per line in `stats.jsonl`:
 
 ```jsonc
-{"ts":"…","repo":"you/app","source":"local|ci","type":"run","mode":"review","verdict":"BLOCK","coverage":{"reviewed":3,"total":3},"findings":[{"sev":"P0","class":"dominant","id":"G-001","dim":"verification-loop","rung":"enforcement","key":"src/auth/canDelete.ts:canDelete:verification-loop:missing-test"}]}
+{"ts":"…","repo":"you/app","source":"local|ci","type":"run","mode":"review","verdict":"BLOCK","coverage":{"reviewed":3,"total":3},"findings":[{"sev":"P0","class":"dominant","id":"G-001","dim":"verification-loop","rung":"enforcement","key":"src/auth/canDelete.ts:canDelete:verification-loop:missing-test"}],"decisions":[{"status":"blocking","id":"G-003","kind":"acceptance"}]}
 {"ts":"…","repo":"you/app","source":"local","type":"improve","key":"…"}
 {"ts":"…","repo":"you/app","source":"local","type":"fp","key":"…","reason":"…"}
 ```
@@ -59,4 +59,4 @@ The loop this closes: **runs → JSONL → patterns (recurring dims, FP rate, co
 
 ## Contract
 
-The parser depends on Guardian's output format (verdict lines, `[P?][class][G-NNN][dim][rung]` headlines, `Key:` lines, coverage lines) — that format is validated in the skill's own CI, and this kit's parser is tested against the skill's worked examples there (`guardian-record.test.mjs`), so kit and skill version together. Kit works with guardian ≥ 0.5.0.
+The parser depends on Guardian's output format (verdict lines, `[P?][class][G-NNN][dim][rung]` finding headlines, `[DECIDE][status][G-NNN][kind]` decision headlines, `Key:` lines, coverage lines — the skill's `reference/format.md`) — that format is validated in the skill's own CI, and this kit's parser is tested against the skill's worked examples there (`guardian-record.test.mjs`), so kit and skill version together. Kit works with guardian ≥ 0.5.0; decision blocks require guardian ≥ 0.13.0.

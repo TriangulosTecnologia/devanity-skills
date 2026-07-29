@@ -9,7 +9,7 @@ Use after implementation, before commit. Steps:
 3. List every changed file from the step-2 baseline commands — the Summary's `reviewed N/N` derives from that list, never from memory, and a file whose read failed or was cut short counts as unreviewed (name it under Missing verification). Large diff (>~15 files or >~800 changed lines): group by package/domain, review group by group. The same rule violated in N places → one finding; list all instances under Evidence; anchor the key at the owning rule/config where one exists.
 4. Review the relevant dimensions (`reference/methodology.md`, incl. the relevance rule); on instruction surfaces apply the instruction-artifact syndromes; flag basis-form drift in both directions (case-enumeration where an axis is visible; empty/speculative axis — `reference/basis-form.md`); reconcile touched rules (`reference/baseline.md`).
 5. If a `plan` from this session covers this diff, reconcile the delivery against its Scope, Non-goals, and Implementation prompt: an undeclared deviation is a finding (scope creep, or a stale plan — judge which on the evidence); a declared one is reviewed on its merits.
-6. Classify with the SKILL finding format (headline + detail tier, incl. fix-class and `Key:`); render per **Output discipline** (SKILL: strict severity order, P1 capped at top 3 full + rest one-line, P2/P3 one line each); note missing verification; write a correction prompt.
+6. Classify with the finding format (`reference/format.md`: list-item headline + nested detail tier, incl. fix-class and `Key:`); render per **Output discipline** (SKILL: strict severity order, P1 capped at top 3 full + rest one-line, P2/P3 one line each); emit a `[DECIDE]` block (SKILL Decisions) for each stop-and-ask owed — an unaccepted P0 (`acceptance`) and each P0/P1 whose fix is a trade (`trade`); note missing verification; write a correction prompt.
 7. End the Summary with `reviewed N/N changed files` (N from the step-3 list); name any unreviewed file under Missing verification — never sample silently.
 8. On a PASS-class verdict (`PASS`/`PASS_WITH_FIXES`/`PASS_WITH_ACCEPTED_RISK`), append `### PR package`: suggested title + description sourced from the Summary, the verification evidence, and reviewer focus (risks + non-goals). Prepare, never approve; omit the section on `BLOCK`.
 
@@ -20,9 +20,11 @@ Use after implementation, before commit. Steps:
 
 ### Coverage Light|Deep (trigger) · dimensions checked: <slugs> / skipped: <slugs> (reason)
 
-### Required fixes [P0/P1][dominant|trade][G-###][dimension][rung] title + detail tier (SKILL finding format; P0 first, then P1 — top 3 full, rest one-line) ...
+### Required fixes [P0/P1][dominant|trade][G-###][dimension][rung] title + detail tier (finding format, `reference/format.md`; P0 first, then P1 — top 3 full, rest one-line) ...
 
 ### Suggested improvements [P2/P3][dominant|trade][G-###][dimension][rung] title — one line each, or counts per dimension when >~5 ...
+
+### Decisions [DECIDE] blocks, only when a decision is owed (SKILL Decisions)
 
 ### Missing verification
 
@@ -47,20 +49,28 @@ New `canDelete()` gate on the delete route — permission behavior altered (high
 Deep (high-risk domain) · dimensions checked: verification-loop, boundary-integrity, executable-spec / skipped: co-located-spec, compressibility, pattern-hygiene, debt-containment, instruction-hygiene (no artifact touched)
 
 ### Required fixes
-[P0][dominant][G-001][verification-loop][enforcement] Permission gate altered with no test
-  fix: add allow/deny unit tests + gate in CI  ·  src/auth/canDelete.ts:42
-  Key: src/auth/canDelete.ts:canDelete:verification-loop:missing-test
-  why: `canDelete` added, no test touched (`pnpm test --filter auth` covers no case); a future refactor silently opens the delete route — human review is the only sensor.
-  basis: checked — test-only addition, no runtime surface; the CI gate still stops per the Action axis. To ship without: explicit human acceptance → PASS_WITH_ACCEPTED_RISK.
+- **[P0][dominant][G-001][verification-loop][enforcement] Permission gate altered with no test**
+  - fix: add allow/deny unit tests + gate in CI  ·  src/auth/canDelete.ts:42
+  - Key: src/auth/canDelete.ts:canDelete:verification-loop:missing-test
+  - why: `canDelete` added, no test touched (`pnpm test --filter auth` covers no case); a future refactor silently opens the delete route — human review is the only sensor.
+  - basis: checked — test-only addition, no runtime surface; the CI gate still stops per the Action axis.
 
 ### Suggested improvements
-[P2][trade][G-002][boundary-integrity][enforcement] Delete route imports the DB client directly — Key: src/routes/delete.ts:handler:boundary-integrity:layer-bypass (consider an import-restriction rule)
+- [P2][trade][G-002][boundary-integrity][enforcement] Delete route imports the DB client directly — Key: src/routes/delete.ts:handler:boundary-integrity:layer-bypass
+
+### Decisions
+- **[DECIDE][blocking][G-003][acceptance] Ship the delete route without permission tests?**
+  - decision: whether unverified permission behavior is acceptable to ship — a risk acceptance, not a technical choice.
+  - context: anchors G-001 — high-risk class; today human review is the only thing guarding the delete route.
+  - options: decline → add the tests (correction prompt below), re-run review · accept → PASS_WITH_ACCEPTED_RISK, record who/why/expiry + compensating control.
+  - recommendation: decline — the fix is a one-file dominant, cheaper than the recorded risk.
+  - if undecided: verdict stays BLOCK; re-fires on the next review of this diff.
 
 ### Missing verification
 `pnpm test --filter auth` (add the allow/deny cases above).
 
 ### Docs/instructions impact
-None.
+none
 
 ### Correction prompt
 "Add allow/deny tests for canDelete, wire the auth suite into CI, then re-run /guardian review. To ship without them, record explicit acceptance (who/why/expiry) → PASS_WITH_ACCEPTED_RISK."

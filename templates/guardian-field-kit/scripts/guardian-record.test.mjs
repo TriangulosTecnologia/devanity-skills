@@ -67,11 +67,53 @@ test('audit mode + coverage + verdict detected', () => {
   assert.deepEqual(r.coverage, { reviewed: 14, total: 14 });
 });
 
-test('docs verdict + review coverage phrasing detected', () => {
-  const r = parseRun('### Documentation verdict PASS_WITH_FIXES\nReviewed 3/3 changed files.');
+test('docs mode detected via Context cost / DOCS_BACKLOG (and legacy heading)', () => {
+  const r = parseRun('### Verdict PASS_WITH_FIXES\n### Context cost HIGH\nReviewed 3/3 changed files.');
   assert.equal(r.mode, 'docs');
   assert.equal(r.verdict, 'PASS_WITH_FIXES');
   assert.deepEqual(r.coverage, { reviewed: 3, total: 3 });
+  assert.equal(parseRun('### Verdict DOCS_BACKLOG\n').mode, 'docs');
+  assert.equal(parseRun('### Documentation verdict PASS\n').mode, 'docs', 'pre-0.13 outputs still classify');
+});
+
+test('decision blocks parse: status, shared G-id, kind', () => {
+  const md = [
+    '### Verdict BLOCK',
+    '### Decisions',
+    '- **[DECIDE][blocking][G-003][acceptance] Ship without tests?**',
+    '  - options: accept → PASS_WITH_ACCEPTED_RISK · decline → add tests',
+    '  - if undecided: verdict stays BLOCK',
+    '- [DECIDE][dormant][G-4][trade] Extract helper — worth doing when a second caller lands',
+  ].join('\n');
+  const r = parseRun(md);
+  assert.deepEqual(r.decisions, [
+    { status: 'blocking', id: 'G-003', kind: 'acceptance' },
+    { status: 'dormant', id: 'G-004', kind: 'trade' },
+  ]);
+  assert.equal(parseRun('### Verdict PASS\n').decisions, undefined, 'no decisions → field omitted');
+});
+
+test('verify: blocking decision must carry options: and if undecided:; dormant need not', () => {
+  const bad = verifyRun('### Verdict BLOCK\nReviewed 1/1 changed files.\n- **[DECIDE][blocking][G-001][acceptance] Ship it?**\n  - decision: risk acceptance\n');
+  assert.ok(bad.some((e) => e.includes('without options:')), `expected options error, got: ${bad}`);
+  assert.ok(bad.some((e) => e.includes('without if undecided:')), `expected if-undecided error, got: ${bad}`);
+  const ok = verifyRun([
+    '### Verdict BLOCK', 'Reviewed 1/1 changed files.',
+    '- **[DECIDE][blocking][G-001][acceptance] Ship it?**',
+    '  - options: accept → recorded risk · decline → fix',
+    '  - if undecided: re-fires next run',
+    '- [DECIDE][dormant][G-002][trade] Later — worth doing when pain observed',
+  ].join('\n'));
+  assert.deepEqual(ok, []);
+});
+
+test('verify: malformed decision headline flagged; template placeholders are not decisions', () => {
+  const bad = verifyRun('### Verdict PASS\nReviewed 1/1 changed files.\n- [DECIDE][blocking][acceptance] Missing the G-id slot\n');
+  assert.ok(bad.some((e) => e.includes('malformed decision headline')), `expected malformed error, got: ${bad}`);
+  const kind = verifyRun('### Verdict PASS\nReviewed 1/1 changed files.\n- [DECIDE][dormant][G-001][vibes] Unknown kind\n');
+  assert.ok(kind.some((e) => e.includes('unknown decision kind')), `expected kind error, got: ${kind}`);
+  const tpl = verifyRun('### Verdict PASS\nReviewed 1/1 changed files.\n[DECIDE][blocking|dormant][G-###][rule|trade|acceptance|scope] placeholder\n');
+  assert.deepEqual(tpl, [], 'format-spelling template line must not flag');
 });
 
 test('trivial PASS maps to PASS_TRIVIAL with no findings', () => {
@@ -112,7 +154,7 @@ test('verify: keyless finding and missing coverage line are both flagged on a re
 
 test('verify: trivial PASS needs no coverage line; improve output needs no verdict', () => {
   assert.deepEqual(verifyRun('PASS (trivial: comment-only; checked: not misleading)'), []);
-  assert.deepEqual(verifyRun('### Finding fixed [G-001]\n### Trade-off\ndominant (checked: behavior-preserving)\n'), []);
+  assert.deepEqual(verifyRun('### Finding fixed [G-001]\n### Fix class\ndominant (checked: behavior-preserving)\n'), []);
 });
 
 // Kit/skill sync: when run inside this repo, the skill's worked examples must parse under the
@@ -130,5 +172,8 @@ test('skill mode examples parse and verify in this repo (portable copies skip)',
       assert.ok(fnd.key, `${f}: finding ${fnd.id} parsed without a key`);
     }
     assert.deepEqual(verifyRun(text), [], `${f}: worked examples must pass the verify contract`);
+    if (f === 'review.md' || f === 'audit.md') {
+      assert.ok((r.decisions ?? []).length >= 1, `${f}: expected >=1 parseable [DECIDE] block in the worked example`);
+    }
   }
 });
