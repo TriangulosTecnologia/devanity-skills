@@ -8,7 +8,7 @@ Steps: inspect the surfaces in scope; run the instruction-artifact syndromes on 
 
 Required-fixes/Suggested-improvements entries use the finding format (`reference/format.md`) and **Output discipline** (SKILL) — instruction findings anchor as `path:heading:dimension:rule`. Emit a `[DECIDE]` block (SKILL Decisions) for each stop-and-ask owed — an unaccepted P0 and each P0/P1 whose fix is a trade.
 
-Verdicts: a single-surface `review` and `improve` use the four ranked verdicts from `SKILL.md`. The full review emits `DOCS_BACKLOG` — the instruction-surface mirror of `audit`'s `AUDIT_BACKLOG`: the verdict names the run's shape (an inventory, not a gate on one unit), not its severity; every P0 still surfaces in full under Required fixes — **only when every discovered surface is dispositioned** `reviewed | absent`. When the sweep cap fires (`reference/baseline.md` sweep rules — in-scope surfaces exceed ~15), the run instead ends with the complete inventory (unread surfaces dispositioned `pending (batch k)`), a `[DECIDE][blocking][G-###][scope]` whose `options:` are the proposed batches — each one a bounded `docs review <directory>` — and the Verdict line `none — scope decision owed`; with no verdict emitted, `pending` is not a coverage claim (Core rule 10). `DOCS_BACKLOG` is owed by the run that completes the last batch, reconciling the inventory across the session's batch runs (DIAGNOSE reads the transcript — Action axis); across sessions the scope decision is promoted to the tracker like any undecided `[DECIDE]`.
+Verdicts: a single-surface `review` and `improve` use the four ranked verdicts from `SKILL.md`. The full review emits `DOCS_BACKLOG` — the instruction-surface mirror of `audit`'s `AUDIT_BACKLOG`: the verdict names the run's shape (an inventory, not a gate on one unit), not its severity; every P0 still surfaces in full under Required fixes — **only when every discovered surface is dispositioned** `reviewed | absent`. When the sweep cap fires (`reference/baseline.md` sweep rules — in-scope surfaces exceed ~15), the run instead ends with the complete inventory (unread surfaces dispositioned `pending (batch k)`), a `[DECIDE][blocking][G-###][scope]` whose `options:` are the proposed batches — each one a bounded `docs review <directory>` — and the Verdict line `none — scope decision owed`; with no verdict emitted, `pending` is not a coverage claim (Core rule 10). `DOCS_BACKLOG` is owed by the run that completes the last batch, reconciling the inventory across the session's batch runs (DIAGNOSE reads the transcript — Action axis); across sessions the scope decision is proposed for tracker promotion like any undecided `[DECIDE]` (`reference/format.md` — proposed, never written by DIAGNOSE), and the inventory's coverage restarts unless the user supplies a still-valid checkpoint (`reference/baseline.md`).
 
 For the full review, prepend `### Surfaces found / reviewed`: one line per surface from the Deep baseline list — disposition `reviewed | absent` (or `pending (batch k)`, only in a capped run, which emits no verdict), and for reviewed surfaces the enforced/prose-only status. A discovered surface missing from this section means unchecked — a defect in the run, not an allowed omission. An all-`absent` inventory does not end the run: the full review still reconciles the repo's rules in force (`reference/baseline.md` Reconciliation), and each rule evidenced without an agent-legible surface or enforcement is a finding like any other — `docs improve <surface>` then creates the missing surface.
 
@@ -91,17 +91,25 @@ No surface to drift — but three rules are in force with no agent-legible home 
 The import ban is mechanizable today; the other two seed a root `AGENTS.md` (<200 lines).
 
 ### Required fixes
-- **[P1][dominant][G-001][boundary-integrity][enforcement] Cross-import ban between `pkg_*` packages held only in README**
+- **[P1][trade][G-001][boundary-integrity][enforcement] Cross-import ban between `pkg_*` packages held only in README**
   - fix: add an import-restriction lint (crosswalk check) and wire it into CI  ·  README.md:24
   - Key: README.md:package-boundaries:boundary-integrity:unenforced-boundary
   - why: the rule is in force (README + this session's decision) but nothing can fail when an agent reintroduces a cross-import — pattern inertia propagates the violation silently, and no reviewer will see it in a point-in-time diff.
-  - basis: checked — read-only import scan across `pkg_*` this session found zero existing cross-imports, so the lint lands green; no runtime surface, no behavior change; the rule adds seconds to the existing lint run and one maintained config (accepted de minimis, named); the CI wiring stops for confirmation (Action axis).
+  - basis: trade — improves boundary enforcement, and the read-only import scan across `pkg_*` this session found zero existing cross-imports, so the lint lands green with no runtime surface; but the fix adds a lint config surface and a CI phase this repo does not have yet — beyond de minimis by structure, with no repo budget or measurement to price them, so the cost stays an open premise for the human (SKILL Fix classification).
 
 ### Suggested improvements
 - [P2][trade][G-002][instruction-hygiene][prose] Decided conventions (lockfile, Makefile contract) have no agent-legible surface — seed a root `AGENTS.md` from the READMEs — Key: repo:agent-instructions:instruction-hygiene:unstated-rule-in-force
 
+### Decisions
+- **[DECIDE][blocking][G-003][trade] Take on this repo's first enforcement surface to gate the package boundary?**
+  - decision: whether the cross-import ban becomes deterministic enforcement — a lint config plus a CI phase the repo does not have — or stays a rule held in words for now.
+  - context: anchors G-001 — the ban is in force (README + this session's decision) and nothing can fail when it is violated; with no lint config or CI today, the fix is beyond de minimis and its cost is unpriced.
+  - options: adopt → the boundary fails on violation; the repo gains a lint config and a CI phase to maintain · seed the surface only → record the ban in a root `AGENTS.md` (prose rung), no toolchain cost, no gate · defer → dormant, worth doing when the first cross-import lands.
+  - recommendation: adopt — the scan proves the rule already holds, so the gate lands green and only stops regressions; whether the repo's first toolchain cost is worth paying is the human's call.
+  - if undecided: G-001 stays open, re-fires on the next docs review, and the ban keeps depending on reviewer attention.
+
 ### Patch or proposal
-(proposal — read-only; `/guardian improve <key>` for the lint, `/guardian docs improve AGENTS.md` for the surface)
+(proposal — read-only; `/guardian improve <key>` for the lint — a trade, so it stops for the confirmation above — and `/guardian docs improve AGENTS.md` for the surface)
 
 ### Verification needed
 The new lint must fail on a deliberate cross-import before it counts as enforcement (oracle fidelity).

@@ -39,11 +39,13 @@ Detail tier fields:
 
 Exception: a one-line **dominant** also carries its check inline (`— basis: <what was checked>`); without that clause the class is trade.
 
-For durable/team tracking, promote a finding into the existing issue tracker/TODOs — never a bespoke backlog file.
+The two forms are **exclusive**, and CI enforces the boundary: a one-line object keeps every field on its headline and never grows a nested detail tier (bold the headline to render it full-form instead); a full-form object carries all four fields under it. Likewise for decisions — `blocking` always renders full-form, `dormant` always one line.
+
+For durable/team tracking, promote a finding into the existing issue tracker/TODOs — never a bespoke backlog file. **Promotion is proposed, not performed**: DIAGNOSE writes no external record (Action axis), so Guardian drafts the entry and the human (or an ACT run the user explicitly asked for) creates it. A promoted entry carries the open question and the durable key — never a coverage claim: a later session re-establishes coverage itself (Core rule 10).
 
 ## Decision format
 
-A `[DECIDE]` block is emitted at every point where Guardian owes a human a choice — the stop-and-asks the skill already defines, given one form: a trade fix awaiting confirmation (ACT, and any P0/P1 whose proposed fix is a trade in DIAGNOSE), a high-risk / new-dependency / hook-or-CI proposal, a P0/P1 risk acceptance, a blocking `plan` question, an ambiguous routing or oversized scope. It never creates a new stop; it renders an existing one.
+A `[DECIDE]` block is emitted at every point where Guardian owes a human a choice, giving one form to the stop-and-asks the skill defines. Those triggers are enumerated once, in `SKILL.md` **Decisions** — this file governs only how the block renders, so a new stop is added there and inherits this form automatically. It never creates a new stop; it renders an existing one.
 
 The block transfers the **decision space, not the case**: it must be decidable from the block alone by someone without this run's context. The human decider is the one consumer with less context than the producer — write the block at emission time, while that context is in hand and free.
 
@@ -56,8 +58,8 @@ The block transfers the **decision space, not the case**: it must be decidable f
   - if undecided: <the visible fate — never silent disappearance>
 ```
 
-- **Status** — `blocking`: owed this run; its `if undecided:` names the fate (verdict stays BLOCK, re-fires on the next run, or is promoted to the issue tracker as an open decision — the same promotion rule findings use). `dormant`: explicitly allowed to sleep — a deferred trade or a P2/P3 opportunity; its `if undecided:` is its activation condition (`worth doing when <pain observed>`). Deciding "defer" converts a blocking decision into a dormant one-liner.
-- **Kind** — `rule` (a recurring rule or product intent — a yes resolves to `<rule> → codify at <surface>`), `trade` (a fix-class trade confirmation), `acceptance` (P0/P1 risk acceptance → `PASS_WITH_ACCEPTED_RISK`, record who/what/why, follow-up/expiry, compensating control), `scope` (routing, submode, or audit sub-scope choice).
+- **Status** — `blocking`: owed this run; its `if undecided:` names the fate (verdict stays BLOCK, re-fires on the next run, or is proposed for tracker promotion as an open decision — the same promotion rule findings use). `dormant`: explicitly allowed to sleep — a deferred trade or a P2/P3 opportunity; its `if undecided:` is its activation condition (`worth doing when <pain observed>`). Deciding "defer" converts a blocking decision into a dormant one-liner.
+- **Kind** — `rule` (a recurring rule or product intent — a yes resolves to `<rule> → codify at <surface>`), `trade` (a fix-class trade confirmation), `acceptance` (a human taking on a risk Guardian will not assume on its own authority — an unfixed P0/P1, or exposure from an action such as running untrusted code; record who/what/why and any compensating control. Accepting a finding additionally sets `PASS_WITH_ACCEPTED_RISK` and owes a follow-up/expiry; accepting an action records the residual exposure, since confirmation is acceptance, not containment — `reference/bindings.md`), `scope` (routing, submode, or audit sub-scope choice).
 - **G-numbering is shared with findings** — one session sequence, so `improve G-NNN` and a decision answer never collide.
 - **Anchor, don't repeat**: a decision riding on a finding cites it (`anchors G-NNN`) and adds only what the finding lacks — the rule-level question, the options with consequences, the recommendation, the fate. Evidence stays in the finding's `why:`.
 - **One-line dormant form**: `- [DECIDE][dormant][G-###][trade] Title — worth doing when <pain observed> — anchors <Key>`.

@@ -127,7 +127,14 @@ export function validate(skillsDir) {
 
       // A Guardian object's headline is a markdown list item (format.md rendering principle);
       // a bold list item (`- **[…`) is the full form and must carry every detail-tier field —
-      // for BOTH classes: a trade's basis: is exactly where its terms/costs live.
+      // for BOTH classes: a trade's basis: is exactly where its terms/costs live. The two forms
+      // are exclusive: a one-line object keeps its fields inline and may not grow a detail tier,
+      // and a blocking decision is always full-form. Fields are matched at line start (a bullet
+      // and inline code are allowed) so prose mentioning `basis:` mid-sentence never counts.
+      const LIST_ITEM = /^-\s+/;
+      const FULL_FORM = /^-\s+\*\*\[/;
+      const NESTED_FIELD = /\n\s*(?:[-*]\s*)?(?:fix|Key|why|basis):\s*\S/;
+      const NESTED_DECIDE_FIELD = /\n\s*(?:[-*]\s*)?(?:decision|context|options|recommendation|if undecided):\s*\S/;
       const lineOf = (m) => {
         const start = rawText.lastIndexOf('\n', m.index) + 1;
         const end = rawText.indexOf('\n', m.index);
@@ -141,18 +148,22 @@ export function validate(skillsDir) {
         if (slugs.size && !slugs.has(t[4])) err(skill, `${rel} uses unknown dimension slug "${t[4]}"`);
         if (!RUNGS.has(t[5])) err(skill, `${rel} uses unknown ladder rung "${t[5]}"`);
         const line = lineOf(t);
-        if (!line.startsWith('-')) err(skill, `${rel} finding "${t[0]}" headline is not a markdown list item (format.md rendering principle)`);
+        if (!LIST_ITEM.test(line)) err(skill, `${rel} finding "${t[0]}" headline is not a markdown list item (format.md rendering principle)`);
         const span = spanOf(t);
-        if (/^-\s+\*\*\[/.test(line)) {
+        if (FULL_FORM.test(line)) {
           for (const field of ['fix:', 'Key:', 'why:', 'basis:']) {
             if (!new RegExp(`\\b${field}\\s*\\S`).test(span)) {
               err(skill, `${rel} full-form finding "${t[0]}" has no ${field} in its span (format.md: full form carries fix/Key/why/basis for both classes)`);
             }
           }
         } else {
-          if (!/Key:\s*\S+/.test(span)) err(skill, `${rel} finding "${t[0]}" has no Key: in its span`);
-          if (t[2] === 'dominant' && !/basis:\s*\S/.test(span)) {
-            err(skill, `${rel} finding "${t[0]}" is dominant without a basis: check in its span — the class must be trade or the check recorded`);
+          // One-line form: key (and a dominant's check) ride the headline itself, and no detail tier follows.
+          if (!/Key:\s*\S+/.test(line)) err(skill, `${rel} one-line finding "${t[0]}" has no inline Key: on its headline (format.md one-line form)`);
+          if (t[2] === 'dominant' && !/basis:\s*\S/.test(line)) {
+            err(skill, `${rel} one-line finding "${t[0]}" is dominant without an inline basis: — the class must be trade or the check recorded`);
+          }
+          if (NESTED_FIELD.test(span)) {
+            err(skill, `${rel} one-line finding "${t[0]}" carries a detail tier — bold the headline to render it as full form (format.md)`);
           }
         }
       }
@@ -161,8 +172,13 @@ export function validate(skillsDir) {
         if (!STATUSES.has(d[1])) err(skill, `${rel} decision "${d[0]}" uses unknown status "${d[1]}" (expected blocking|dormant)`);
         if (d[2].length < 3) err(skill, `${rel} decision "${d[0]}" alias must be G-NNN (≥3 digits)`);
         if (!DECIDE_KINDS.has(d[3])) err(skill, `${rel} decision "${d[0]}" uses unknown kind "${d[3]}" (expected rule|trade|acceptance|scope)`);
-        if (!lineOf(d).startsWith('-')) err(skill, `${rel} decision "${d[0]}" headline is not a markdown list item (format.md rendering principle)`);
+        const dLine = lineOf(d);
+        if (!LIST_ITEM.test(dLine)) err(skill, `${rel} decision "${d[0]}" headline is not a markdown list item (format.md rendering principle)`);
+        if (d[1] === 'dormant' && NESTED_DECIDE_FIELD.test(spanOf(d))) {
+          err(skill, `${rel} dormant decision "${d[0]}" carries a full-form detail tier — dormant renders as one line (format.md)`);
+        }
         if (d[1] !== 'blocking') continue;
+        if (!FULL_FORM.test(dLine)) err(skill, `${rel} blocking decision "${d[0]}" must render full-form (bold headline over a nested detail tier, format.md)`);
         const span = spanOf(d);
         for (const field of ['decision:', 'context:', 'options:', 'recommendation:', 'if undecided:']) {
           if (!new RegExp(`${field}\\s*\\S`).test(span)) {
