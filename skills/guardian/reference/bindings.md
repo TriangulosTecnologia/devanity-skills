@@ -21,9 +21,13 @@ before stopping without checks  → Stop hook
 after an edit, to flag/suggest  → PostToolUse hook (cannot prevent; advisory)
 ```
 
-## Untrusted-diff isolation
+## Execution trust
 
-The Tool policy's provenance rule (`SKILL.md`) is propose-and-stop: the skill requires isolation, it never provides one. On Claude Code the realization is a discardable `git worktree` (or a sandboxed session) where a human-confirmed check can run without exposing the primary working tree; absent one, the human's explicit confirmation is the only gate — the skill must not promise containment (credentials, environment) it does not control.
+The Tool policy's origin rule (`SKILL.md`) is propose-and-stop: the skill requires the gate, it never provides protection. Three distinct things, never conflated:
+
+- **Workspace separation** — a discardable `git worktree` protects the primary working tree and nothing else: code running in one still reads credentials, reaches the network, and touches services. A worktree is not a sandbox.
+- **Execution isolation** — only a platform sandbox (restricted filesystem, network, secrets, processes) contains untrusted code; whether one exists is a platform fact to state, never to assume.
+- **Human consent** — confirmation records that the human accepted the exposure; it mitigates nothing. The acceptance decision's options map here: *sandboxed* needs real isolation, *confirmed risk* is consent with the residual exposure named.
 
 ## Interactive menus
 
