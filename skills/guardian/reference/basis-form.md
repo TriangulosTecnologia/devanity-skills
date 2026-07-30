@@ -33,7 +33,7 @@ Don't over-collapse (these are *not* redundant): `compressibility` sits under or
 
 The essence — are these the domain's true axes? — is judgment; propose it, let the human confirm at the edges. The syndromes are mechanizable: promote each into the repo's own enforcement (`enforcement.md`). The instruction-side parallel of these checks — the instruction-artifact syndromes — lives in `methodology.md`.
 
-Properties are consequences, framing only: compressible ← orthogonal + irreducible; contractual ← spanning captured in types/schemas; verifiable ← spanning + enforcement; safe ← off-axis points quarantined.
+Properties are consequences, framing only: compressible ← orthogonal + irreducible; contractual ← spanning captured in types/schemas; verifiable ← spanning + enforcement; safe ← off-axis points quarantined — safety-relevant exceptions and off-axis behavior become **explicit, bounded, and easier to verify**. That is the whole claim: basis-form makes deviations detectable; it never certifies that a contract is itself correct or safe (Core rule 9 — never codify a bad rule — exists precisely because form does not establish merit).
 
 ## Surfaces (basis-form applies uniformly)
 

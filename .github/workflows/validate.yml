@@ -15,4 +15,3 @@ jobs:
           node-version: 22
       - run: node scripts/validate-skills.mjs
       - run: node --test scripts/validate-skills.test.mjs
-      - run: node --test templates/guardian-field-kit/scripts/guardian-record.test.mjs

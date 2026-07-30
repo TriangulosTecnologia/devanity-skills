@@ -4,7 +4,7 @@ The rendering contract for everything Guardian emits. Two first-class objects �
 
 ## Rendering principle
 
-Structure is carried by **markdown list nesting**, never by bare indentation or blank-line adjacency: a full-form object is one list item whose headline is the bolded first line and whose detail tier is its nested sub-list. This is the one encoding whose two-tier hierarchy survives every medium Guardian output lands on — the terminal, rendered markdown (PR comments, issue bodies), and the field-kit regex parser. Never render findings or decisions as loose paragraphs, and never rely on leading spaces to mean hierarchy.
+Structure is carried by **markdown list nesting**, never by bare indentation or blank-line adjacency: a full-form object is one list item whose headline is the bolded first line and whose detail tier is its nested sub-list. This is the one encoding whose two-tier hierarchy survives every medium Guardian output lands on — the terminal, rendered markdown (PR comments, issue bodies), and mechanical parsers (the format's own CI validation among them). Never render findings or decisions as loose paragraphs, and never rely on leading spaces to mean hierarchy.
 
 ## Finding format
 
