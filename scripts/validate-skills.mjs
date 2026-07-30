@@ -81,7 +81,9 @@ export function validate(skillsDir) {
     //    concrete [Pn][class][G-nnn][slug][rung] tags must use a known fix-class
     //    (dominant|trade), a dimension slug defined in reference/methodology.md's numbered
     //    list, and a known ladder rung; a file that emits concrete tags must also carry the
-    //    mandatory `Key:` line. Placeholders like [P0/P1][…] don't match `\[P\d\]` and are ignored.
+    //    mandatory `Key:` line, and a dominant finding must record its `basis:` check in its
+    //    own span (an unchecked "worsens nothing" claim is trade by the skill's own default).
+    //    Placeholders like [P0/P1][…] don't match `\[P\d\]` and are ignored.
     const RUNGS = new Set(['enforcement', 'path-scoped-context', 'procedure', 'prose']);
     const CLASSES = new Set(['dominant', 'trade']);
     const methodologyPath = join(root, 'reference', 'methodology.md');
@@ -104,6 +106,24 @@ export function validate(skillsDir) {
         // keyless finding can't borrow another finding's Key: elsewhere in the file.
         const span = rawText.slice(t.index + t[0].length, i + 1 < tags.length ? tags[i + 1].index : rawText.length);
         if (!/Key:\s*\S+/.test(span)) err(skill, `${rel} finding "${t[0]}" has no Key: before the next finding`);
+        if (t[1] === 'dominant' && !/basis:\s*\S/.test(span)) {
+          err(skill, `${rel} finding "${t[0]}" is dominant without a basis: check in its span — the class must be trade or the check recorded`);
+        }
+      }
+
+      // 4b. Decision-block integrity: concrete [DECIDE][status][G-nnn][kind] headlines must use
+      //     a known kind, and a blocking decision must carry options: and if undecided: in its
+      //     own span — without them the decision space wasn't transferred. Placeholders spelling
+      //     the grammar ([G-###], blocking|dormant) don't match `\[G-\d+\]` and are ignored.
+      const DECIDE_KINDS = new Set(['rule', 'trade', 'acceptance', 'scope']);
+      const decides = [...rawText.matchAll(/\[DECIDE\]\[(blocking|dormant)\]\[G-(\d+)\]\[([a-z]+)\]/g)];
+      for (let i = 0; i < decides.length; i++) {
+        const d = decides[i];
+        if (!DECIDE_KINDS.has(d[3])) err(skill, `${rel} decision "${d[0]}" uses unknown kind "${d[3]}" (expected rule|trade|acceptance|scope)`);
+        if (d[1] !== 'blocking') continue;
+        const span = rawText.slice(d.index, i + 1 < decides.length ? decides[i + 1].index : rawText.length);
+        if (!/options:\s*\S/.test(span)) err(skill, `${rel} blocking decision "${d[0]}" has no options: — each answer's consequence must be named`);
+        if (!/if undecided:\s*\S/.test(span)) err(skill, `${rel} blocking decision "${d[0]}" has no if undecided: — the fate must be visible, never silent`);
       }
     }
     // If any file emits concrete tags, the slug list must have loaded — else slug validation is blind.

@@ -3,8 +3,8 @@ name: guardian
 description: Guard and improve a repository's AI-readiness. Run /guardian plan, review, audit, improve, or docs to keep it in basis-form (a basis of decisions, not a list of cases) — compressible, contractual, verifiable, safe — and to migrate rules from prose into deterministic enforcement.
 license: MIT
 metadata:
-  author: ttoss
-  version: 0.13.0
+  author: enniolopes@gmail.com
+  version: 0.14.0
 disable-model-invocation: true
 argument-hint: 'plan|review|audit|improve|docs [task|path|finding|surface]'
 ---
@@ -34,7 +34,7 @@ prose — human review, risk-tiered                                             
 
 Every mode sits on one axis — **DIAGNOSE** or **ACT** — stated once here; mode files point here and never restate it:
 
-- **DIAGNOSE** (`plan`, `review`, `audit`, `docs review`) — read-only. Never mutates the repo **or the session**: no file writes, no memory or persistent records, and no internal bookkeeping in the output — unless the user explicitly asks. Surface only repo-relevant evidence and next actions.
+- **DIAGNOSE** (`plan`, `review`, `audit`, `docs review`) — read-only **outside the conversation**. May read the repo and the session transcript (that is how `G-NNN` aliases, earlier decisions, and a prior `plan` under `review` resolve); writes nothing that persists beyond its visible conversational output — no files, no memory, no external records — unless the user explicitly asks for a record. Surface only repo-relevant evidence and next actions.
 - **ACT** (`improve`, `docs improve`) — writes exactly one approved unit at a time: a *finding* for `improve`, a *surface* for `docs improve`. Invoking `improve <ref>` or `docs improve <surface>` **is** the approval for that unit — apply directly. Exception: the high-risk class (rule 7), a trade fix (rule 11), a new dependency, or a hook/CI change → show the proposed patch and stop for explicit confirmation.
 
 ## Core rules
@@ -42,7 +42,7 @@ Every mode sits on one axis — **DIAGNOSE** or **ACT** — stated once here; mo
 1. Evidence over confidence.
 2. Enforcement over prose.
 3. Small, reversible fixes.
-4. Writes follow the Action axis above; DIAGNOSE modes never mutate the repo or session.
+4. Writes follow the Action axis above; DIAGNOSE modes write nothing that persists outside the conversation.
 5. No style-only blocking.
 6. No documentation for its own sake.
 7. No high-risk autonomy (any change in the high-risk class → propose, don't act).
@@ -75,7 +75,7 @@ DIAGNOSE modes: read-only tools, read-only Bash, and the focused check (`referen
 
 ## Severity, verdicts, findings
 
-**High-risk class** — any contract whose violation is **irreversible, silent, or defeats detection itself**: security, auth, permissions, privacy, billing/payments, data loss or deletion, migrations, public APIs, infra, and audit/evidence/provenance surfaces (immutable logs, signed records, the trail that makes the rest auditable) — plus any invariant a repo's own instruction surfaces declare as a hard rule (`reference/baseline.md` Reconciliation). The list is examples of the axis, not its bounds; a novel case judged against the axis joins the class even if unlisted. Membership test: a change is in the class only when it **alters** guarded behavior or a guarded contract — not when it merely edits files in a high-risk domain. A non-altering change in such a domain is classified normally, still triggers the Deep baseline, and names the domain in the mode's summary.
+**High-risk class** — any contract whose violation is **irreversible, silent, or defeats detection itself**: security, auth, permissions, privacy, billing/payments, data loss or deletion, migrations, public APIs, infra, and audit/evidence/provenance surfaces (immutable logs, signed records, the trail that makes the rest auditable). The list is examples of the axis, not its bounds; a novel case judged against the axis joins the class even if unlisted. An instruction surface declaring an invariant a hard rule is a **claim** of membership — tested against the axis with evidence beyond the declaring sentence (`reference/baseline.md` Reconciliation), never membership by declaration. Membership test: a change is in the class only when it **alters** guarded behavior or a guarded contract — not when it merely edits files in a high-risk domain. A non-altering change in such a domain is classified normally, still triggers the Deep baseline, and names the domain in the mode's summary.
 
 ```txt
 P0 BLOCK          a high-risk-class change (posture: clears only with tests + explicit human acceptance → PASS_WITH_ACCEPTED_RISK, never silent PASS), CI breakage, unverified critical behavior, or a major boundary violation.

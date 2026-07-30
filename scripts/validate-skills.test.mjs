@@ -54,7 +54,7 @@ test('empty skills dir reports an error', () => {
 });
 
 test('valid finding tag ([Pn][class][G-nnn][slug][rung] + Key) passes', () => {
-  const body = `${fm('foo')}\n[P1][dominant][G-001][verification-loop][enforcement] Good tag\n  Key: a.ts:x:verification-loop:rule\n`;
+  const body = `${fm('foo')}\n[P1][dominant][G-001][verification-loop][enforcement] Good tag\n  Key: a.ts:x:verification-loop:rule\n  basis: checked — no runtime surface\n`;
   withSkill('foo', body, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
     writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
@@ -114,6 +114,47 @@ test('emitting finding tags with methodology.md missing fails (slug validation c
     const errors = validate(dir);
     assert.ok(errors.some((e) => e.includes('cannot validate dimension slugs')), errors.join('; '));
   });
+});
+
+test('dominant finding without a basis: check in its span fails; with one passes', () => {
+  const noBasis = `${fm('foo')}\n[P1][dominant][G-001][verification-loop][enforcement] Unchecked dominant\n  Key: a.ts:x:verification-loop:rule\n`;
+  withSkill('foo', noBasis, (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('dominant without a basis:')), errors.join('; '));
+  });
+  const withBasis = `${fm('foo')}\n[P1][dominant][G-001][verification-loop][enforcement] Checked dominant\n  Key: a.ts:x:verification-loop:rule\n  basis: checked — test-only addition\n`;
+  withSkill('foo', withBasis, (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    assert.deepEqual(validate(dir), []);
+  });
+});
+
+test('blocking decision without options:/if undecided: fails; complete block passes', () => {
+  const incomplete = `${fm('foo')}\n[DECIDE][blocking][G-002][trade] Question?\n  decision: x\n`;
+  withSkill('foo', incomplete, (dir) => {
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('no options:')), errors.join('; '));
+    assert.ok(errors.some((e) => e.includes('no if undecided:')), errors.join('; '));
+  });
+  const complete = `${fm('foo')}\n[DECIDE][blocking][G-002][trade] Question?\n  options: A → x · B → y\n  if undecided: re-fires next run\n`;
+  withSkill('foo', complete, (dir) => assert.deepEqual(validate(dir), []));
+});
+
+test('decision with unknown kind fails; dormant needs no options', () => {
+  const badKind = `${fm('foo')}\n[DECIDE][blocking][G-003][bogus] Q?\n  options: A → x\n  if undecided: re-fires\n`;
+  withSkill('foo', badKind, (dir) => {
+    assert.ok(validate(dir).some((e) => e.includes('unknown kind "bogus"')));
+  });
+  const dormant = `${fm('foo')}\n[DECIDE][dormant][G-004][trade] Q — worth doing when pain observed\n`;
+  withSkill('foo', dormant, (dir) => assert.deepEqual(validate(dir), []));
+});
+
+test('decision placeholders like [DECIDE][blocking|dormant][G-###][kind] are ignored', () => {
+  const body = `${fm('foo')}\n- **[DECIDE][blocking|dormant][G-###][rule|trade|acceptance|scope] Question, one line**\n`;
+  withSkill('foo', body, (dir) => assert.deepEqual(validate(dir), []));
 });
 
 test('argument-hint drifting from modes/ fails; matching passes', () => {
