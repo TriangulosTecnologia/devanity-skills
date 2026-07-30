@@ -93,10 +93,10 @@ Finding format — a scannable **headline** (one line, all five axes) over a nes
 
 ```txt
 - **[P1][dominant][G-001][verification-loop][enforcement] Missing test for discount rounding**
-  - fix: add rounding unit test + wire into CI  ·  src/pricing/discount.ts:88
+  - fix: add rounding unit test (the CI test job already gates this suite)  ·  src/pricing/discount.ts:88
   - Key: src/pricing/discount.ts:applyDiscount:verification-loop:missing-test
   - why: no test covers the new rounding branch; a refactor could silently change money math
-  - basis: checked — test-only addition, no runtime surface; one deterministic case in a suite that already runs — no new dependency, phase, config, or boundary (de minimis, named); the CI wiring stops per the Action axis (trade → name what worsens / the open premise / verification cost)
+  - basis: checked — test-only addition, no runtime surface; one deterministic case in a suite CI already runs — no new dependency, phase, config, or boundary (de minimis, named) (trade → name what worsens / the open premise / verification cost)
 ```
 
 Headline axes, in order: severity (`P0–P3`, judges the finding); fix-class (`dominant|trade`, judges the fix — a distinct axis); `G-NNN` (session-local alias — the durable `Key:` is the canonical identity; numbering continues across runs within a session, never restart at G-001); dimension (exactly one of the 8 slugs in `reference/methodology.md`); target ladder rung (`enforcement|path-scoped-context|procedure|prose`). A one-line finding is the same five-axis headline + title + `— Key: …`, no detail tier — a one-line `dominant` must carry `— basis: <check>` inline or its class is trade. Key structure, alias resolution, field semantics, and tracker promotion: `reference/format.md`.

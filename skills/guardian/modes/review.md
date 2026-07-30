@@ -50,10 +50,10 @@ Deep (high-risk domain) · dimensions checked: verification-loop, boundary-integ
 
 ### Required fixes
 - **[P0][dominant][G-001][verification-loop][enforcement] Permission gate altered with no test**
-  - fix: add allow/deny unit tests + gate in CI  ·  src/auth/canDelete.ts:42
+  - fix: add allow/deny unit tests + add the auth suite to the existing CI test job  ·  src/auth/canDelete.ts:42
   - Key: src/auth/canDelete.ts:canDelete:verification-loop:missing-test
   - why: `canDelete` added, no test touched (`pnpm test --filter auth` covers no case); a future refactor silently opens the delete route — human review is the only sensor.
-  - basis: checked — test-only addition, no runtime surface; two deterministic cases in the auth suite `pnpm test --filter auth` already runs — no new dependency, phase, config, or boundary (de minimis, named); the CI gate change still stops per the Action axis.
+  - basis: checked — test-only addition, no runtime surface; two deterministic cases in `pnpm test --filter auth`, plus one filter line in the CI test job that already runs the other packages — a rule in an existing config, so no new dependency, phase, config, or boundary (de minimis, named); the CI edit still stops per the Action axis.
 
 ### Suggested improvements
 - [P2][trade][G-002][boundary-integrity][enforcement] Delete route imports the DB client directly — Key: src/routes/delete.ts:handler:boundary-integrity:layer-bypass
@@ -73,5 +73,5 @@ Deep (high-risk domain) · dimensions checked: verification-loop, boundary-integ
 none
 
 ### Correction prompt
-"Add allow/deny tests for canDelete, wire the auth suite into CI, then re-run /guardian review. To ship without them, record explicit acceptance (who/why/expiry) → PASS_WITH_ACCEPTED_RISK."
+"Add allow/deny tests for canDelete, add the auth suite to the CI test job, then re-run /guardian review. To ship without them, record explicit acceptance (who/why/expiry) → PASS_WITH_ACCEPTED_RISK."
 ```

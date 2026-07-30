@@ -47,10 +47,10 @@ Scope `src/payments` (a slice — a full `src/` would be narrowed first via the 
 src/payments (probe: 14 files, 2.1k lines)
 
 ### Coverage
-Read 14/14 files; checks: per-file syndrome sweep, tsc config resolved, CI workflow read, claim diff CLAUDE.md vs scripts. Not checked: runtime behavior (no focused check exists — proposed as a follow-up).
+Read 14/14 files; checks: per-file syndrome sweep, tsc config resolved, CI workflow read, claim diff CLAUDE.md vs scripts. Not checked: runtime behavior of the totals path (the CI test job runs, but no test covers it — that gap is G-001).
 
 ### Baseline
-Enforced: strict TS (tsconfig), lint (CI). Prose-only: "always use money integers" (CLAUDE.md) — no check. Absent: pre-commit hooks, coverage gate. Instruction surfaces: root CLAUDE.md only — no others found.
+Enforced: strict TS (tsconfig), lint + unit tests (CI test job). Prose-only: "always use money integers" (CLAUDE.md) — no check. Absent: pre-commit hooks, coverage gate. Instruction surfaces: root CLAUDE.md only — no others found.
 
 ### Dimension status
 | Dimension | Status | Evidence |
@@ -66,10 +66,10 @@ Enforced: strict TS (tsconfig), lint (CI). Prose-only: "always use money integer
 
 ### Required fixes
 - **[P0][dominant][G-001][verification-loop][enforcement] Float arithmetic on money in `sumLineItems`**
-  - fix: integer cents + test; gate in CI  ·  src/payments/totals.ts:31
+  - fix: integer cents + test in the suite the CI test job already gates  ·  src/payments/totals.ts:31
   - Key: src/payments/totals.ts:sumLineItems:verification-loop:float-money
   - why: `10.10+20.20+30.30 !== 60.6`, no test — billing drift.
-  - basis: checked — the failing case becomes the test; no API change; one deterministic case in a suite that already runs — no new dependency, phase, config, or boundary (de minimis, named); the CI gate stops per the Action axis.
+  - basis: checked — the failing case becomes the test; no API change; one deterministic case in a suite the CI test job already runs, so nothing in CI changes — no new dependency, phase, config, or boundary (de minimis, named).
 - [P1][trade][G-002][executable-spec][enforcement] "money integers" rule unenforced — Key: CLAUDE.md:money-rule:executable-spec:prose-only
 
 ### Suggested improvements
