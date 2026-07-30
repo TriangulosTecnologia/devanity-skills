@@ -91,17 +91,25 @@ No surface to drift — but three rules are in force with no agent-legible home 
 The import ban is mechanizable today; the other two seed a root `AGENTS.md` (<200 lines).
 
 ### Required fixes
-- **[P1][dominant][G-001][boundary-integrity][enforcement] Cross-import ban between `pkg_*` packages held only in README**
+- **[P1][trade][G-001][boundary-integrity][enforcement] Cross-import ban between `pkg_*` packages held only in README**
   - fix: add an import-restriction lint (crosswalk check) and wire it into CI  ·  README.md:24
   - Key: README.md:package-boundaries:boundary-integrity:unenforced-boundary
   - why: the rule is in force (README + this session's decision) but nothing can fail when an agent reintroduces a cross-import — pattern inertia propagates the violation silently, and no reviewer will see it in a point-in-time diff.
-  - basis: checked — read-only import scan across `pkg_*` this session found zero existing cross-imports, so the lint lands green; no runtime surface, no behavior change; the rule adds seconds to the existing lint run and one maintained config (accepted de minimis, named); the CI wiring stops for confirmation (Action axis).
+  - basis: trade — improves boundary enforcement, and the read-only import scan across `pkg_*` this session found zero existing cross-imports, so the lint lands green with no runtime surface; but the fix adds a lint config surface and a CI phase this repo does not have yet — beyond de minimis by structure, with no repo budget or measurement to price them, so the cost stays an open premise for the human (SKILL Fix classification).
 
 ### Suggested improvements
 - [P2][trade][G-002][instruction-hygiene][prose] Decided conventions (lockfile, Makefile contract) have no agent-legible surface — seed a root `AGENTS.md` from the READMEs — Key: repo:agent-instructions:instruction-hygiene:unstated-rule-in-force
 
+### Decisions
+- **[DECIDE][blocking][G-003][trade] Take on this repo's first enforcement surface to gate the package boundary?**
+  - decision: whether the cross-import ban becomes deterministic enforcement — a lint config plus a CI phase the repo does not have — or stays a rule held in words for now.
+  - context: anchors G-001 — the ban is in force (README + this session's decision) and nothing can fail when it is violated; with no lint config or CI today, the fix is beyond de minimis and its cost is unpriced.
+  - options: adopt → the boundary fails on violation; the repo gains a lint config and a CI phase to maintain · seed the surface only → record the ban in a root `AGENTS.md` (prose rung), no toolchain cost, no gate · defer → dormant, worth doing when the first cross-import lands.
+  - recommendation: adopt — the scan proves the rule already holds, so the gate lands green and only stops regressions; whether the repo's first toolchain cost is worth paying is the human's call.
+  - if undecided: G-001 stays open, re-fires on the next docs review, and the ban keeps depending on reviewer attention.
+
 ### Patch or proposal
-(proposal — read-only; `/guardian improve <key>` for the lint, `/guardian docs improve AGENTS.md` for the surface)
+(proposal — read-only; `/guardian improve <key>` for the lint — a trade, so it stops for the confirmation above — and `/guardian docs improve AGENTS.md` for the surface)
 
 ### Verification needed
 The new lint must fail on a deliberate cross-import before it counts as enforcement (oracle fidelity).
