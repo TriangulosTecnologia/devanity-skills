@@ -4,7 +4,7 @@ description: Guard and improve a repository's AI-readiness. Run /guardian plan, 
 license: MIT
 metadata:
   author: enniolopes@gmail.com
-  version: 0.14.0
+  version: 0.15.0
 disable-model-invocation: true
 argument-hint: 'plan|review|audit|improve|docs [task|path|finding|surface]'
 ---
@@ -67,7 +67,7 @@ Arguments: `$ARGUMENTS`. Route by the first whitespace-delimited token:
 5. `review`: an optional path narrows the diff.
 6. `audit`: requires a bounded scope (path/package/domain) — ask if missing.
 7. `improve`: requires one finding reference — the durable key or an unambiguous suffix of it, or an in-session `G-NNN` alias — ask if missing.
-8. `docs`: the second token selects the submode **only when it is one of** `review|improve`; otherwise the submode is `review` and that token begins the target surface. The surface (a file path) is optional for `review` — with one, diagnose that surface; without, run the **full review** of every instruction surface (`modes/docs.md`) — and required for `improve` (ask if missing).
+8. `docs`: the second token selects the submode **only when it is one of** `review|improve`; otherwise the submode is `review` and that token begins the target surface. The target is optional for `review` — a file path diagnoses that surface; a directory path runs the full-review contract bounded to the surfaces beneath it; without one, run the **full review** of every instruction surface (`modes/docs.md`) — and a file path is required for `improve` (ask if missing).
 
 ## Tool policy
 
@@ -86,7 +86,7 @@ P3 BACKLOG        larger structural opportunity.
 
 Tie-break: a missing test is P1 — unless the untested behavior is in the high-risk class, then P0.
 
-Verdicts for diff/surface reviews (`plan` and `audit` define theirs in their mode files; a full `docs review` emits `DOCS_BACKLOG`, defined in `modes/docs.md`): `PASS` · `PASS_WITH_FIXES` (P1 exists) · `PASS_WITH_ACCEPTED_RISK` · `BLOCK` (unaccepted P0). When several apply, emit the most severe: `BLOCK` > `PASS_WITH_ACCEPTED_RISK` > `PASS_WITH_FIXES` > `PASS`. A human may accept a P0/P1 only explicitly; record who accepted, what, why, a follow-up/expiry, and any compensating control. Accepted risk is `PASS_WITH_ACCEPTED_RISK`, never `PASS`.
+Verdicts for diff/surface reviews (`plan` and `audit` define theirs in their mode files; a full `docs review` emits `DOCS_BACKLOG`, defined in `modes/docs.md`): `PASS` · `PASS_WITH_FIXES` (P1 exists) · `PASS_WITH_ACCEPTED_RISK` · `BLOCK` (unaccepted P0). When several apply, emit the most severe: `BLOCK` > `PASS_WITH_ACCEPTED_RISK` > `PASS_WITH_FIXES` > `PASS`. A human may accept a P0/P1 only explicitly; record who accepted, what, why, a follow-up/expiry, and any compensating control. Accepted risk is `PASS_WITH_ACCEPTED_RISK`, never `PASS`. No `PASS`-class verdict authorizes a merge by itself: `PASS_WITH_FIXES` names P1s still owed — fixed, or explicitly accepted as above, before the change lands.
 
 Finding format — a scannable **headline** (one line, all five axes) over a nested **detail tier** (read only when acting on that finding). Findings — and every Guardian object — render as **markdown list items**: structure carried by list nesting, never bare indentation, so both tiers survive the terminal, rendered markdown (PR comments), and parsers alike. Full grammar, field semantics, and rendering conventions: `reference/format.md`.
 
@@ -122,6 +122,6 @@ Behavioral invariants live in this file (always loaded); rationale and the porta
 
 Platform mechanics live in `reference/bindings.md` — the primary file to swap when porting to another coding agent.
 
-**Interactive menus** (Claude Code, interactive sessions only; the platform mechanic + how to detect a non-interactive run live in `reference/bindings.md`): a menu appears only as (a) the single **closing** next-step chooser, or (b) the rendering of a *stop-and-ask* Guardian already owes when the choice is a small enumerable set — never peppered through a run, never load-bearing. A menu is always the projection of an emitted `[DECIDE]` block: its options map 1:1 to the block's `options:`, and the text block is the source of truth. `AskUserQuestion` is not a mutation, so it is permitted even in DIAGNOSE modes. The **closing** chooser fires only when the next step is such a choice: ambiguous routing (the plausible modes), an oversized `audit` scope (the proposed sub-scopes), or a run with ≥1 actionable P0/P1 finding (`improve` the top few + "stop here"); an ambiguous `improve` reference is a case-(b) disambiguation. Cap at ~4 options, recommended first, a no-op always present. **Never** fire on a trivial/clean PASS, `plan`, a *trade*/high-risk confirmation (the tool-approval flow already prompts — a menu would double-prompt), or a non-interactive run (`claude -p`, CI → emit the text next-step only). Selecting an option is **exactly** typing that `/guardian …` command — ACT safety is unchanged (a `dominant` fix applies; a *trade*/high-risk/new-dep/hook change still stops for confirmation).
+**Interactive menus** (Claude Code, interactive sessions only; the platform mechanic + how to detect a non-interactive run live in `reference/bindings.md`): a menu appears only as (a) the single **closing** next-step chooser, or (b) the rendering of a *stop-and-ask* Guardian already owes when the choice is a small enumerable set — never peppered through a run, never load-bearing. A menu is always the projection of an emitted `[DECIDE]` block: its options map 1:1 to the block's `options:`, and the text block is the source of truth. `AskUserQuestion` is not a mutation, so it is permitted even in DIAGNOSE modes. The **closing** chooser fires only when the next step is such a choice: ambiguous routing (the plausible modes), an oversized `audit` or capped full `docs review` scope (the proposed sub-scopes/batches), or a run with ≥1 actionable P0/P1 finding (`improve` the top few + "stop here"); an ambiguous `improve` reference is a case-(b) disambiguation. Cap at ~4 options, recommended first, a no-op always present. **Never** fire on a trivial/clean PASS, `plan`, a *trade*/high-risk confirmation (the tool-approval flow already prompts — a menu would double-prompt), or a non-interactive run (`claude -p`, CI → emit the text next-step only). Selecting an option is **exactly** typing that `/guardian …` command — ACT safety is unchanged (a `dominant` fix applies; a *trade*/high-risk/new-dep/hook change still stops for confirmation).
 
 End every run with one actionable next step: a correction prompt, a verification command, the first safe improvement, or a clear PASS.

@@ -77,15 +77,20 @@ export function validate(skillsDir) {
       }
     }
 
-    // 4. Finding-tag integrity (raw text — tags live inside fenced templates/examples):
-    //    concrete [Pn][class][G-nnn][slug][rung] tags must use a known fix-class
-    //    (dominant|trade), a dimension slug defined in reference/methodology.md's numbered
-    //    list, and a known ladder rung; a file that emits concrete tags must also carry the
-    //    mandatory `Key:` line, and a dominant finding must record its `basis:` check in its
-    //    own span (an unchecked "worsens nothing" claim is trade by the skill's own default).
-    //    Placeholders like [P0/P1][…] don't match `\[P\d\]` and are ignored.
+    // 4. Guardian-object integrity (raw text — objects live inside fenced templates/examples).
+    //    Findings ([Pn][class][G-nnn][slug][rung]) and decisions ([DECIDE][status][G-nnn][kind])
+    //    are validated field-by-field; a line that *almost* matches either grammar is rejected,
+    //    never silently skipped. An object's span runs to the next Guardian object or `###`
+    //    heading, so mandatory fields (`Key:`, `basis:`, decision fields) can't be borrowed
+    //    from later content. Grammar-spelling placeholders ([P0/P1][…], [G-###],
+    //    dominant|trade, blocking|dormant) are templates, not objects, and are ignored.
     const RUNGS = new Set(['enforcement', 'path-scoped-context', 'procedure', 'prose']);
     const CLASSES = new Set(['dominant', 'trade']);
+    const DECIDE_KINDS = new Set(['rule', 'trade', 'acceptance', 'scope']);
+    const STATUSES = new Set(['blocking', 'dormant']);
+    const tagRe = /\[P(\d)\]\[([a-z]+)\]\[G-(\d+)\]\[([a-z-]+)\]\[([a-z-]+)\]/g;
+    const decideRe = /\[DECIDE\]\[([a-z]+)\]\[G-(\d+)\]\[([a-z]+)\]/g;
+    const isTemplate = (line) => /dominant\|trade|blocking\|dormant|G-#/.test(line);
     const methodologyPath = join(root, 'reference', 'methodology.md');
     const slugs = new Set();
     if (existsSync(methodologyPath)) {
@@ -95,35 +100,55 @@ export function validate(skillsDir) {
     for (const file of scanFiles) {
       const rel = file.slice(root.length + 1);
       const rawText = readFileSync(file, 'utf8');
-      const tags = [...rawText.matchAll(/\[P\d\]\[([a-z]+)\]\[G-\d+\]\[([a-z-]+)\]\[([a-z-]+)\]/g)];
+      const tags = [...rawText.matchAll(tagRe)];
+      const decides = [...rawText.matchAll(decideRe)];
       if (tags.length) anyTags = true;
-      for (let i = 0; i < tags.length; i++) {
-        const t = tags[i];
-        if (!CLASSES.has(t[1])) err(skill, `${rel} uses unknown fix-class "${t[1]}" (expected dominant|trade)`);
-        if (slugs.size && !slugs.has(t[2])) err(skill, `${rel} uses unknown dimension slug "${t[2]}"`);
-        if (!RUNGS.has(t[3])) err(skill, `${rel} uses unknown ladder rung "${t[3]}"`);
-        // Every finding must carry a Key: within its own span (headline → next headline), so a
-        // keyless finding can't borrow another finding's Key: elsewhere in the file.
-        const span = rawText.slice(t.index + t[0].length, i + 1 < tags.length ? tags[i + 1].index : rawText.length);
-        if (!/Key:\s*\S+/.test(span)) err(skill, `${rel} finding "${t[0]}" has no Key: before the next finding`);
-        if (t[1] === 'dominant' && !/basis:\s*\S/.test(span)) {
+
+      // Near-miss rejection: a line shaped like an object headline that fails its grammar.
+      for (const line of rawText.split('\n')) {
+        if (isTemplate(line)) continue;
+        if (/\[P\d\]\[/.test(line) && !new RegExp(tagRe.source).test(line)) {
+          err(skill, `${rel} malformed finding headline (must be [Pn][class][G-NNN][dimension][rung]): ${line.trim().slice(0, 100)}`);
+        }
+        if (/\[DECIDE\]\[/.test(line) && !new RegExp(decideRe.source).test(line)) {
+          err(skill, `${rel} malformed decision headline (must be [DECIDE][status][G-NNN][kind]): ${line.trim().slice(0, 100)}`);
+        }
+      }
+
+      // An object's span ends at the next object headline or `###` heading, whichever comes first.
+      const boundaries = [
+        ...tags.map((m) => m.index), ...decides.map((m) => m.index),
+        ...[...rawText.matchAll(/^###\s/gm)].map((m) => m.index),
+      ].sort((a, b) => a - b);
+      const spanOf = (m) => {
+        const next = boundaries.find((b) => b > m.index);
+        return rawText.slice(m.index + m[0].length, next ?? rawText.length);
+      };
+
+      for (const t of tags) {
+        if (!/^[0-3]$/.test(t[1])) err(skill, `${rel} finding "${t[0]}" has invalid severity P${t[1]} (must be P0–P3)`);
+        if (!CLASSES.has(t[2])) err(skill, `${rel} uses unknown fix-class "${t[2]}" (expected dominant|trade)`);
+        if (t[3].length < 3) err(skill, `${rel} finding "${t[0]}" alias must be G-NNN (≥3 digits)`);
+        if (slugs.size && !slugs.has(t[4])) err(skill, `${rel} uses unknown dimension slug "${t[4]}"`);
+        if (!RUNGS.has(t[5])) err(skill, `${rel} uses unknown ladder rung "${t[5]}"`);
+        const span = spanOf(t);
+        if (!/Key:\s*\S+/.test(span)) err(skill, `${rel} finding "${t[0]}" has no Key: in its span`);
+        if (t[2] === 'dominant' && !/basis:\s*\S/.test(span)) {
           err(skill, `${rel} finding "${t[0]}" is dominant without a basis: check in its span — the class must be trade or the check recorded`);
         }
       }
 
-      // 4b. Decision-block integrity: concrete [DECIDE][status][G-nnn][kind] headlines must use
-      //     a known kind, and a blocking decision must carry options: and if undecided: in its
-      //     own span — without them the decision space wasn't transferred. Placeholders spelling
-      //     the grammar ([G-###], blocking|dormant) don't match `\[G-\d+\]` and are ignored.
-      const DECIDE_KINDS = new Set(['rule', 'trade', 'acceptance', 'scope']);
-      const decides = [...rawText.matchAll(/\[DECIDE\]\[(blocking|dormant)\]\[G-(\d+)\]\[([a-z]+)\]/g)];
-      for (let i = 0; i < decides.length; i++) {
-        const d = decides[i];
+      for (const d of decides) {
+        if (!STATUSES.has(d[1])) err(skill, `${rel} decision "${d[0]}" uses unknown status "${d[1]}" (expected blocking|dormant)`);
+        if (d[2].length < 3) err(skill, `${rel} decision "${d[0]}" alias must be G-NNN (≥3 digits)`);
         if (!DECIDE_KINDS.has(d[3])) err(skill, `${rel} decision "${d[0]}" uses unknown kind "${d[3]}" (expected rule|trade|acceptance|scope)`);
         if (d[1] !== 'blocking') continue;
-        const span = rawText.slice(d.index, i + 1 < decides.length ? decides[i + 1].index : rawText.length);
-        if (!/options:\s*\S/.test(span)) err(skill, `${rel} blocking decision "${d[0]}" has no options: — each answer's consequence must be named`);
-        if (!/if undecided:\s*\S/.test(span)) err(skill, `${rel} blocking decision "${d[0]}" has no if undecided: — the fate must be visible, never silent`);
+        const span = spanOf(d);
+        for (const field of ['decision:', 'context:', 'options:', 'recommendation:', 'if undecided:']) {
+          if (!new RegExp(`${field}\\s*\\S`).test(span)) {
+            err(skill, `${rel} blocking decision "${d[0]}" has no ${field} in its span — the decision space wasn't transferred`);
+          }
+        }
       }
     }
     // If any file emits concrete tags, the slug list must have loaded — else slug validation is blind.
