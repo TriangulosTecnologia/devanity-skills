@@ -6,14 +6,14 @@ Bounded health review; require a scope (ask if missing). Probe first — files a
 
 1. Run the Deep baseline (`reference/baseline.md`); disposition every item (`enforced`/`prose-only`/`absent`).
 2. Enumerate every file in scope; apply the applicable syndrome set to each — code: the crosswalk checks (`reference/basis-form.md`); instruction surfaces incl. skill files: the instruction-artifact syndromes (`reference/methodology.md`). When the scope is itself an instruction artifact, its files are the surface set for reconciliation.
-3. Status **all 8 dimensions**, one row each — the status is derived from this run's open findings, never judged separately: examined (a cited performed check — command run, per-file sweep, claim diff — and its result) → `GOOD` (no open finding) | `WEAK` (only open P2/P3) | `BAD` (≥1 open P0/P1; human-accepted → render `BAD — accepted risk`, never upgraded: acceptance changes governance, not the repo); not examined → `UNKNOWN` + one-word reason. No cited check → `UNKNOWN`, never `GOOD`. The Evidence column cites the check; a status contradicting its dimension's findings is a defect of the run. Omitted rows are not allowed.
+3. Status **all 8 dimensions**, one row each — the status is derived from this run's open findings, never judged separately: examined (a cited performed check — command run, per-file sweep, claim diff — and its result) → `GOOD` (no open finding) | `WEAK` (only open P2/P3) | `BAD` (≥1 open P0/P1; human-accepted → render `BAD — accepted risk`, never upgraded: acceptance changes governance, not the repo). `UNKNOWN` is a disposition, not an escape hatch: it means the dimension was addressed and the evidence is insufficient or unavailable — no discriminating check exists, or running it is unsafe/needs approval — with that reason cited. A relevant dimension skipped for time or capacity is **not dispositioned**: the run ends `### Verdict none — audit completion pending` and proposes a narrower scope or batches (SKILL Completion invariant) instead of emitting `AUDIT_BACKLOG`. No cited check → `UNKNOWN`, never `GOOD`. The Evidence column cites the check; a status contradicting its dimension's findings is a defect of the run. Omitted rows are not allowed.
 4. Reconcile declared-vs-enforced; check boundary enforcement.
 5. List findings in the finding format (`reference/format.md`, incl. `Key:`); emit a `[DECIDE]` block (SKILL Decisions) for each stop-and-ask owed — an unaccepted P0 and each P0/P1 whose fix is a trade; propose a safe sequence.
 
 Output — render findings per SKILL **Output discipline** (every P0 full; P1 top 3 full, each extra as a one-line finding; P2/P3 one line each, or counts per dimension when >~5); never hide blockers; name the first safe improvement as a runnable command.
 
 ```md
-### Verdict AUDIT_BACKLOG
+### Verdict AUDIT_BACKLOG | none — audit completion pending (a relevant dimension skipped for capacity — step 3)
 
 ### Scope audited
 
@@ -60,7 +60,7 @@ Enforced: strict TS (tsconfig), lint (CI). Prose-only: "always use money integer
 | co-located-spec | GOOD | totals.spec.md present, states non-goals |
 | verification-loop | BAD | focused check: none for totals path — open P0 G-001 |
 | boundary-integrity | GOOD | import sweep: payments never imported outside its package |
-| pattern-hygiene | UNKNOWN | not-swept (time-boxed; propose follow-up) |
+| pattern-hygiene | GOOD | per-file syndrome sweep (14/14): no copied workaround, no god file, no deepened nesting |
 | debt-containment | GOOD | 1 TODO, visible and issue-linked |
 | instruction-hygiene | GOOD | syndrome pass on CLAUDE.md: no hits |
 
@@ -73,7 +73,7 @@ Enforced: strict TS (tsconfig), lint (CI). Prose-only: "always use money integer
 - [P1][trade][G-002][executable-spec][enforcement] "money integers" rule unenforced — Key: CLAUDE.md:money-rule:executable-spec:prose-only
 
 ### Suggested improvements
-none in examined dimensions (pattern-hygiene not swept — see its UNKNOWN row)
+none in examined dimensions
 
 ### Decisions
 - **[DECIDE][blocking][G-003][trade] Is "money integers" a contract worth an enforcement gate?**
