@@ -20,7 +20,7 @@ For Claude Code, skills install to `.claude/skills/` (project) or `~/.claude/ski
 
 ## Layout
 
-Each skill lives in `skills/<name>/` with a `SKILL.md` entrypoint, following the Agent Skills standard. `templates/` holds opt-in companion kits you copy into your own repos (e.g. [guardian-field-kit](templates/guardian-field-kit) — usage telemetry for guardian, recorded to your own private sink).
+Each skill lives in `skills/<name>/` with a `SKILL.md` entrypoint, following the Agent Skills standard.
 
 ## License
 
