@@ -125,16 +125,35 @@ export function validate(skillsDir) {
         return rawText.slice(m.index + m[0].length, next ?? rawText.length);
       };
 
+      // A Guardian object's headline is a markdown list item (format.md rendering principle);
+      // a bold list item (`- **[…`) is the full form and must carry every detail-tier field —
+      // for BOTH classes: a trade's basis: is exactly where its terms/costs live.
+      const lineOf = (m) => {
+        const start = rawText.lastIndexOf('\n', m.index) + 1;
+        const end = rawText.indexOf('\n', m.index);
+        return rawText.slice(start, end === -1 ? rawText.length : end).trimStart();
+      };
+
       for (const t of tags) {
         if (!/^[0-3]$/.test(t[1])) err(skill, `${rel} finding "${t[0]}" has invalid severity P${t[1]} (must be P0–P3)`);
         if (!CLASSES.has(t[2])) err(skill, `${rel} uses unknown fix-class "${t[2]}" (expected dominant|trade)`);
         if (t[3].length < 3) err(skill, `${rel} finding "${t[0]}" alias must be G-NNN (≥3 digits)`);
         if (slugs.size && !slugs.has(t[4])) err(skill, `${rel} uses unknown dimension slug "${t[4]}"`);
         if (!RUNGS.has(t[5])) err(skill, `${rel} uses unknown ladder rung "${t[5]}"`);
+        const line = lineOf(t);
+        if (!line.startsWith('-')) err(skill, `${rel} finding "${t[0]}" headline is not a markdown list item (format.md rendering principle)`);
         const span = spanOf(t);
-        if (!/Key:\s*\S+/.test(span)) err(skill, `${rel} finding "${t[0]}" has no Key: in its span`);
-        if (t[2] === 'dominant' && !/basis:\s*\S/.test(span)) {
-          err(skill, `${rel} finding "${t[0]}" is dominant without a basis: check in its span — the class must be trade or the check recorded`);
+        if (/^-\s+\*\*\[/.test(line)) {
+          for (const field of ['fix:', 'Key:', 'why:', 'basis:']) {
+            if (!new RegExp(`\\b${field}\\s*\\S`).test(span)) {
+              err(skill, `${rel} full-form finding "${t[0]}" has no ${field} in its span (format.md: full form carries fix/Key/why/basis for both classes)`);
+            }
+          }
+        } else {
+          if (!/Key:\s*\S+/.test(span)) err(skill, `${rel} finding "${t[0]}" has no Key: in its span`);
+          if (t[2] === 'dominant' && !/basis:\s*\S/.test(span)) {
+            err(skill, `${rel} finding "${t[0]}" is dominant without a basis: check in its span — the class must be trade or the check recorded`);
+          }
         }
       }
 
@@ -142,6 +161,7 @@ export function validate(skillsDir) {
         if (!STATUSES.has(d[1])) err(skill, `${rel} decision "${d[0]}" uses unknown status "${d[1]}" (expected blocking|dormant)`);
         if (d[2].length < 3) err(skill, `${rel} decision "${d[0]}" alias must be G-NNN (≥3 digits)`);
         if (!DECIDE_KINDS.has(d[3])) err(skill, `${rel} decision "${d[0]}" uses unknown kind "${d[3]}" (expected rule|trade|acceptance|scope)`);
+        if (!lineOf(d).startsWith('-')) err(skill, `${rel} decision "${d[0]}" headline is not a markdown list item (format.md rendering principle)`);
         if (d[1] !== 'blocking') continue;
         const span = spanOf(d);
         for (const field of ['decision:', 'context:', 'options:', 'recommendation:', 'if undecided:']) {

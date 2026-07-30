@@ -21,6 +21,10 @@ before stopping without checks  → Stop hook
 after an edit, to flag/suggest  → PostToolUse hook (cannot prevent; advisory)
 ```
 
+## Untrusted-diff isolation
+
+The Tool policy's provenance rule (`SKILL.md`) is propose-and-stop: the skill requires isolation, it never provides one. On Claude Code the realization is a discardable `git worktree` (or a sandboxed session) where a human-confirmed check can run without exposing the primary working tree; absent one, the human's explicit confirmation is the only gate — the skill must not promise containment (credentials, environment) it does not control.
+
 ## Interactive menus
 
 The `SKILL.md` **Interactive menus** rule (when a run may close with a chooser, and the anti-flooding limits) is realized here with the `AskUserQuestion` tool: a menu is the projection of an emitted `[DECIDE]` block (`reference/format.md` Decision format) — each option is a label mapping 1:1 to one of the block's `options:`, i.e. the `/guardian …` command the user would otherwise type (e.g. `improve <G-NNN|key>`, a mode, or a sub-scope), plus the block's no-op ("stop here"). This is the swap point when porting — replace it with the host agent's chooser, or drop it entirely: the text next-step line is always emitted and is the source of truth, so removing the menu changes nothing about correctness.

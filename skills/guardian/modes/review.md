@@ -6,7 +6,7 @@ Use after implementation, before commit. Steps:
 
 1. Apply the trivial fast path first (`SKILL.md` Scope control).
 2. Run the Light baseline; escalate to Deep per the triggers in `reference/baseline.md`. Record the choice and trigger for Coverage.
-3. List every changed file from the step-2 baseline commands — the Summary's `reviewed N/N` derives from that list, never from memory, and a file whose read failed or was cut short counts as unreviewed (name it under Missing verification). Large diff (>~15 files or >~800 changed lines): group by package/domain, review group by group. The same rule violated in N places → one finding; list all instances under Evidence; anchor the key at the owning rule/config where one exists.
+3. List every changed file from the step-2 baseline commands — the Summary's `reviewed N/N` derives from that list, never from memory, and a file whose read failed or was cut short counts as unreviewed (name it under Missing verification). Probe the size (`git diff --stat`). Above ~15 files or ~800 changed lines: group by package/domain and keep a group ledger (group → files → `reviewed | pending`). Above ~50 files or ~3k changed lines (heuristics; the human may override — e.g. confirm a mechanical-only pass for a generated or rename-only sweep), one run does not sustain the exhaustive contract (SKILL Completion invariant): review the highest-risk group, run repo-wide mechanical checks at full width, mark the rest `pending (batch k)`, emit a `[DECIDE][blocking][G-###][scope]` whose options are the batches (or splitting the PR), and end `Verdict: none — scope decision owed`. Later batch runs end `none — review completion pending (k/n groups)`; the run completing the last group reconciles findings across groups and owes the single terminal verdict; across sessions the open scope decision promotes to the tracker (as in `modes/docs.md`). The same rule violated in N places → one finding; list all instances under Evidence; anchor the key at the owning rule/config where one exists.
 4. Review the relevant dimensions (`reference/methodology.md`, incl. the relevance rule); on instruction surfaces apply the instruction-artifact syndromes; flag basis-form drift in both directions (case-enumeration where an axis is visible; empty/speculative axis — `reference/basis-form.md`); reconcile touched rules (`reference/baseline.md`).
 5. If a `plan` from this session covers this diff, reconcile the delivery against its Scope, Non-goals, and Implementation prompt: an undeclared deviation is a finding (scope creep, or a stale plan — judge which on the evidence); a declared one is reviewed on its merits.
 6. Classify with the finding format (`reference/format.md`: list-item headline + nested detail tier, incl. fix-class and `Key:`); render per **Output discipline** (SKILL: strict severity order, P1 capped at top 3 full + rest one-line, P2/P3 one line each); emit a `[DECIDE]` block (SKILL Decisions) for each stop-and-ask owed — an unaccepted P0 and each P0/P1 whose fix is a trade; note missing verification; write a correction prompt.
@@ -14,9 +14,9 @@ Use after implementation, before commit. Steps:
 8. On a PASS-class verdict (`PASS`/`PASS_WITH_FIXES`/`PASS_WITH_ACCEPTED_RISK`), append `### PR package`: suggested title + description sourced from the Summary, the verification evidence, and reviewer focus (risks + non-goals). Prepare, never approve; omit the section on `BLOCK`.
 
 ```md
-### Verdict PASS | PASS_WITH_FIXES | PASS_WITH_ACCEPTED_RISK | BLOCK
+### Verdict PASS | PASS_WITH_FIXES | PASS_WITH_ACCEPTED_RISK | BLOCK | none — scope decision owed / review completion pending (k/n groups) (capped diff, step 3)
 
-### Summary (ends with `reviewed N/N changed files`)
+### Summary (ends with `reviewed N/N changed files`; in a capped run, with the ledger's `reviewed | pending` counts instead)
 
 ### Coverage Light|Deep (trigger) · dimensions checked: <slugs> / skipped: <slugs> (reason)
 
@@ -53,7 +53,7 @@ Deep (high-risk domain) · dimensions checked: verification-loop, boundary-integ
   - fix: add allow/deny unit tests + gate in CI  ·  src/auth/canDelete.ts:42
   - Key: src/auth/canDelete.ts:canDelete:verification-loop:missing-test
   - why: `canDelete` added, no test touched (`pnpm test --filter auth` covers no case); a future refactor silently opens the delete route — human review is the only sensor.
-  - basis: checked — test-only addition, no runtime surface; the CI gate still stops per the Action axis.
+  - basis: checked — test-only addition, no runtime surface; two cases in the existing auth suite, focused-check cost unchanged in practice (de minimis, named); the CI gate change still stops per the Action axis.
 
 ### Suggested improvements
 - [P2][trade][G-002][boundary-integrity][enforcement] Delete route imports the DB client directly — Key: src/routes/delete.ts:handler:boundary-integrity:layer-bypass

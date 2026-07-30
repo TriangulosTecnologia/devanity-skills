@@ -54,7 +54,7 @@ test('empty skills dir reports an error', () => {
 });
 
 test('valid finding tag ([Pn][class][G-nnn][slug][rung] + Key) passes', () => {
-  const body = `${fm('foo')}\n[P1][dominant][G-001][verification-loop][enforcement] Good tag\n  Key: a.ts:x:verification-loop:rule\n  basis: checked — no runtime surface\n`;
+  const body = `${fm('foo')}\n- [P1][dominant][G-001][verification-loop][enforcement] Good tag\n  Key: a.ts:x:verification-loop:rule\n  basis: checked — no runtime surface\n`;
   withSkill('foo', body, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
     writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
@@ -117,14 +117,14 @@ test('emitting finding tags with methodology.md missing fails (slug validation c
 });
 
 test('dominant finding without a basis: check in its span fails; with one passes', () => {
-  const noBasis = `${fm('foo')}\n[P1][dominant][G-001][verification-loop][enforcement] Unchecked dominant\n  Key: a.ts:x:verification-loop:rule\n`;
+  const noBasis = `${fm('foo')}\n- [P1][dominant][G-001][verification-loop][enforcement] Unchecked dominant\n  Key: a.ts:x:verification-loop:rule\n`;
   withSkill('foo', noBasis, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
     writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
     const errors = validate(dir);
     assert.ok(errors.some((e) => e.includes('dominant without a basis:')), errors.join('; '));
   });
-  const withBasis = `${fm('foo')}\n[P1][dominant][G-001][verification-loop][enforcement] Checked dominant\n  Key: a.ts:x:verification-loop:rule\n  basis: checked — test-only addition\n`;
+  const withBasis = `${fm('foo')}\n- [P1][dominant][G-001][verification-loop][enforcement] Checked dominant\n  Key: a.ts:x:verification-loop:rule\n  basis: checked — test-only addition\n`;
   withSkill('foo', withBasis, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
     writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
@@ -132,11 +132,51 @@ test('dominant finding without a basis: check in its span fails; with one passes
   });
 });
 
+test('one-line trade without basis: still passes (no detail tier owed)', () => {
+  const body = `${fm('foo')}\n- [P2][trade][G-001][verification-loop][prose] One-liner — Key: a.ts:x:verification-loop:rule\n`;
+  withSkill('foo', body, (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    assert.deepEqual(validate(dir), []);
+  });
+});
+
+test('full-form finding (bold list item) missing any of fix/Key/why/basis fails — both classes', () => {
+  const incomplete = `${fm('foo')}\n- **[P1][trade][G-001][verification-loop][enforcement] Trade without terms**\n  - Key: a.ts:x:verification-loop:rule\n`;
+  withSkill('foo', incomplete, (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    const errors = validate(dir);
+    for (const field of ['fix:', 'why:', 'basis:']) {
+      assert.ok(errors.some((e) => e.includes(`no ${field}`)), `missing ${field}: ${errors.join('; ')}`);
+    }
+  });
+  const complete = `${fm('foo')}\n- **[P1][trade][G-001][verification-loop][enforcement] Trade with terms**\n  - fix: add the gate · a.ts:12\n  - Key: a.ts:x:verification-loop:rule\n  - why: rule is prose-only\n  - basis: trade — improves fidelity; CI cost not measured\n`;
+  withSkill('foo', complete, (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    assert.deepEqual(validate(dir), []);
+  });
+});
+
+test('a finding or decision headline not on a list item fails', () => {
+  const bareFinding = `${fm('foo')}\n[P2][trade][G-001][verification-loop][prose] Bare — Key: a.ts:x:verification-loop:rule\n`;
+  withSkill('foo', bareFinding, (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    assert.ok(validate(dir).some((e) => e.includes('not a markdown list item')));
+  });
+  const bareDecide = `${fm('foo')}\n[DECIDE][dormant][G-002][trade] Bare — worth doing when pain observed\n`;
+  withSkill('foo', bareDecide, (dir) => {
+    assert.ok(validate(dir).some((e) => e.includes('not a markdown list item')));
+  });
+});
+
 const completeDecide = (id = 'G-002', kind = 'trade') =>
-  `[DECIDE][blocking][${id}][${kind}] Question?\n  decision: x\n  context: y\n  options: A → x · B → y\n  recommendation: A — cheaper\n  if undecided: re-fires next run\n`;
+  `- [DECIDE][blocking][${id}][${kind}] Question?\n  decision: x\n  context: y\n  options: A → x · B → y\n  recommendation: A — cheaper\n  if undecided: re-fires next run\n`;
 
 test('blocking decision missing any of the five fields fails; complete block passes', () => {
-  const incomplete = `${fm('foo')}\n[DECIDE][blocking][G-002][trade] Question?\n  decision: x\n`;
+  const incomplete = `${fm('foo')}\n- [DECIDE][blocking][G-002][trade] Question?\n  decision: x\n`;
   withSkill('foo', incomplete, (dir) => {
     const errors = validate(dir);
     for (const field of ['context:', 'options:', 'recommendation:', 'if undecided:']) {
@@ -193,7 +233,7 @@ test('decision with unknown kind fails; dormant needs no options', () => {
   withSkill('foo', badKind, (dir) => {
     assert.ok(validate(dir).some((e) => e.includes('unknown kind "bogus"')));
   });
-  const dormant = `${fm('foo')}\n[DECIDE][dormant][G-004][trade] Q — worth doing when pain observed\n`;
+  const dormant = `${fm('foo')}\n- [DECIDE][dormant][G-004][trade] Q — worth doing when pain observed\n`;
   withSkill('foo', dormant, (dir) => assert.deepEqual(validate(dir), []));
 });
 
