@@ -53,12 +53,30 @@ test('empty skills dir reports an error', () => {
   }
 });
 
-test('valid finding tag ([Pn][class][G-nnn][slug][rung] + Key) passes', () => {
-  const body = `${fm('foo')}\n- [P1][dominant][G-001][verification-loop][enforcement] Good tag\n  Key: a.ts:x:verification-loop:rule\n  basis: checked — no runtime surface\n`;
-  withSkill('foo', body, (dir) => {
-    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+const withMethodology = (dir, body, name = 'foo') => {
+  mkdirSync(join(dir, name, 'reference'), { recursive: true });
+  writeFileSync(join(dir, name, 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+  return body;
+};
+
+test('both valid finding forms pass: one-line with inline fields, full-form with a detail tier', () => {
+  const oneLine = `${fm('foo')}\n- [P1][dominant][G-001][verification-loop][enforcement] Good tag — Key: a.ts:x:verification-loop:rule — basis: checked — no runtime surface\n`;
+  withSkill('foo', oneLine, (dir) => {
+    withMethodology(dir);
     assert.deepEqual(validate(dir), []);
+  });
+  const full = `${fm('foo')}\n- **[P1][dominant][G-001][verification-loop][enforcement] Good tag**\n  - fix: add the case · a.ts:12\n  - Key: a.ts:x:verification-loop:rule\n  - why: the branch is uncovered\n  - basis: checked — no runtime surface\n`;
+  withSkill('foo', full, (dir) => {
+    withMethodology(dir);
+    assert.deepEqual(validate(dir), []);
+  });
+});
+
+test('a one-line finding may not grow a detail tier (hybrid form rejected)', () => {
+  const hybrid = `${fm('foo')}\n- [P1][trade][G-001][verification-loop][enforcement] Not bold but nested — Key: a.ts:x:verification-loop:rule\n  - why: smuggled detail tier\n  - basis: trade — terms\n`;
+  withSkill('foo', hybrid, (dir) => {
+    withMethodology(dir);
+    assert.ok(validate(dir).some((e) => e.includes('carries a detail tier')), 'hybrid form must be rejected');
   });
 });
 
@@ -90,21 +108,20 @@ test('finding tag with unknown ladder rung fails', () => {
   });
 });
 
-test('file emitting a finding tag without a Key: in its span fails', () => {
-  const body = `${fm('foo')}\n[P1][dominant][G-001][verification-loop][enforcement] Tag without key\n`;
+test('a finding without a Key: fails', () => {
+  const body = `${fm('foo')}\n- [P1][dominant][G-001][verification-loop][enforcement] Tag without key\n`;
   withSkill('foo', body, (dir) => {
     const errors = validate(dir);
-    assert.ok(errors.some((e) => e.includes('has no Key: in its span')), errors.join('; '));
+    assert.ok(errors.some((e) => e.includes('no inline Key:')), errors.join('; '));
   });
 });
 
-test('a finding with no Key: before the next finding fails (per-span, not file-global)', () => {
-  const body = `${fm('foo')}\n[P1][dominant][G-001][verification-loop][enforcement] First, no key of its own\n[P2][trade][G-002][verification-loop][enforcement] Second — Key: a.ts:y:verification-loop:rule\n`;
+test('a one-line finding cannot borrow the next finding\'s Key', () => {
+  const body = `${fm('foo')}\n- [P1][dominant][G-001][verification-loop][enforcement] First, no key of its own\n- [P2][trade][G-002][verification-loop][enforcement] Second — Key: a.ts:y:verification-loop:rule\n`;
   withSkill('foo', body, (dir) => {
-    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    withMethodology(dir);
     const errors = validate(dir);
-    assert.ok(errors.some((e) => e.includes('has no Key: in its span')), errors.join('; '));
+    assert.ok(errors.some((e) => e.includes('no inline Key:')), errors.join('; '));
   });
 });
 
@@ -117,17 +134,15 @@ test('emitting finding tags with methodology.md missing fails (slug validation c
 });
 
 test('dominant finding without a basis: check in its span fails; with one passes', () => {
-  const noBasis = `${fm('foo')}\n- [P1][dominant][G-001][verification-loop][enforcement] Unchecked dominant\n  Key: a.ts:x:verification-loop:rule\n`;
+  const noBasis = `${fm('foo')}\n- [P1][dominant][G-001][verification-loop][enforcement] Unchecked dominant — Key: a.ts:x:verification-loop:rule\n`;
   withSkill('foo', noBasis, (dir) => {
-    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    withMethodology(dir);
     const errors = validate(dir);
-    assert.ok(errors.some((e) => e.includes('dominant without a basis:')), errors.join('; '));
+    assert.ok(errors.some((e) => e.includes('dominant without an inline basis:')), errors.join('; '));
   });
-  const withBasis = `${fm('foo')}\n- [P1][dominant][G-001][verification-loop][enforcement] Checked dominant\n  Key: a.ts:x:verification-loop:rule\n  basis: checked — test-only addition\n`;
+  const withBasis = `${fm('foo')}\n- [P1][dominant][G-001][verification-loop][enforcement] Checked dominant — Key: a.ts:x:verification-loop:rule — basis: checked — test-only addition\n`;
   withSkill('foo', withBasis, (dir) => {
-    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    withMethodology(dir);
     assert.deepEqual(validate(dir), []);
   });
 });
@@ -173,10 +188,10 @@ test('a finding or decision headline not on a list item fails', () => {
 });
 
 const completeDecide = (id = 'G-002', kind = 'trade') =>
-  `- [DECIDE][blocking][${id}][${kind}] Question?\n  decision: x\n  context: y\n  options: A → x · B → y\n  recommendation: A — cheaper\n  if undecided: re-fires next run\n`;
+  `- **[DECIDE][blocking][${id}][${kind}] Question?**\n  - decision: x\n  - context: y\n  - options: A → x · B → y\n  - recommendation: A — cheaper\n  - if undecided: re-fires next run\n`;
 
 test('blocking decision missing any of the five fields fails; complete block passes', () => {
-  const incomplete = `${fm('foo')}\n- [DECIDE][blocking][G-002][trade] Question?\n  decision: x\n`;
+  const incomplete = `${fm('foo')}\n- **[DECIDE][blocking][G-002][trade] Question?**\n  - decision: x\n`;
   withSkill('foo', incomplete, (dir) => {
     const errors = validate(dir);
     for (const field of ['context:', 'options:', 'recommendation:', 'if undecided:']) {
@@ -184,6 +199,17 @@ test('blocking decision missing any of the five fields fails; complete block pas
     }
   });
   withSkill('foo', `${fm('foo')}\n${completeDecide()}`, (dir) => assert.deepEqual(validate(dir), []));
+});
+
+test('a blocking decision must be full-form; a dormant one must stay one line', () => {
+  const notBold = `${fm('foo')}\n- [DECIDE][blocking][G-002][trade] Question?\n  - decision: x\n  - context: y\n  - options: A → x · B → y\n  - recommendation: A\n  - if undecided: re-fires\n`;
+  withSkill('foo', notBold, (dir) => {
+    assert.ok(validate(dir).some((e) => e.includes('must render full-form')), 'non-bold blocking decision must be rejected');
+  });
+  const fatDormant = `${fm('foo')}\n- [DECIDE][dormant][G-003][trade] Sleeping — worth doing when pain observed\n  - decision: x\n  - options: A → x\n`;
+  withSkill('foo', fatDormant, (dir) => {
+    assert.ok(validate(dir).some((e) => e.includes('dormant renders as one line')), 'dormant with a detail tier must be rejected');
+  });
 });
 
 test('near-miss headlines are rejected, not skipped', () => {
@@ -217,14 +243,14 @@ test('decision status other than blocking|dormant fails via loose match', () => 
   });
 });
 
-test('a keyless finding cannot borrow Key:/basis: from beyond a ### heading', () => {
-  const body = `${fm('foo')}\n[P1][dominant][G-001][verification-loop][enforcement] Keyless\n### Later section\nKey: a.ts:x:verification-loop:rule\nbasis: checked — elsewhere\n`;
+test('a full-form finding cannot borrow its fields from beyond a ### heading', () => {
+  const body = `${fm('foo')}\n- **[P1][dominant][G-001][verification-loop][enforcement] Keyless**\n### Later section\n- fix: elsewhere · a.ts:1\n- Key: a.ts:x:verification-loop:rule\n- why: elsewhere\n- basis: checked — elsewhere\n`;
   withSkill('foo', body, (dir) => {
-    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    withMethodology(dir);
     const errors = validate(dir);
-    assert.ok(errors.some((e) => e.includes('has no Key: in its span')), errors.join('; '));
-    assert.ok(errors.some((e) => e.includes('dominant without a basis:')), errors.join('; '));
+    for (const field of ['fix:', 'Key:', 'why:', 'basis:']) {
+      assert.ok(errors.some((e) => e.includes(`no ${field}`)), `${field} borrowed across the heading: ${errors.join('; ')}`);
+    }
   });
 });
 
