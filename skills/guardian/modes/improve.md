@@ -17,6 +17,8 @@ Then fix:
 
 Rules: one finding only; small patch; add/update verification if behavior changes; never mix feature work with repo-health cleanup; high-risk guard: Core rule 7; classify the fix **before** writing (`SKILL.md` Fix classification) — a trade stops per the Action axis and renders its confirmation as a `[DECIDE][blocking][G-###][trade]` block (SKILL Decisions), the proposed patch beneath it. A structural change (many files or redrawn boundaries) is not one `improve`: run `plan`, then execute it as an ordered sequence of contained, verified `improve` steps.
 
+**Verification side effects** — the verification command executes project code, and in ACT an unexpected write is not noise: it silently expands the approved unit. Before running it, name the file set the fix is expected to touch; capture `git status --short` before and after; any tracked delta outside that set is a `verification side effect` — report it, never absorb, fix, or revert it silently, and do not declare `Finding fixed` until every unexpected delta is dispositioned (reverted by the human's choice, explicitly accepted into the unit, or raised as its own finding).
+
 ```md
 ### Finding fixed [G-### or key]
 
@@ -28,7 +30,7 @@ Rules: one finding only; small patch; add/update verification if behavior change
 
 ### Fix class dominant (checked: <what>) | trade — the [DECIDE] block above carried its terms; record the human's answer
 
-### Verification command / result (run this session — else `NOT RUN` + reason)
+### Verification command / result (run this session — else `NOT RUN` + reason; observed delta vs expected file set, any verification side effect dispositioned)
 
 ### Residual risk
 
@@ -54,7 +56,7 @@ Turns a prose rule ("money integers") into a test + type; the syndrome (non-span
 dominant (checked: the former failing case is now the test; no API, dependency, or behavior change beyond the fixed bug; one test file in the existing payments suite — de minimis cost, named).
 
 ### Verification command / result
-`pnpm test --filter payments` — run: 6 passed, incl. the former failing case.
+`pnpm test --filter payments` — run: 6 passed, incl. the former failing case. Status delta matched the expected set (`totals.ts`, `totals.test.ts`) — no verification side effect.
 
 ### Residual risk
 Other modules may still do float money math — proposed a repo-wide follow-up finding, not fixed here (one finding per improve).
