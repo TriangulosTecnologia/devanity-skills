@@ -34,7 +34,7 @@ prose — human review, risk-tiered                                             
 
 Every mode sits on one axis — **DIAGNOSE** or **ACT** — stated once here; mode files point here and never restate it:
 
-- **DIAGNOSE** (`plan`, `review`, `audit`, `docs review`) — read-only **outside the conversation**. May read the repo and the session transcript (that is how `G-NNN` aliases, earlier decisions, and a prior `plan` under `review` resolve); writes nothing that persists beyond its visible conversational output — no files, no memory, no external records — unless the user explicitly asks for a record. Surface only repo-relevant evidence and next actions.
+- **DIAGNOSE** (`plan`, `review`, `audit`, `docs review`) — read-only **outside the conversation**. May read the repo and the session transcript (that is how `G-NNN` aliases, earlier decisions, and a prior `plan` under `review` resolve); **Guardian itself** writes nothing that persists beyond its visible conversational output — no files, no memory, no external records — unless the user explicitly asks for a record. The focused check (`reference/baseline.md`) executes project code and may leave incidental effects: report any observed working-tree delta, never clean or revert one silently, and claim nothing about effects that cannot be observed. Surface only repo-relevant evidence and next actions.
 - **ACT** (`improve`, `docs improve`) — writes exactly one approved unit at a time: a *finding* for `improve`, a *surface* for `docs improve`. Invoking `improve <ref>` or `docs improve <surface>` **is** the approval for that unit — apply directly. Exception: the high-risk class (rule 7), a trade fix (rule 11), a new dependency, or a hook/CI change → show the proposed patch and stop for explicit confirmation.
 
 ## Core rules
@@ -42,7 +42,7 @@ Every mode sits on one axis — **DIAGNOSE** or **ACT** — stated once here; mo
 1. Evidence over confidence.
 2. Enforcement over prose.
 3. Small, reversible fixes.
-4. Writes follow the Action axis above; DIAGNOSE modes write nothing that persists outside the conversation.
+4. Writes follow the Action axis above.
 5. No style-only blocking.
 6. No documentation for its own sake.
 7. No high-risk autonomy (any change in the high-risk class → propose, don't act).
