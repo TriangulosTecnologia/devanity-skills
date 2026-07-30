@@ -29,7 +29,7 @@ Detail tier fields:
 - `fix:` the one action + a clickable `path:line` — ephemeral, for navigating now.
 - `Key:` the durable key `path:symbol-or-heading:dimension:rule` — a structural anchor (never a line number) so it survives edits and new sessions.
 - `why:` evidence + risk, framed by the crosswalk axis the finding maps to, never by the call site's surface label (`reference/methodology.md` Axis-cited classification — cite the test, run the swap-test before the tags are final).
-- `basis:` the fix-class justification — what was checked (dominant) or the terms (trade).
+- `basis:` the fix-class justification — the envelope checked plus any costs accepted as de minimis (dominant), or the terms (trade).
 
 **One-line form** (P2/P3, and each P1 past the full-form cap): the full five-axis headline — the key never substitutes for any axis slot — then the title, then the key, and no detail tier:
 

@@ -95,7 +95,7 @@ The import ban is mechanizable today; the other two seed a root `AGENTS.md` (<20
   - fix: add an import-restriction lint (crosswalk check) and wire it into CI  ·  README.md:24
   - Key: README.md:package-boundaries:boundary-integrity:unenforced-boundary
   - why: the rule is in force (README + this session's decision) but nothing can fail when an agent reintroduces a cross-import — pattern inertia propagates the violation silently, and no reviewer will see it in a point-in-time diff.
-  - basis: checked — read-only import scan across `pkg_*` this session found zero existing cross-imports, so the lint lands green; lint-only addition, no runtime surface, no behavior change.
+  - basis: checked — read-only import scan across `pkg_*` this session found zero existing cross-imports, so the lint lands green; no runtime surface, no behavior change; the rule adds seconds to the existing lint run and one maintained config (accepted de minimis, named); the CI wiring stops for confirmation (Action axis).
 
 ### Suggested improvements
 - [P2][trade][G-002][instruction-hygiene][prose] Decided conventions (lockfile, Makefile contract) have no agent-legible surface — seed a root `AGENTS.md` from the READMEs — Key: repo:agent-instructions:instruction-hygiene:unstated-rule-in-force

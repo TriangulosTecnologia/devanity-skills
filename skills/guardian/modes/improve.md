@@ -51,7 +51,7 @@ Fixing `G-001` from the audit example.
 Turns a prose rule ("money integers") into a test + type; the syndrome (non-spanning money math) now fails a check, not a human.
 
 ### Fix class
-dominant (checked: the former failing case is now the test; no API, dependency, or behavior change beyond the fixed bug).
+dominant (checked: the former failing case is now the test; no API, dependency, or behavior change beyond the fixed bug; one test file in the existing payments suite — de minimis cost, named).
 
 ### Verification command / result
 `pnpm test --filter payments` — run: 6 passed, incl. the former failing case.

@@ -69,7 +69,7 @@ Enforced: strict TS (tsconfig), lint (CI). Prose-only: "always use money integer
   - fix: integer cents + test; gate in CI  ·  src/payments/totals.ts:31
   - Key: src/payments/totals.ts:sumLineItems:verification-loop:float-money
   - why: `10.10+20.20+30.30 !== 60.6`, no test — billing drift.
-  - basis: checked — the failing case becomes the test; no API change.
+  - basis: checked — the failing case becomes the test; no API change; one test in an existing suite (de minimis cost, named); the CI gate stops per the Action axis.
 - [P1][trade][G-002][executable-spec][enforcement] "money integers" rule unenforced — Key: CLAUDE.md:money-rule:executable-spec:prose-only
 
 ### Suggested improvements
