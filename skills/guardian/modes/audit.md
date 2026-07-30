@@ -6,7 +6,7 @@ Bounded health review; require a scope (ask if missing). Probe first — files a
 
 1. Run the Deep baseline (`reference/baseline.md`); disposition every item (`enforced`/`prose-only`/`absent`).
 2. Enumerate every file in scope; apply the applicable syndrome set to each — code: the crosswalk checks (`reference/basis-form.md`); instruction surfaces incl. skill files: the instruction-artifact syndromes (`reference/methodology.md`). When the scope is itself an instruction artifact, its files are the surface set for reconciliation.
-3. Score **all 8 dimensions**, one row each: examined → score + the cited performed check (command run, per-file sweep, claim diff) and its result; not examined → `UNKNOWN` + one-word reason. No cited check → `UNKNOWN`, never `GOOD`. Omitted rows are not allowed.
+3. Status **all 8 dimensions**, one row each — the status is derived from this run's open findings, never judged separately: examined (a cited performed check — command run, per-file sweep, claim diff — and its result) → `GOOD` (no open finding) | `WEAK` (only open P2/P3) | `BAD` (≥1 open P0/P1; human-accepted → render `BAD — accepted risk`, never upgraded: acceptance changes governance, not the repo); not examined → `UNKNOWN` + one-word reason. No cited check → `UNKNOWN`, never `GOOD`. The Evidence column cites the check; a status contradicting its dimension's findings is a defect of the run. Omitted rows are not allowed.
 4. Reconcile declared-vs-enforced; check boundary enforcement.
 5. List findings in the finding format (`reference/format.md`, incl. `Key:`); emit a `[DECIDE]` block (SKILL Decisions) for each stop-and-ask owed — an unaccepted P0 and each P0/P1 whose fix is a trade; propose a safe sequence.
 
@@ -21,7 +21,7 @@ Output — render findings per SKILL **Output discipline** (every P0 full; P1 to
 
 ### Baseline every item dispositioned enforced / prose-only / absent, where enforcement runs
 
-### AI Repo score | Dimension | Score (GOOD/WEAK/BAD/UNKNOWN) | Evidence (cited check + result, or UNKNOWN reason) | — a markdown table (header + separator row), all 8 rows
+### Dimension status | Dimension | Status (GOOD/WEAK/BAD[ — accepted risk]/UNKNOWN, derived from open findings — step 3) | Evidence (cited check + result, or UNKNOWN reason) | — a markdown table (header + separator row), all 8 rows
 
 ### Required fixes all P0s · top-3 P1s in full (finding format, `reference/format.md`) · every further P1 as a one-line finding
 
@@ -52,13 +52,13 @@ Read 14/14 files; checks: per-file syndrome sweep, tsc config resolved, CI workf
 ### Baseline
 Enforced: strict TS (tsconfig), lint (CI). Prose-only: "always use money integers" (CLAUDE.md) — no check. Absent: pre-commit hooks, coverage gate. Instruction surfaces: root CLAUDE.md only — no others found.
 
-### AI Repo score
-| Dimension | Score | Evidence |
+### Dimension status
+| Dimension | Status | Evidence |
 | --- | --- | --- |
 | compressibility | GOOD | per-file sweep: max file 210 lines, no cross-layer logic |
-| executable-spec | WEAK | "money integers" rule prose-only (claim diff vs enforcement) |
+| executable-spec | BAD | "money integers" rule prose-only (claim diff vs enforcement) — open P1 G-002 |
 | co-located-spec | GOOD | totals.spec.md present, states non-goals |
-| verification-loop | BAD | focused check: none for totals path |
+| verification-loop | BAD | focused check: none for totals path — open P0 G-001 |
 | boundary-integrity | GOOD | import sweep: payments never imported outside its package |
 | pattern-hygiene | UNKNOWN | not-swept (time-boxed; propose follow-up) |
 | debt-containment | GOOD | 1 TODO, visible and issue-linked |
