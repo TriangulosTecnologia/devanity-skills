@@ -81,7 +81,7 @@ none in examined dimensions
   - context: anchors G-002 — the rule is in force in CLAUDE.md, but nothing can fail when it is violated.
   - options: enforce → `/guardian improve G-002` (lint/test gate; adds a CI check) · demote → rewrite the CLAUDE.md line as guidance, close G-002 · defer → dormant, worth doing when the next money bug lands.
   - recommendation: enforce, after G-001 — G-001's failing case already proves the pain the rule guards.
-  - if undecided: promoted to the issue tracker as an open decision; re-surfaces on the next audit.
+  - if undecided: proposed for tracker promotion as an open decision (the human records it); re-surfaces on the next audit.
 
 ### Suggested sequence
 G-001 first (high-risk), then G-002 per the decision above.

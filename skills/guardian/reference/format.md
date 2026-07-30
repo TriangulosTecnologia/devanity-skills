@@ -39,7 +39,7 @@ Detail tier fields:
 
 Exception: a one-line **dominant** also carries its check inline (`— basis: <what was checked>`); without that clause the class is trade.
 
-For durable/team tracking, promote a finding into the existing issue tracker/TODOs — never a bespoke backlog file.
+For durable/team tracking, promote a finding into the existing issue tracker/TODOs — never a bespoke backlog file. **Promotion is proposed, not performed**: DIAGNOSE writes no external record (Action axis), so Guardian drafts the entry and the human (or an ACT run the user explicitly asked for) creates it. A promoted entry carries the open question and the durable key — never a coverage claim: a later session re-establishes coverage itself (Core rule 10).
 
 ## Decision format
 
@@ -56,7 +56,7 @@ The block transfers the **decision space, not the case**: it must be decidable f
   - if undecided: <the visible fate — never silent disappearance>
 ```
 
-- **Status** — `blocking`: owed this run; its `if undecided:` names the fate (verdict stays BLOCK, re-fires on the next run, or is promoted to the issue tracker as an open decision — the same promotion rule findings use). `dormant`: explicitly allowed to sleep — a deferred trade or a P2/P3 opportunity; its `if undecided:` is its activation condition (`worth doing when <pain observed>`). Deciding "defer" converts a blocking decision into a dormant one-liner.
+- **Status** — `blocking`: owed this run; its `if undecided:` names the fate (verdict stays BLOCK, re-fires on the next run, or is proposed for tracker promotion as an open decision — the same promotion rule findings use). `dormant`: explicitly allowed to sleep — a deferred trade or a P2/P3 opportunity; its `if undecided:` is its activation condition (`worth doing when <pain observed>`). Deciding "defer" converts a blocking decision into a dormant one-liner.
 - **Kind** — `rule` (a recurring rule or product intent — a yes resolves to `<rule> → codify at <surface>`), `trade` (a fix-class trade confirmation), `acceptance` (P0/P1 risk acceptance → `PASS_WITH_ACCEPTED_RISK`, record who/what/why, follow-up/expiry, compensating control), `scope` (routing, submode, or audit sub-scope choice).
 - **G-numbering is shared with findings** — one session sequence, so `improve G-NNN` and a decision answer never collide.
 - **Anchor, don't repeat**: a decision riding on a finding cites it (`anchors G-NNN`) and adds only what the finding lacks — the rule-level question, the options with consequences, the recommendation, the fate. Evidence stays in the finding's `why:`.
