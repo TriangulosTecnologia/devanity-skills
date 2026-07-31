@@ -72,6 +72,46 @@ test('both valid finding forms pass: one-line with inline fields, full-form with
   });
 });
 
+test('full-form fields must be nested list items, not prose in the same section', () => {
+  const prose = `${fm('foo')}\n- **[P1][trade][G-001][verification-loop][enforcement] Title**\n\nA paragraph mentions fix: x, Key: a.ts:s:verification-loop:r, why: z and basis: trade — terms.\n`;
+  withSkill('foo', prose, (dir) => {
+    withMethodology(dir);
+    const errors = validate(dir);
+    for (const field of ['fix:', 'Key:', 'why:', 'basis:']) {
+      assert.ok(errors.some((e) => e.includes(`no ${field}`)), `prose ${field} must not count: ${errors.join('; ')}`);
+    }
+  });
+});
+
+test('a full-form headline that never closes its bold fails', () => {
+  const body = `${fm('foo')}\n- **[P1][trade][G-001][verification-loop][enforcement] Title with no closing\n  - fix: x · a.ts:1\n  - Key: a.ts:s:verification-loop:r\n  - why: z\n  - basis: trade — terms\n`;
+  withSkill('foo', body, (dir) => {
+    withMethodology(dir);
+    assert.ok(validate(dir).some((e) => e.includes('does not close its bold')), 'unclosed bold must be rejected');
+  });
+});
+
+test('a repeated mandatory field fails (exactly once per field)', () => {
+  const body = `${fm('foo')}\n- **[P1][trade][G-001][verification-loop][enforcement] Title**\n  - fix: x · a.ts:1\n  - fix: y · a.ts:2\n  - Key: a.ts:s:verification-loop:r\n  - why: z\n  - basis: trade — terms\n`;
+  withSkill('foo', body, (dir) => {
+    withMethodology(dir);
+    assert.ok(validate(dir).some((e) => e.includes('repeats fix:')), 'duplicate field must be rejected');
+  });
+});
+
+test('a full-form finding may carry extra nested items (review lists instances under Evidence)', () => {
+  const body = `${fm('foo')}\n- **[P1][trade][G-001][verification-loop][enforcement] Title**\n  - fix: x · a.ts:1\n  - Key: a.ts:s:verification-loop:r\n  - why: z\n  - basis: trade — terms\n  - Evidence: a.ts:1, b.ts:4, c.ts:9\n`;
+  withSkill('foo', body, (dir) => {
+    withMethodology(dir);
+    assert.deepEqual(validate(dir), [], 'extra nested items are legitimate');
+  });
+});
+
+test('object notation quoted in `inline code` is documentation, not a malformed object', () => {
+  const body = `${fm('foo')}\nThe stop renders as \`[DECIDE][blocking][G-###][acceptance]\`, and a finding as \`[P1][dominant]…\`.\n`;
+  withSkill('foo', body, (dir) => assert.deepEqual(validate(dir), []));
+});
+
 test('a one-line finding may not grow a detail tier (hybrid form rejected)', () => {
   const hybrid = `${fm('foo')}\n- [P1][trade][G-001][verification-loop][enforcement] Not bold but nested — Key: a.ts:x:verification-loop:rule\n  - why: smuggled detail tier\n  - basis: trade — terms\n`;
   withSkill('foo', hybrid, (dir) => {

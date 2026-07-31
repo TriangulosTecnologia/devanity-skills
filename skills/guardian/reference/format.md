@@ -39,7 +39,7 @@ Detail tier fields:
 
 Exception: a one-line **dominant** also carries its check inline (`— basis: <what was checked>`); without that clause the class is trade.
 
-The two forms are **exclusive**, and CI enforces the boundary: a one-line object keeps every field on its headline and never grows a nested detail tier (bold the headline to render it full-form instead); a full-form object carries all four fields under it. Likewise for decisions — `blocking` always renders full-form, `dormant` always one line.
+The two forms are **exclusive**, and CI enforces the boundary structurally: a full-form headline opens **and closes** its bold and carries each mandatory field as its own nested list item, exactly once — extra nested items are fine (`review` lists instances under Evidence); a one-line object keeps every field on its headline and grows no nested item at all. Likewise for decisions — `blocking` always renders full-form, `dormant` always one line. The detail tier is the indented block immediately below the headline, so no object can borrow a field from what follows it.
 
 For durable/team tracking, promote a finding into the existing issue tracker/TODOs — never a bespoke backlog file. **Promotion is proposed, not performed**: DIAGNOSE writes no external record (Action axis), so Guardian drafts the entry and the human (or an ACT run the user explicitly asked for) creates it. A promoted entry carries the open question and the durable key — never a coverage claim: a later session re-establishes coverage itself (Core rule 10).
 

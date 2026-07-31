@@ -78,12 +78,17 @@ export function validate(skillsDir) {
     }
 
     // 4. Guardian-object integrity (raw text — objects live inside fenced templates/examples).
-    //    Findings ([Pn][class][G-nnn][slug][rung]) and decisions ([DECIDE][status][G-nnn][kind])
-    //    are validated field-by-field; a line that *almost* matches either grammar is rejected,
-    //    never silently skipped. An object's span runs to the next Guardian object or `###`
-    //    heading, so mandatory fields (`Key:`, `basis:`, decision fields) can't be borrowed
-    //    from later content. Grammar-spelling placeholders ([P0/P1][…], [G-###],
-    //    dominant|trade, blocking|dormant) are templates, not objects, and are ignored.
+    //    format.md defines four EXCLUSIVE forms, and this validates them as structure, not as
+    //    text: a full finding (bold headline, opened and closed) carries fix/Key/why/basis as
+    //    nested list items, exactly once each; a one-line finding carries its fields inline and
+    //    grows no tier; a blocking decision is always full-form with its five fields; a dormant
+    //    decision is always one line. A finding may carry EXTRA nested items (`review` step 3
+    //    lists instances under Evidence), so only the mandatory fields are counted.
+    //    The detail tier is the indented block immediately below the headline — adjacency, not
+    //    a scan to the next heading — so no object can borrow a field from what follows it.
+    //    Grammar-spelling placeholders ([P0/P1][…], [G-###], dominant|trade, blocking|dormant)
+    //    are templates, and notation inside `inline code` is documentation quoting the grammar;
+    //    neither is an object.
     const RUNGS = new Set(['enforcement', 'path-scoped-context', 'procedure', 'prose']);
     const CLASSES = new Set(['dominant', 'trade']);
     const DECIDE_KINDS = new Set(['rule', 'trade', 'acceptance', 'scope']);
@@ -96,96 +101,94 @@ export function validate(skillsDir) {
     if (existsSync(methodologyPath)) {
       for (const m of readFileSync(methodologyPath, 'utf8').matchAll(/^\d+\.\s+\*\*[^*]+\*\*\s+\(`([a-z-]+)`\)/gm)) slugs.add(m[1]);
     }
+    const FINDING_FIELDS = ['fix', 'Key', 'why', 'basis'];
+    const DECISION_FIELDS = ['decision', 'context', 'options', 'recommendation', 'if undecided'];
+    const stripCode = (line) => line.replace(/`[^`]*`/g, '');
     let anyTags = false;
     for (const file of scanFiles) {
       const rel = file.slice(root.length + 1);
-      const rawText = readFileSync(file, 'utf8');
-      const tags = [...rawText.matchAll(tagRe)];
-      const decides = [...rawText.matchAll(decideRe)];
-      if (tags.length) anyTags = true;
+      const lines = readFileSync(file, 'utf8').split('\n');
 
-      // Near-miss rejection: a line shaped like an object headline that fails its grammar.
-      for (const line of rawText.split('\n')) {
-        if (isTemplate(line)) continue;
-        if (/\[P\d\]\[/.test(line) && !new RegExp(tagRe.source).test(line)) {
+      // The detail tier is the indented block immediately below the headline: blank lines are
+      // allowed inside it, and it ends at the first non-blank line that is not indented.
+      const tierOf = (i) => {
+        const tier = [];
+        for (let j = i + 1; j < lines.length; j++) {
+          if (lines[j].trim() === '') { tier.push(lines[j]); continue; }
+          if (!/^\s/.test(lines[j])) break;
+          tier.push(lines[j]);
+        }
+        return tier;
+      };
+      const nestedItems = (tier) => tier.filter((l) => /^\s+[-*]\s+\S/.test(l));
+      const fieldCount = (tier, name) =>
+        tier.filter((l) => new RegExp(`^\\s+[-*]\\s+${name}:\\s*\\S`).test(l)).length;
+      const requireFields = (kind, label, tier, fields) => {
+        for (const field of fields) {
+          const n = fieldCount(tier, field);
+          if (n === 0) err(skill, `${rel} ${kind} "${label}" has no ${field}: in its detail tier (format.md: one nested item per field)`);
+          if (n > 1) err(skill, `${rel} ${kind} "${label}" repeats ${field}: ${n}× — each field appears exactly once`);
+        }
+      };
+
+      lines.forEach((line, i) => {
+        if (isTemplate(line)) return;
+        const bare = stripCode(line);
+        const t = bare.match(new RegExp(tagRe.source));
+        const d = bare.match(new RegExp(decideRe.source));
+
+        // Near-miss rejection: a line shaped like an object headline that fails its grammar.
+        if (/\[P\d\]\[/.test(bare) && !t) {
           err(skill, `${rel} malformed finding headline (must be [Pn][class][G-NNN][dimension][rung]): ${line.trim().slice(0, 100)}`);
         }
-        if (/\[DECIDE\]\[/.test(line) && !new RegExp(decideRe.source).test(line)) {
+        if (/\[DECIDE\]\[/.test(bare) && !d) {
           err(skill, `${rel} malformed decision headline (must be [DECIDE][status][G-NNN][kind]): ${line.trim().slice(0, 100)}`);
         }
-      }
+        if (!t && !d) return;
 
-      // An object's span ends at the next object headline or `###` heading, whichever comes first.
-      const boundaries = [
-        ...tags.map((m) => m.index), ...decides.map((m) => m.index),
-        ...[...rawText.matchAll(/^###\s/gm)].map((m) => m.index),
-      ].sort((a, b) => a - b);
-      const spanOf = (m) => {
-        const next = boundaries.find((b) => b > m.index);
-        return rawText.slice(m.index + m[0].length, next ?? rawText.length);
-      };
+        const isListItem = /^-\s+/.test(line);
+        const boldOpen = /^-\s+\*\*\[/.test(line);
+        const boldClosed = /\*\*\s*$/.test(line);
+        const tier = tierOf(i);
 
-      // A Guardian object's headline is a markdown list item (format.md rendering principle);
-      // a bold list item (`- **[…`) is the full form and must carry every detail-tier field —
-      // for BOTH classes: a trade's basis: is exactly where its terms/costs live. The two forms
-      // are exclusive: a one-line object keeps its fields inline and may not grow a detail tier,
-      // and a blocking decision is always full-form. Fields are matched at line start (a bullet
-      // and inline code are allowed) so prose mentioning `basis:` mid-sentence never counts.
-      const LIST_ITEM = /^-\s+/;
-      const FULL_FORM = /^-\s+\*\*\[/;
-      const NESTED_FIELD = /\n\s*(?:[-*]\s*)?(?:fix|Key|why|basis):\s*\S/;
-      const NESTED_DECIDE_FIELD = /\n\s*(?:[-*]\s*)?(?:decision|context|options|recommendation|if undecided):\s*\S/;
-      const lineOf = (m) => {
-        const start = rawText.lastIndexOf('\n', m.index) + 1;
-        const end = rawText.indexOf('\n', m.index);
-        return rawText.slice(start, end === -1 ? rawText.length : end).trimStart();
-      };
-
-      for (const t of tags) {
-        if (!/^[0-3]$/.test(t[1])) err(skill, `${rel} finding "${t[0]}" has invalid severity P${t[1]} (must be P0–P3)`);
-        if (!CLASSES.has(t[2])) err(skill, `${rel} uses unknown fix-class "${t[2]}" (expected dominant|trade)`);
-        if (t[3].length < 3) err(skill, `${rel} finding "${t[0]}" alias must be G-NNN (≥3 digits)`);
-        if (slugs.size && !slugs.has(t[4])) err(skill, `${rel} uses unknown dimension slug "${t[4]}"`);
-        if (!RUNGS.has(t[5])) err(skill, `${rel} uses unknown ladder rung "${t[5]}"`);
-        const line = lineOf(t);
-        if (!LIST_ITEM.test(line)) err(skill, `${rel} finding "${t[0]}" headline is not a markdown list item (format.md rendering principle)`);
-        const span = spanOf(t);
-        if (FULL_FORM.test(line)) {
-          for (const field of ['fix:', 'Key:', 'why:', 'basis:']) {
-            if (!new RegExp(`\\b${field}\\s*\\S`).test(span)) {
-              err(skill, `${rel} full-form finding "${t[0]}" has no ${field} in its span (format.md: full form carries fix/Key/why/basis for both classes)`);
+        if (t) {
+          anyTags = true;
+          if (!/^[0-3]$/.test(t[1])) err(skill, `${rel} finding "${t[0]}" has invalid severity P${t[1]} (must be P0–P3)`);
+          if (!CLASSES.has(t[2])) err(skill, `${rel} uses unknown fix-class "${t[2]}" (expected dominant|trade)`);
+          if (t[3].length < 3) err(skill, `${rel} finding "${t[0]}" alias must be G-NNN (≥3 digits)`);
+          if (slugs.size && !slugs.has(t[4])) err(skill, `${rel} uses unknown dimension slug "${t[4]}"`);
+          if (!RUNGS.has(t[5])) err(skill, `${rel} uses unknown ladder rung "${t[5]}"`);
+          if (!isListItem) err(skill, `${rel} finding "${t[0]}" headline is not a markdown list item (format.md rendering principle)`);
+          if (boldOpen && !boldClosed) {
+            err(skill, `${rel} full-form finding "${t[0]}" headline does not close its bold (format.md: \`- **…**\`)`);
+          } else if (boldOpen) {
+            requireFields('full-form finding', t[0], tier, FINDING_FIELDS);
+          } else {
+            // One-line form: the key (and a dominant's check) ride the headline; no tier follows.
+            if (!/Key:\s*\S/.test(line)) err(skill, `${rel} one-line finding "${t[0]}" has no inline Key: on its headline (format.md one-line form)`);
+            if (t[2] === 'dominant' && !/basis:\s*\S/.test(line)) {
+              err(skill, `${rel} one-line finding "${t[0]}" is dominant without an inline basis: — the class must be trade or the check recorded`);
+            }
+            if (nestedItems(tier).length) {
+              err(skill, `${rel} one-line finding "${t[0]}" carries a detail tier — bold the headline to render it as full form (format.md)`);
             }
           }
-        } else {
-          // One-line form: key (and a dominant's check) ride the headline itself, and no detail tier follows.
-          if (!/Key:\s*\S+/.test(line)) err(skill, `${rel} one-line finding "${t[0]}" has no inline Key: on its headline (format.md one-line form)`);
-          if (t[2] === 'dominant' && !/basis:\s*\S/.test(line)) {
-            err(skill, `${rel} one-line finding "${t[0]}" is dominant without an inline basis: — the class must be trade or the check recorded`);
-          }
-          if (NESTED_FIELD.test(span)) {
-            err(skill, `${rel} one-line finding "${t[0]}" carries a detail tier — bold the headline to render it as full form (format.md)`);
-          }
         }
-      }
 
-      for (const d of decides) {
-        if (!STATUSES.has(d[1])) err(skill, `${rel} decision "${d[0]}" uses unknown status "${d[1]}" (expected blocking|dormant)`);
-        if (d[2].length < 3) err(skill, `${rel} decision "${d[0]}" alias must be G-NNN (≥3 digits)`);
-        if (!DECIDE_KINDS.has(d[3])) err(skill, `${rel} decision "${d[0]}" uses unknown kind "${d[3]}" (expected rule|trade|acceptance|scope)`);
-        const dLine = lineOf(d);
-        if (!LIST_ITEM.test(dLine)) err(skill, `${rel} decision "${d[0]}" headline is not a markdown list item (format.md rendering principle)`);
-        if (d[1] === 'dormant' && NESTED_DECIDE_FIELD.test(spanOf(d))) {
-          err(skill, `${rel} dormant decision "${d[0]}" carries a full-form detail tier — dormant renders as one line (format.md)`);
-        }
-        if (d[1] !== 'blocking') continue;
-        if (!FULL_FORM.test(dLine)) err(skill, `${rel} blocking decision "${d[0]}" must render full-form (bold headline over a nested detail tier, format.md)`);
-        const span = spanOf(d);
-        for (const field of ['decision:', 'context:', 'options:', 'recommendation:', 'if undecided:']) {
-          if (!new RegExp(`${field}\\s*\\S`).test(span)) {
-            err(skill, `${rel} blocking decision "${d[0]}" has no ${field} in its span — the decision space wasn't transferred`);
+        if (d) {
+          if (!STATUSES.has(d[1])) err(skill, `${rel} decision "${d[0]}" uses unknown status "${d[1]}" (expected blocking|dormant)`);
+          if (d[2].length < 3) err(skill, `${rel} decision "${d[0]}" alias must be G-NNN (≥3 digits)`);
+          if (!DECIDE_KINDS.has(d[3])) err(skill, `${rel} decision "${d[0]}" uses unknown kind "${d[3]}" (expected rule|trade|acceptance|scope)`);
+          if (!isListItem) err(skill, `${rel} decision "${d[0]}" headline is not a markdown list item (format.md rendering principle)`);
+          if (d[1] === 'blocking') {
+            if (!boldOpen) err(skill, `${rel} blocking decision "${d[0]}" must render full-form (bold headline over a nested detail tier, format.md)`);
+            else if (!boldClosed) err(skill, `${rel} full-form decision "${d[0]}" headline does not close its bold (format.md: \`- **…**\`)`);
+            else requireFields('blocking decision', d[0], tier, DECISION_FIELDS);
+          } else if (nestedItems(tier).length) {
+            err(skill, `${rel} dormant decision "${d[0]}" carries a detail tier — dormant renders as one line (format.md)`);
           }
         }
-      }
+      });
     }
     // If any file emits concrete tags, the slug list must have loaded — else slug validation is blind.
     if (anyTags && slugs.size === 0) err(skill, 'emits finding tags but reference/methodology.md is missing or unparseable — cannot validate dimension slugs');
