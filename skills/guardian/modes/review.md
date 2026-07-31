@@ -18,7 +18,7 @@ Use after implementation, before commit. Steps:
 
 ### Summary (ends with `reviewed N/N changed files`; in a capped run, with the ledger's `reviewed | pending` counts instead)
 
-### Coverage Light|Deep (trigger) · checked: <slug> (<evidence cited — the crosswalk's evidence class>) … / not checked: <slug> (<reason: not relevant · evidence not gathered>) … — Sufficiency rule, `reference/methodology.md`
+### Coverage Light|Deep (trigger) · check: <command> → <result>, <no side effect | side effect: files> (or `focused check: none`) · checked: <slug> (<evidence cited — the crosswalk's evidence class>) … / not checked: <slug> (<reason: not relevant · evidence not gathered>) … — Sufficiency rule, `reference/methodology.md`
 
 ### Required fixes [P0/P1][dominant|trade][G-###][dimension][rung] title + detail tier (finding format, `reference/format.md`; P0 first, then P1 — top 3 full, rest one-line) ...
 
@@ -46,7 +46,7 @@ Diff adds a permission check but no test.
 New `canDelete()` gate on the delete route — permission behavior altered (high-risk class) with no test: unverified critical behavior. Reviewed 3/3 changed files.
 
 ### Coverage
-Deep (high-risk domain) · checked: verification-loop (`pnpm test --filter auth` run — no case covers `canDelete`), boundary-integrity (import sweep of the delete route — it reaches the DB client directly, G-002), executable-spec (no type or schema governs the gate; the contract would live in the test), pattern-hygiene (sibling sweep of `src/auth` — the new gate follows the existing guard shape) / not checked: compressibility, co-located-spec, debt-containment, instruction-hygiene (not relevant — no artifact touched)
+Deep (high-risk domain) · check: `pnpm test --filter auth` → 12 passed, no side effect · checked: verification-loop (that run covers no case for `canDelete`), boundary-integrity (import sweep of the delete route — it reaches the DB client directly, G-002), executable-spec (no type or schema governs the gate; the contract would live in the test), pattern-hygiene (sibling sweep of `src/auth` — the new gate follows the existing guard shape) / not checked: compressibility, co-located-spec, debt-containment, instruction-hygiene (not relevant — no artifact touched)
 
 ### Required fixes
 - **[P0][dominant][G-001][verification-loop][enforcement] Permission gate altered with no test**

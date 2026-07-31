@@ -17,7 +17,7 @@ Output — render findings per SKILL **Output discipline** (every P0 full; P1 to
 
 ### Scope audited
 
-### Coverage files read · checks applied · explicitly not checked
+### Coverage files read · checks applied, with results and — for any that executed project code — its side effect · explicitly not checked
 
 ### Baseline every item dispositioned enforced / prose-only / absent, where enforcement runs
 

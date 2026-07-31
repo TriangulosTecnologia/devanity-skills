@@ -31,7 +31,7 @@ For the full review, prepend `### Surfaces found / reviewed`: one line per surfa
 
 ### Patch or proposal
 
-### Verification needed
+### Verification needed and, when a check ran, its command · result · side effect (Action axis)
 ```
 
 ## Example
