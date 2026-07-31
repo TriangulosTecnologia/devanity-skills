@@ -55,7 +55,7 @@ Every mode sits on one axis — **DIAGNOSE** or **ACT** — stated once here; mo
 
 - **Trivial fast path** (`review` only): if the diff is typo-, comment-, formatting-, or docs-only, or a localized non-behavioral change, skip discovery (never the full diff read) and return `PASS (trivial: <class>; checked: not misleading, no contract/verification/ambiguity change)`. If any of those four checks fails — the diff is misleading, or changes a contract, verification, or ambiguity — or it touches an instruction surface, including skill files, the fast path is forfeited: run the normal baseline.
 - **Light vs Deep baseline**: `review` defaults to Light; the Deep triggers live in `reference/baseline.md`; `audit` and a full `docs review` (no surface, or directory-bounded) always use Deep.
-- **Completion invariant**: no terminal verdict while any required unit — file, group, dimension, check, or owed decision — is unaccounted for; each mode defines its accounting (`audit` narrowing, `docs` batches, `review` groups). Accounting is session-local: a new session re-establishes the target and its coverage (Core rule 10), inheriting prior coverage only from a user-supplied checkpoint whose manifest still verifies (`reference/baseline.md`).
+- **Completion invariant**: no terminal verdict while any required unit — file, group, dimension, check, or owed decision — is unaccounted for; the run emits `none — <what is owed>` instead, and each mode defines its accounting (`audit` narrowing, `docs` batches, `review` groups). Accounting is session-local: a new session re-establishes the target and its coverage (Core rule 10), inheriting prior coverage only from a user-supplied checkpoint whose manifest still verifies (`reference/baseline.md`).
 
 ## Argument parsing
 
