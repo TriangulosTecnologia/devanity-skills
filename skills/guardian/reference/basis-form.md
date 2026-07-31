@@ -22,14 +22,16 @@ Never create an axis speculatively; never leave a visible axis as cases. This gu
 
 Every finding is tagged with exactly one **dimension** (the operational lens; the 8 live in `methodology.md`). Each dimension has exactly one parent **test** (the generative theory above). The 4 **properties** (compressible, contractual, verifiable, safe) are consequences — outcome adjectives for framing, never a finding tag. The 4 tests are theory: used in `plan` (derive axes before points) and to judge a novel case no dimension yet names. This table is the one home; `methodology.md` and `enforcement.md` reference it.
 
-| Test (theory) | Dimensions (finding tags) | Syndrome | Mechanizable check |
-|---|---|---|---|
-| irreducible | `debt-containment`, `instruction-hygiene` | duplication / more than one source of truth | duplication detector |
-| orthogonal | `compressibility`, `boundary-integrity` | concern spread; change amplification; empty axis | import-restriction / dependency-cycle |
-| spanning | `executable-spec`, `verification-loop` | partial function / unhandled case | type-exhaustiveness / schema validation |
-| decodable | `co-located-spec`, `pattern-hygiene` | clever/over-compressed; copied bad pattern; case-enumeration | complexity + fan-out limit (case-enumeration); otherwise **judgment only** |
+| Test (theory) | Dimensions (finding tags) | Syndrome | Mechanizable check | Evidence beyond the change |
+|---|---|---|---|---|
+| irreducible | `debt-containment`, `instruction-hygiene` | duplication / more than one source of truth | duplication detector | the other instances (search by symbol/pattern) |
+| orthogonal | `compressibility`, `boundary-integrity` | concern spread; change amplification; empty axis | import-restriction / dependency-cycle | callers/importers, and the layers the concern crosses |
+| spanning | `executable-spec`, `verification-loop` | partial function / unhandled case | type-exhaustiveness / schema validation | the tests, types, or schema already covering the contract |
+| decodable | `co-located-spec`, `pattern-hygiene` | clever/over-compressed; copied bad pattern; case-enumeration | complexity + fan-out limit (case-enumeration); otherwise **judgment only** | the local convention: siblings in the module, the pattern being replicated |
 
 Don't over-collapse (these are *not* redundant): `compressibility` sits under orthogonal, and duplication (irreducible's check) also drains it — but the tag follows the **cause**, never the impact: duplication evidence always tags irreducible's dimensions (`debt-containment` for code/config/scripts, `instruction-hygiene` for instruction surfaces); the compressibility drain belongs in `why:` as a consequence. The dimension is part of the durable key, so classification must be a deterministic function of the evidence — the same duplication in two runs must produce the same key, or recurrence tracking counts one problem as two. `decodable` has no general check — "clever/over-compressed" is judgment; never invent a clever-code lint. `executable-spec` (the contract exists) and `verification-loop` (a check runs fast, is discoverable, and can actually fail) both survive under spanning. The two migration directions stay distinct because their fixes are **opposite**: case-enumeration (under-abstraction → migrate case→basis, tag `pattern-hygiene`) vs empty-axis (over-abstraction → collapse axis→cases, tag `compressibility`).
+
+The last column is why a diff alone rarely decides a dimension: both directions of basis-form drift are properties of the space, not of the change — case-enumeration needs the instance count (the ≈3-point threshold above), an empty axis needs the absence of consumers. What counts as having checked a dimension follows from it (`methodology.md` Sufficiency rule).
 
 The essence — are these the domain's true axes? — is judgment; propose it, let the human confirm at the edges. The syndromes are mechanizable: promote each into the repo's own enforcement (`enforcement.md`). The instruction-side parallel of these checks — the instruction-artifact syndromes — lives in `methodology.md`.
 
