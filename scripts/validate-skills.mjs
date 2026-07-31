@@ -193,11 +193,34 @@ export function validate(skillsDir) {
     // If any file emits concrete tags, the slug list must have loaded — else slug validation is blind.
     if (anyTags && slugs.size === 0) err(skill, 'emits finding tags but reference/methodology.md is missing or unparseable — cannot validate dimension slugs');
 
-    // 5. Always-loaded body stays lean: SKILL.md hard cap.
+    // 5. Mode dependency agreement: a mode file may not cite a reference its table row omits.
+    //    A row may list MORE than the mode cites (a mode can need a contract without naming its
+    //    path), never less — otherwise a fresh-session run that loads only the row is missing a
+    //    reference the mode's own steps require. Subset, not equality, is the invariant.
+    if (existsSync(modesDir)) {
+      const rows = new Map();
+      for (const row of raw.matchAll(/^\|\s*([a-z][a-z-]*)\s*\|([^\n]*)\|/gm)) {
+        const refs = new Set([...row[2].matchAll(/reference\/[a-z-]+\.md/g)].map((r) => r[0]));
+        if (refs.size) rows.set(row[1], refs);
+      }
+      for (const file of readdirSync(modesDir).filter((f) => f.endsWith('.md'))) {
+        const body = readFileSync(join(modesDir, file), 'utf8');
+        const cited = new Set([...body.matchAll(/`(reference\/[a-z-]+\.md)`/g)].map((m) => m[1]));
+        if (cited.size === 0) continue; // cites nothing, so nothing can be omitted — no row required
+        const mode = file.slice(0, -3);
+        const declared = rows.get(mode) ?? new Set();
+        if (!rows.has(mode)) { err(skill, `modes/${file} cites references but the mode table has no row for "${mode}"`); continue; }
+        for (const ref of cited) {
+          if (!declared.has(ref)) err(skill, `modes/${file} cites ${ref} but the mode table row for "${mode}" omits it`);
+        }
+      }
+    }
+
+    // 6. Always-loaded body stays lean: SKILL.md hard cap.
     const lineCount = raw.split('\n').length;
     if (lineCount > 130) err(skill, `SKILL.md is ${lineCount} lines (max 130 — the always-loaded body must stay lean)`);
 
-    // 6. README drift: the human-facing mode table and /<skill> references must match modes/.
+    // 7. README drift: the human-facing mode table and /<skill> references must match modes/.
     const readmePath = join(root, 'README.md');
     if (existsSync(readmePath) && existsSync(modesDir)) {
       const readme = readFileSync(readmePath, 'utf8');

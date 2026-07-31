@@ -111,14 +111,14 @@ Headline axes, in order: severity (`P0–P3`, judges the finding); fix-class (`d
 
 ## Modes — load only what the mode needs
 
-Behavioral invariants live in this file (always loaded); rationale and the portable definition live in CONCEPT.md, kept in the source repo at `docs/guardian/CONCEPT.md` (https://github.com/ttoss/skills/blob/main/docs/guardian/CONCEPT.md) — human-facing, never shipped with the skill or loaded at runtime; never put an operating rule only there. Read each file below relative to this skill's directory, on demand; skip any listed file already read this session. Each mode file ends with a worked `## Example`.
+Behavioral invariants live in this file (always loaded); rationale and the portable definition live in CONCEPT.md, kept in the source repo at `docs/guardian/CONCEPT.md` (https://github.com/ttoss/skills/blob/main/docs/guardian/CONCEPT.md) — human-facing, never shipped with the skill or loaded at runtime; never put an operating rule only there. Read each file below relative to this skill's directory, on demand; skip any listed file already read this session. Files after the `;` are **conditional** — read one only when its parenthesis applies; a row may list more than a mode cites, never less (CI checks this). Each mode file ends with a worked `## Example`.
 
 | Mode    | Read                                                                                                                                                                         |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| plan    | `reference/basis-form.md`, `reference/baseline.md`, `reference/format.md`, `modes/plan.md`                                                                                   |
-| review  | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/format.md`, `modes/review.md`                                                     |
+| plan    | `reference/basis-form.md`, `reference/baseline.md`, `reference/format.md`, `modes/plan.md`; `reference/methodology.md` (stewardship + quantifier audit), `reference/bindings.md` (menus) |
+| review  | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/format.md`, `modes/review.md`; `reference/bindings.md` (menus)                     |
 | audit   | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/enforcement.md`, `reference/bindings.md`, `reference/format.md`, `modes/audit.md` |
-| improve | `reference/basis-form.md`, `reference/baseline.md`, `reference/enforcement.md`, `reference/format.md`, `modes/improve.md`                                                   |
+| improve | `reference/basis-form.md`, `reference/baseline.md`, `reference/enforcement.md`, `reference/format.md`, `modes/improve.md`; `reference/bindings.md` (menus)                    |
 | docs    | `reference/basis-form.md`, `reference/methodology.md`, `reference/baseline.md`, `reference/bindings.md`, `reference/format.md`, `modes/docs.md`                              |
 
 Platform mechanics live in `reference/bindings.md` — the primary file to swap when porting to another coding agent.
