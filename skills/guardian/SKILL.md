@@ -4,7 +4,7 @@ description: Guard and improve a repository's AI-readiness. Run /guardian plan, 
 license: MIT
 metadata:
   author: enniolopes@gmail.com
-  version: 0.18.0
+  version: 0.19.0
 disable-model-invocation: true
 argument-hint: 'plan|review|audit|improve|docs [task|path|finding|surface]'
 ---
@@ -55,7 +55,7 @@ Every mode sits on one axis — **DIAGNOSE** or **ACT** — stated once here; mo
 
 - **Trivial fast path** (`review` only): if the diff is typo-, comment-, formatting-, or docs-only, or a localized non-behavioral change, skip discovery (never the full diff read) and return `PASS (trivial: <class>; checked: not misleading, no contract/verification/ambiguity change)`. If any of those four checks fails — the diff is misleading, or changes a contract, verification, or ambiguity — or it touches an instruction surface, including skill files, the fast path is forfeited: run the normal baseline.
 - **Light vs Deep baseline**: `review` defaults to Light; the Deep triggers live in `reference/baseline.md`; `audit` and a full `docs review` (no surface, or directory-bounded) always use Deep.
-- **Completion invariant**: no terminal verdict while any required unit — file, group, dimension, check, or owed decision — is unaccounted for; each mode defines its accounting (`audit` narrowing, `docs` batches, `review` groups). Accounting is session-local: a new session re-establishes the target and its coverage (Core rule 10), inheriting prior coverage only from a user-supplied checkpoint whose manifest still verifies (`reference/baseline.md`).
+- **Completion invariant**: no terminal verdict while any required unit — file, group, dimension, check, or owed decision — is unaccounted for; the run emits `none — <what is owed>` instead, and each mode defines its accounting (`audit` narrowing, `docs` batches, `review` groups). Accounting is session-local: a new session re-establishes the target and its coverage (Core rule 10), inheriting prior coverage only from a user-supplied checkpoint whose manifest still verifies (`reference/baseline.md`).
 
 ## Argument parsing
 
@@ -111,14 +111,14 @@ Headline axes, in order: severity (`P0–P3`, judges the finding); fix-class (`d
 
 ## Modes — load only what the mode needs
 
-Behavioral invariants live in this file (always loaded); rationale and the portable definition live in CONCEPT.md, kept in the source repo at `docs/guardian/CONCEPT.md` (https://github.com/ttoss/skills/blob/main/docs/guardian/CONCEPT.md) — human-facing, never shipped with the skill or loaded at runtime; never put an operating rule only there. Read each file below relative to this skill's directory, on demand; skip any listed file already read this session. Each mode file ends with a worked `## Example`.
+Behavioral invariants live in this file (always loaded); rationale and the portable definition live in CONCEPT.md, kept in the source repo at `docs/guardian/CONCEPT.md` (https://github.com/ttoss/skills/blob/main/docs/guardian/CONCEPT.md) — human-facing, never shipped with the skill or loaded at runtime; never put an operating rule only there. Read each file below relative to this skill's directory, on demand; skip any listed file already read this session. Files after the `;` are **conditional** — read one only when its parenthesis applies; a row may list more than a mode cites, never less (CI checks this). Each mode file ends with a worked `## Example`.
 
 | Mode    | Read                                                                                                                                                                         |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| plan    | `reference/basis-form.md`, `reference/baseline.md`, `reference/format.md`, `modes/plan.md`                                                                                   |
-| review  | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/format.md`, `modes/review.md`                                                     |
+| plan    | `reference/basis-form.md`, `reference/baseline.md`, `reference/format.md`, `modes/plan.md`; `reference/methodology.md` (stewardship + quantifier audit), `reference/bindings.md` (menus) |
+| review  | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/format.md`, `modes/review.md`; `reference/bindings.md` (menus)                     |
 | audit   | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/enforcement.md`, `reference/bindings.md`, `reference/format.md`, `modes/audit.md` |
-| improve | `reference/basis-form.md`, `reference/baseline.md`, `reference/enforcement.md`, `reference/format.md`, `modes/improve.md`                                                   |
+| improve | `reference/basis-form.md`, `reference/baseline.md`, `reference/enforcement.md`, `reference/format.md`, `modes/improve.md`; `reference/bindings.md` (menus)                    |
 | docs    | `reference/basis-form.md`, `reference/methodology.md`, `reference/baseline.md`, `reference/bindings.md`, `reference/format.md`, `modes/docs.md`                              |
 
 Platform mechanics live in `reference/bindings.md` — the primary file to swap when porting to another coding agent.

@@ -18,7 +18,7 @@ Use after implementation, before commit. Steps:
 
 ### Summary (ends with `reviewed N/N changed files`; in a capped run, with the ledger's `reviewed | pending` counts instead)
 
-### Coverage Light|Deep (trigger) · check: <command> → <result>, <no side effect | side effect: files> (or `focused check: none`) · checked: <slug> (<evidence cited — the crosswalk's evidence class>) … / not checked: <slug> (<reason: not relevant · evidence not gathered>) … — Sufficiency rule, `reference/methodology.md`
+### Coverage Light|Deep (trigger) · check: <command> → <result>, <no side effect | side effect: files> (or `focused check: none`) · checked: <slug> (<evidence cited — the crosswalk's evidence class>) … / not checked: <slug> (<reason: not relevant · evidence unavailable · disproportionate>) … — Sufficiency rule, `reference/methodology.md`
 
 ### Required fixes [P0/P1][dominant|trade][G-###][dimension][rung] title + detail tier (finding format, `reference/format.md`; P0 first, then P1 — top 3 full, rest one-line) ...
 

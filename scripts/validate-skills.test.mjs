@@ -358,6 +358,42 @@ test('README referencing a nonexistent /skill mode fails', () => {
   });
 });
 
+test('a mode citing a reference its table row omits fails; a row listing more passes', () => {
+  const table = (row) => `---\nname: foo\ndescription: t\n---\n\n# foo\n\n| Mode | Read |\n| --- | --- |\n${row}\n`;
+  withSkill('foo', table('| plan | `reference/basis-form.md` |'), (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'reference', 'basis-form.md'), '# b\n');
+    writeFileSync(join(dir, 'foo', 'reference', 'baseline.md'), '# b\n');
+    mkdirSync(join(dir, 'foo', 'modes'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'modes', 'plan.md'), 'Reconcile per `reference/baseline.md`.\n');
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('omits it')), errors.join('; '));
+  });
+  // A row may list more than the mode cites — subset, not equality.
+  withSkill('foo', table('| plan | `reference/basis-form.md`, `reference/baseline.md`, `reference/format.md` |'), (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    for (const f of ['basis-form.md', 'baseline.md', 'format.md']) writeFileSync(join(dir, 'foo', 'reference', f), '# b\n');
+    mkdirSync(join(dir, 'foo', 'modes'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'modes', 'plan.md'), 'Reconcile per `reference/baseline.md`.\n');
+    assert.deepEqual(validate(dir), []);
+  });
+});
+
+test('a mode citing references with no table row at all fails; one citing none needs no row', () => {
+  const skillMd = `---\nname: foo\ndescription: t\n---\n\n# foo\n\n| Mode | Read |\n| --- | --- |\n| plan | \`reference/basis-form.md\` |\n`;
+  withSkill('foo', skillMd, (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'reference', 'basis-form.md'), '# b\n');
+    mkdirSync(join(dir, 'foo', 'modes'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'modes', 'plan.md'), 'See `reference/basis-form.md`.\n');
+    writeFileSync(join(dir, 'foo', 'modes', 'quiet.md'), '# quiet — cites no reference\n');
+    writeFileSync(join(dir, 'foo', 'modes', 'ghost.md'), 'See `reference/basis-form.md`.\n');
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('no row for "ghost"')), errors.join('; '));
+    assert.ok(!errors.some((e) => e.includes('quiet')), `a mode citing nothing needs no row: ${errors.join('; ')}`);
+  });
+});
+
 test('SKILL.md over 130 lines fails', () => {
   const body = fm('foo') + Array.from({ length: 130 }, (_, i) => `line ${i}`).join('\n');
   withSkill('foo', body, (dir) => {
