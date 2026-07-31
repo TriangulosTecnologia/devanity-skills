@@ -17,7 +17,7 @@ Then fix:
 
 Rules: one finding only; small patch; add/update verification if behavior changes; never mix feature work with repo-health cleanup; high-risk guard: Core rule 7; classify the fix **before** writing (`SKILL.md` Fix classification) — a trade stops per the Action axis and renders its confirmation as a `[DECIDE][blocking][G-###][trade]` block (SKILL Decisions), the proposed patch beneath it. A structural change (many files or redrawn boundaries) is not one `improve`: run `plan`, then execute it as an ordered sequence of contained, verified `improve` steps.
 
-**Verification side effects** — the verification command executes project code, and in ACT an unexpected write is not noise: it silently expands the approved unit. Before running it, name the file set the fix is expected to touch; capture `git status --short` before and after; any tracked delta outside that set is a `verification side effect` — report it, never absorb, fix, or revert it silently, and do not declare `Finding fixed` until every unexpected delta is dispositioned (reverted by the human's choice, explicitly accepted into the unit, or raised as its own finding).
+**Verification side effects** — the verification command executes project code, and in ACT an unexpected write is not noise: it silently expands the approved unit. Follow the ACT projection of the target fingerprint (`reference/baseline.md`): name the expected file set before verifying, capture around it, and declare `Finding fixed` only once every delta is dispositioned and any changed expected file has been re-read.
 
 ```md
 ### Finding fixed [G-### or key]
