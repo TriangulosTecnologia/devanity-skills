@@ -394,6 +394,24 @@ test('a mode citing references with no table row at all fails; one citing none n
   });
 });
 
+test('SKILL.md over the token cap fails even while under the line cap', () => {
+  // The exact shape a line cap cannot see, and the one this repo drifted into: few lines, huge ones.
+  const body = fm('foo') + Array.from({ length: 20 }, () => 'x'.repeat(1100)).join('\n');
+  withSkill('foo', body, (dir) => {
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('max ~5000')), errors.join('; '));
+    assert.ok(!errors.some((e) => e.includes('max 130')), 'the line cap must stay silent — that is the point');
+  });
+});
+
+test('a typographic character counts as a whole token, not a quarter of one', () => {
+  // 5200 em-dashes are ~5200 tokens but only ~1300 by chars/4 — a naive cap waves this straight through.
+  const body = `${fm('foo')}\n${'—'.repeat(5200)}\n`;
+  withSkill('foo', body, (dir) => {
+    assert.ok(validate(dir).some((e) => e.includes('max ~5000')), 'wide characters must not be discounted');
+  });
+});
+
 test('SKILL.md over 130 lines fails', () => {
   const body = fm('foo') + Array.from({ length: 130 }, (_, i) => `line ${i}`).join('\n');
   withSkill('foo', body, (dir) => {

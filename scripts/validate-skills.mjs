@@ -40,6 +40,29 @@ const isDerivedCount = (m) => (/^\d+$/.test(m[1]) ? Number(m[1]) >= 2 : true);
 // line may legitimately count rows of something else beside a mention of dimensions.
 const SENTENCES = /(?<=\.)\s+/;
 
+// Two caps on the always-loaded body, measuring different things.
+//
+// Lines catch structural sprawl (the published tip is 500; this repo holds a tighter 130). Lines
+// alone cannot see the failure that matters: SKILL.md held 128 lines across five releases while
+// gaining 1,789 chars, and the check stayed green the whole way.
+//
+// Tokens are the binding constraint, and the number is the platform's, not a preference: Claude
+// Code's auto-compaction re-attaches only the FIRST 5,000 TOKENS of each invoked skill, so past
+// that the tail of SKILL.md is silently dropped in exactly the long sessions where "always loaded"
+// matters most. Capping at 5,000 caps at the mechanic itself — nothing is invented here.
+//
+// estimateTokens is an approximation, and the only soft part of this check. ~4 chars/token holds
+// for prose, but a typographic character (—, →, ≥, ·) is usually a whole token on its own, so
+// those are counted 1:1 instead of 1/4. It runs a few percent optimistic on backtick-dense
+// markdown; a real tokenizer measurement should replace it before this file grows much further.
+const SKILL_LINE_CAP = 130;
+const SKILL_TOKEN_CAP = 5000;
+const estimateTokens = (s) => {
+  let wide = 0;
+  for (const c of s) if (c.codePointAt(0) > 127) wide++;
+  return Math.round((s.length - wide) / 4 + wide);
+};
+
 // Every relative markdown link must resolve on disk. A link to something that was removed reads as
 // current to anyone — human or agent — who does not try it: the "stale doc" criterion applied to a
 // doc's own references. Fences are stripped; a link inside a code block renders as text, not a link.
@@ -290,9 +313,13 @@ export function validate(skillsDir) {
       }
     }
 
-    // 6. Always-loaded body stays lean: SKILL.md hard cap.
+    // 6. Always-loaded body stays lean: both SKILL.md caps (derivation at their declaration).
     const lineCount = raw.split('\n').length;
-    if (lineCount > 130) err(skill, `SKILL.md is ${lineCount} lines (max 130 — the always-loaded body must stay lean)`);
+    if (lineCount > SKILL_LINE_CAP) err(skill, `SKILL.md is ${lineCount} lines (max ${SKILL_LINE_CAP} — the always-loaded body must stay lean)`);
+    const tokens = estimateTokens(raw);
+    if (tokens > SKILL_TOKEN_CAP) {
+      err(skill, `SKILL.md is ~${tokens} tokens / ${raw.length} chars (max ~${SKILL_TOKEN_CAP} — auto-compaction re-attaches only the first ${SKILL_TOKEN_CAP} tokens, silently dropping the tail; move depth into a reference file)`);
+    }
 
     // 7. README drift: the human-facing mode table and /<skill> references must match modes/.
     const readmePath = join(root, 'README.md');

@@ -46,13 +46,24 @@ Two consequences. **For the run:** a rule in this table is still a rule — the 
 
 ## Interactive menus
 
-The `SKILL.md` **Interactive menus** rule (when a run may close with a chooser, and the anti-flooding limits) is realized here with the `AskUserQuestion` tool: a menu is the projection of an emitted `[DECIDE]` block (`reference/format.md` Decision format) — each option is a label mapping 1:1 to one of the block's `options:`, i.e. the `/guardian …` command the user would otherwise type (e.g. `improve <G-NNN|key>`, a mode, or a sub-scope), plus the block's no-op ("stop here"). This is the swap point when porting — replace it with the host agent's chooser, or drop it entirely: the text next-step line is always emitted and is the source of truth, so removing the menu changes nothing about correctness.
+A menu is realized with the `AskUserQuestion` tool, and is always the projection of an emitted `[DECIDE]` block (`reference/format.md` Decision format): each option is a label mapping 1:1 to one of the block's `options:` — the `/guardian …` command the user would otherwise type (e.g. `improve <G-NNN|key>`, a mode, or a sub-scope) — plus the block's no-op ("stop here"). The emitted text block is the source of truth; the menu is disposable. `AskUserQuestion` is not a mutation, so it is permitted even in DIAGNOSE modes.
+
+**When one may fire** — two shapes only, never peppered through a run, never load-bearing:
+
+- the single **closing** next-step chooser, and only when the next step is itself such a choice: ambiguous routing (the plausible modes), an oversized `audit` or capped full `docs review` scope (the proposed sub-scopes/batches), or a run with ≥1 actionable P0/P1 finding (`improve` the top few + "stop here");
+- the rendering of a *stop-and-ask* Guardian already owes, when the choice is a small enumerable set — an ambiguous `improve` reference is this case.
+
+Cap at ~4 options, recommended first, a no-op always present. Selecting an option is **exactly** typing that `/guardian …` command, so ACT safety is unchanged: a `dominant` fix applies; a *trade*, high-risk, new-dependency or hook change still stops for confirmation.
+
+**Never fire** on a trivial or clean PASS, on `plan`, on a *trade*/high-risk confirmation (the tool-approval flow already prompts — a menu would double-prompt), or on a non-interactive run.
 
 Detecting a **non-interactive** run (where the menu must be skipped): a headless invocation — `claude -p`, or any CI workflow — has no interactive channel; end with the text next-step only. A manual `/guardian` in a terminal or web session is interactive. When in doubt, skip the menu (the text next-step never regresses).
 
+This whole section is the swap point when porting — replace it with the host agent's chooser, or drop it entirely: the text next-step line is always emitted and is the source of truth, so removing the menu changes nothing about correctness.
+
 ## Skill mechanics
 
-- A skill's directory name is its command (`.claude/skills/guardian/` → `/guardian`). Its `SKILL.md` body stays in context for the whole session once invoked, so keep it lean and put depth in on-demand reference files; reference the skill's own files as `${CLAUDE_SKILL_DIR}/<path>`. This "stays in context" guarantee is what each mode file's Contract line checks against: on Claude Code the re-read is skipped; a host without the guarantee re-reads `SKILL.md` every run — the mode files are the reliable landing point, so the Contract line lives there, never only here.
+- A skill's directory name is its command (`.claude/skills/guardian/` → `/guardian`). Its `SKILL.md` body stays in context for the whole session once invoked, so keep it lean and put depth in on-demand reference files. "Lean" has a hard boundary here, not just a preference: auto-compaction re-attaches only the **first 5,000 tokens** of each invoked skill (skills share a 25,000-token budget), so a body past that loses its tail in exactly the long sessions where always-loaded matters most. CI caps the source repo's `SKILL.md` at 20,000 chars for that reason; reference the skill's own files as `${CLAUDE_SKILL_DIR}/<path>`. This "stays in context" guarantee is what each mode file's Contract line checks against: on Claude Code the re-read is skipped; a host without the guarantee re-reads `SKILL.md` every run — the mode files are the reliable landing point, so the Contract line lives there, never only here.
 - `$ARGUMENTS` in a skill body is substituted **literally** at invocation (empty string if none) — write parsing rules that survive empty / one / many tokens, never sentences that embed `$ARGUMENTS` as a noun.
 - `disable-model-invocation: true` = manual `/name` only.
 - `allowed-tools` grants (does not restrict) tools without a prompt while the skill is active; `disallowed-tools` removes tools from the pool.
