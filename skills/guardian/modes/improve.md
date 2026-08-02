@@ -15,6 +15,14 @@ Then fix:
 - **Not mechanizable** → smallest correct prose/spec change, or produce a `plan` if it needs architectural/product judgment.
 - **basis-form migration** → migrate case→basis or collapse an empty axis under the visible-axis guardrail (`reference/basis-form.md`); then promote the syndrome to a check (`reference/enforcement.md`).
 
+**Oracle before fix.** When the unit adds or alters an **oracle** — anything whose job is to fail when the contract breaks: a test, type, schema, validator or lint rule, coverage threshold, CI gate — write the oracle **first** and run the focused check to watch it **fail against the unfixed code**, before writing the correction. An oracle nobody has seen fail is not an oracle, and one written after the code it judges cannot be told apart from one shaped to pass it. This is the mode that writes, so it is where that confusion is most expensive; the order removes it at no extra cycle, since the check has to run anyway. Three outcomes, and only the first continues:
+
+- **red** → the oracle discriminates. Write the correction, re-run, expect green.
+- **green where red was expected** → the oracle does not test the thing. Stop before writing the correction; the oracle is the unit now.
+- **no red state reachable** — the oracle would pass today because nothing violates it yet (a new lint rule over already-clean code). Produce one if it stays inside the unit: a deliberate violation, reverted before completion with the revert confirmed by the final capture (`reference/baseline.md`). Otherwise record `NOT FALSIFIED` + reason — the oracle's fidelity is then an unverified premise the fix depends on, so the class is **trade** (`SKILL.md` Fix classification) and it stops for a human like any other.
+
+For a `verification-loop:missing-test` finding the red run is also the strongest available form of step 3: the violation is re-verified by the oracle failing on it, not by inspection.
+
 Rules: one finding only; small patch; add/update verification if behavior changes; never mix feature work with repo-health cleanup; high-risk guard: Core rule 7; classify the fix **before** writing (`SKILL.md` Fix classification) — a trade stops per the Action axis and renders its confirmation as a `[DECIDE][blocking][G-###][trade]` block (SKILL Decisions), the proposed patch beneath it. A structural change (many files or redrawn boundaries) is not one `improve`: run `plan`, then execute it as an ordered sequence of contained, verified `improve` steps.
 
 **Verification side effects** — the verification command executes project code, and in ACT an unexpected write is not noise: it silently expands the approved unit. Follow the ACT projection of the target fingerprint (`reference/baseline.md`): name the expected file set before verifying, capture around it, and declare `Finding fixed` only once every delta is dispositioned and any changed expected file has been re-read.
@@ -24,13 +32,13 @@ Rules: one finding only; small patch; add/update verification if behavior change
 
 ### Ladder rung targeted enforcement | path-scoped-context | procedure | prose
 
-### Files changed
+### Files changed oracle: <the files whose job is to fail> · implementation: <the rest> — listed apart so the oracle diff can be read on its own
 
 ### Why this improves the AI Repo
 
 ### Fix class dominant (checked: <what>) | trade — the [DECIDE] block above carried its terms; record the human's answer
 
-### Verification command / result (run this session — else `NOT RUN` + reason; observed delta vs expected file set, any verification side effect dispositioned)
+### Verification command / result both runs, this session — the oracle's red before the fix existed, then green after; `NOT RUN` or `NOT FALSIFIED` + reason otherwise, `n/a` when the unit carries no oracle; observed delta vs expected file set, any verification side effect dispositioned
 
 ### Residual risk
 
@@ -47,16 +55,16 @@ Fixing `G-001` from the audit example.
 ### Ladder rung targeted enforcement
 
 ### Files changed
-`src/payments/totals.ts` (sum in integer cents), `src/payments/totals.test.ts` (new).
+oracle: `src/payments/totals.test.ts` (new) · implementation: `src/payments/totals.ts` (sum in integer cents).
 
 ### Why this improves the AI Repo
 Turns a prose rule ("money integers") into a test + type; the syndrome (non-spanning money math) now fails a check, not a human.
 
 ### Fix class
-dominant (checked: the former failing case is now the test; no API, dependency, or behavior change beyond the fixed bug; one test file in the payments suite that already runs — no new phase, config, or boundary; de minimis, named).
+dominant (checked: the oracle was observed failing on the exact defect while the correction did not yet exist, so it discriminates rather than describes; no API, dependency, or behavior change beyond the fixed bug; one test file in the payments suite that already runs — no new phase, config, or boundary; de minimis, named).
 
 ### Verification command / result
-`pnpm test --filter payments` — run: 6 passed, incl. the former failing case. Status delta matched the expected set (`totals.ts`, `totals.test.ts`) — no verification side effect.
+`pnpm test --filter payments`, twice. Red, oracle only: 1 failed — `sumLineItems([10.10, 20.20, 30.30])` returned `60.599999999999994`, expected `60.60`. Green, after the fix: 6 passed. Status delta matched the expected set on both captures (`totals.test.ts`, then `totals.ts`) — no verification side effect.
 
 ### Residual risk
 Other modules may still do float money math — proposed a repo-wide follow-up finding, not fixed here (one finding per improve).
