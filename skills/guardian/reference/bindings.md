@@ -31,7 +31,9 @@ The Tool policy's origin rule (`SKILL.md`) is propose-and-stop: the skill requir
 
 ## What the skill does not enforce
 
-Several of Guardian's own rules are carried only by the prompt, and a prompt cannot contain a prompt: an instruction competes with the model's other signals rather than overriding them, so these hold by **preference, not by construction**. This is the same distinction Execution trust draws — the skill can require a gate; only the platform can provide one. State the limit; never present preference as guarantee.
+Every Guardian rule is carried by the prompt, and a prompt cannot contain a prompt: an instruction competes with the model's other signals rather than overriding them, so all of them hold by **preference, not by construction**. This is the same distinction Execution trust draws — the skill can require a gate; only the platform can provide one. State the limit; never present preference as guarantee.
+
+The table lists every rule whose violation a deterministic gate **could** detect, paired with the gate that would do it. **Absence from it is not enforcement.** A rule left out is either judgment no gate can hold (evidence over confidence, never codify a bad rule, prefer the dominant fix) or already bounded by one of these rows; in neither case is it held more firmly than what is listed.
 
 | Rule | What holds it today | The mechanism that would hold it |
 | --- | --- | --- |
