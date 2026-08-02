@@ -18,6 +18,14 @@ npx skills add ttoss/skills --skill guardian --agent claude-code
 
 Only install unscoped if the target repo also runs another agent (Copilot/Cursor/etc.) that should read the skill from its own directory.
 
+**Optional companion.** Reviewing a surface written in the same session calls for a fresh-context pass, and Guardian takes one from the host's general-purpose subagent when nothing better exists — so this is not required. The packaged `critic` agent is the better rung: read-only by tool grant rather than by prompt, and it already carries the adjudication contract.
+
+```bash
+mkdir -p .claude/agents && curl -fsSL \
+  https://raw.githubusercontent.com/ttoss/skills/main/agents/critic.md \
+  -o .claude/agents/critic.md
+```
+
 ## Use (Claude Code)
 
 Manual only (`disable-model-invocation`). The first token selects the mode:

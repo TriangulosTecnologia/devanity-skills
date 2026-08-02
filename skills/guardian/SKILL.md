@@ -116,7 +116,7 @@ Behavioral invariants live in this file (always loaded); rationale and the porta
 | Mode    | Read                                                                                                                                                                         |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | plan    | `reference/basis-form.md`, `reference/baseline.md`, `reference/format.md`, `modes/plan.md`; `reference/methodology.md` (stewardship + quantifier audit), `reference/bindings.md` (menus) |
-| review  | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/format.md`, `modes/review.md`; `reference/bindings.md` (menus)                     |
+| review  | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/format.md`, `modes/review.md`; `reference/bindings.md` (menus; fresh-context pass) |
 | audit   | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/enforcement.md`, `reference/bindings.md`, `reference/format.md`, `modes/audit.md` |
 | improve | `reference/basis-form.md`, `reference/baseline.md`, `reference/enforcement.md`, `reference/format.md`, `modes/improve.md`; `reference/bindings.md` (menus)                    |
 | docs    | `reference/basis-form.md`, `reference/methodology.md`, `reference/baseline.md`, `reference/bindings.md`, `reference/format.md`, `modes/docs.md`                              |

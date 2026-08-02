@@ -32,7 +32,7 @@ If any reviewed surface was authored or edited in this session:
 
 1. Fluency and memory of writing are zero evidence — re-read the file from disk; support every conclusion about it with a verbatim quote + path.
 2. Never score such a surface GOOD/PASS without at least one cited mechanical check (a syndrome pass, claim diff, or command run).
-3. State the self-review condition in the output, and take the fresh-context pass: a read-only subagent with no session history, handed the surface and the syndrome set to apply — never the reasoning behind the surface, which re-contaminates the pass with the context it exists to escape. The `critic` agent published alongside this skill is that pass (https://github.com/ttoss/skills/blob/main/agents/critic.md); it is copied into the host separately and is not part of the installed skill. Where the host provides no such agent, record the self-review as **unmitigated** under missing verification — a same-context reread is item 1's requirement, never a substitute for this one.
+3. State the self-review condition in the output, and take a fresh-context pass: something with **no session history**, handed the surface paths and the syndromes below to apply — never the reasoning behind the surface, which re-contaminates the pass with the context it exists to escape. Its return is evidence to adjudicate, not a verdict to adopt. The capability is what this rule depends on, never a particular agent: which mechanism the host offers, how to detect it, and what to record when it offers none, live in `reference/bindings.md` (Fresh-context adjudication pass). A same-context reread is item 1's requirement, never a substitute for this one.
 
 ## Documentation stewardship
 

@@ -61,6 +61,16 @@ Detecting a **non-interactive** run (where the menu must be skipped): a headless
 
 This whole section is the swap point when porting — replace it with the host agent's chooser, or drop it entirely: the text next-step line is always emitted and is the source of truth, so removing the menu changes nothing about correctness.
 
+## Fresh-context adjudication pass
+
+`reference/methodology.md` Self-review requires a pass by something that did not write the surface. Three rungs on this host, strongest first — which one was used is stated in the output, never assumed:
+
+- **`critic`** — the packaged agent, published in the source repo at `agents/critic.md` and copied into `.claude/agents/` by the user; it is not part of the installed skill, so check for it (project `.claude/agents/critic.md`, then user-level `~/.claude/agents/critic.md`) rather than assuming it. Read-only **by tool grant**, with the output contract already defined, so the brief is only the surface paths and which syndromes to apply.
+- **the host's general-purpose subagent** — always available, nothing to install (a subagent type is optional and defaults to general-purpose). It has no session history, which is the property that matters, so this is a real fresh pass and not a fallback in name only. Two things it does not carry: the tool restriction — read-only is prompt-held here, not structural (What the skill does not enforce, above) — and the output contract, so the brief must supply both.
+- **none** — a host with no subagent facility at all. Record the self-review as unmitigated under missing verification. A same-context reread is a separate requirement, never this one.
+
+The brief is the same either way: the surface paths and the syndrome set to apply, and **never why the surface is written the way it is**. Supplying the author's reasoning re-contaminates the pass with the context it exists to escape. Its return is evidence for this run to adjudicate, never a verdict to adopt.
+
 ## Skill mechanics
 
 - A skill's directory name is its command (`.claude/skills/guardian/` → `/guardian`). Its `SKILL.md` body stays in context for the whole session once invoked, so keep it lean and put depth in on-demand reference files. "Lean" has a hard boundary here, not just a preference: auto-compaction re-attaches only the **first 5,000 tokens** of each invoked skill (skills share a 25,000-token budget), so a body past that loses its tail in exactly the long sessions where always-loaded matters most. CI caps the source repo's `SKILL.md` at 20,000 chars for that reason; reference the skill's own files as `${CLAUDE_SKILL_DIR}/<path>`. This "stays in context" guarantee is what each mode file's Contract line checks against: on Claude Code the re-read is skipped; a host without the guarantee re-reads `SKILL.md` every run — the mode files are the reliable landing point, so the Contract line lives there, never only here.
