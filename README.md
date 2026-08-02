@@ -25,7 +25,7 @@ Claude Code subagents. `npx skills` does not handle these — copy the files int
 | Agent | Description |
 | ----- | ----------- |
 | [worker](agents/worker.md) | Read-only collection subagent on Haiku. Runs declared project commands, digests long output, enumerates occurrences — reports data, never decisions. Keeps the main model's context for interpretation. |
-| [critic](agents/critic.md) | Read-only adjudication subagent with no session history. Judges named artifacts against a named contract — the fresh pass for a surface you wrote this session, or a call you are too close to make. Returns findings or a cited clean bill; never collects, runs, or edits. |
+| [critic](agents/critic.md) | Read-only adjudication subagent with no session history. Judges named artifacts against a named contract — the fresh pass for a surface you wrote this session, or a call you are too close to make. Returns findings or a cited clean bill; never collects, runs, or edits. Its body is [`guardian/reference/adjudication.md`](skills/guardian/reference/adjudication.md), so the skill can run the same pass without it; installing the agent adds the read-only tool grant. |
 
 ```bash
 mkdir -p .claude/agents && for a in worker critic; do curl -fsSL \

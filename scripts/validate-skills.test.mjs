@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validate, checkRelativeLinks } from './validate-skills.mjs';
+import { validate, checkRelativeLinks, checkAgentContractDrift } from './validate-skills.mjs';
 
 const fm = (name) => `---\nname: ${name}\ndescription: test skill\n---\n\n# ${name}\n`;
 
@@ -495,6 +495,21 @@ test('only a table whose first header cell is Dimension is checked (crosswalk an
     withSlugs(dir);
     assert.deepEqual(validate(dir), [], 'a table listing dimensions in a later column is not a dimension table');
   });
+});
+
+test('an agent body that drifts from its canonical contract fails; identical passes', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'drifttest-'));
+  try {
+    const agent = join(dir, 'critic.md');
+    const contract = join(dir, 'adjudication.md');
+    writeFileSync(contract, 'You adjudicate.\n\n## Rules\n\n- One.\n');
+    writeFileSync(agent, '---\nname: critic\ntools: Read\n---\n\nYou adjudicate.\n\n## Rules\n\n- One.\n');
+    assert.deepEqual(checkAgentContractDrift(agent, contract), [], 'frontmatter is stripped; bodies match');
+    writeFileSync(agent, '---\nname: critic\ntools: Read\n---\n\nYou adjudicate.\n\n## Rules\n\n- One.\n- Two, added only here.\n');
+    assert.ok(checkAgentContractDrift(agent, contract).some((e) => e.includes('drifted')), 'a body-only edit must be rejected');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('a link inside a fenced block is not a link (no false positive)', () => {

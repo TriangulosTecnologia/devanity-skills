@@ -63,6 +63,18 @@ const estimateTokens = (s) => {
   return Math.round((s.length - wide) / 4 + wide);
 };
 
+// A packaged agent and the skill's own copy of the same contract ship through different channels —
+// `npx skills` installs skills/**, while agents/*.md are copied into the host by hand — so neither
+// file can include the other and one of them has to be a copy. The copy is gated rather than
+// forbidden, the same way the README mode table is: the agent's body below its frontmatter must
+// equal the contract byte for byte, so the skill stays self-sufficient without the two drifting.
+export function checkAgentContractDrift(agentFile, contractFile) {
+  if (!existsSync(agentFile) || !existsSync(contractFile)) return [];
+  const body = readFileSync(agentFile, 'utf8').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n\r?\n?/, '');
+  if (body === readFileSync(contractFile, 'utf8')) return [];
+  return [`${agentFile} body has drifted from ${contractFile} — they ship separately, so the copy is gated, never allowed to diverge`];
+}
+
 // Every relative markdown link must resolve on disk. A link to something that was removed reads as
 // current to anyone — human or agent — who does not try it: the "stale doc" criterion applied to a
 // doc's own references. Fences are stripped; a link inside a code block renders as text, not a link.
@@ -358,9 +370,13 @@ export function validate(skillsDir) {
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const skillsRoot = join(repoRoot, 'skills');
+  // Packaged agent → the skill reference that is its canonical contract.
+  const AGENT_CONTRACTS = [['agents/critic.md', 'skills/guardian/reference/adjudication.md']];
   const errors = [
     ...validate(skillsRoot),
     ...checkRelativeLinks(join(repoRoot, 'README.md')).map((e) => `repo: README.md ${e}`),
+    ...AGENT_CONTRACTS.flatMap(([a, c]) =>
+      checkAgentContractDrift(join(repoRoot, a), join(repoRoot, c)).map((e) => `repo: ${e}`)),
   ];
   if (errors.length) {
     console.error(`✗ skill validation failed (${errors.length}):`);
