@@ -25,6 +25,7 @@ Apply to every instruction surface in scope — CLAUDE.md/rules/AGENTS.md-class 
 4. **Classification totality** — push boundary cases through every rule table (severity, routing, verdicts): exactly one bucket may fire; two or zero → finding.
 5. **Template drift** — every output template and worked example must carry every mandatory field of the format it instantiates; prose and template must agree on cardinality.
 6. **As-rendered** — evaluate the file as the runtime renders it: substitute placeholders (e.g. `$ARGUMENTS`) literally, under empty / one / many tokens (mechanics in `bindings.md`).
+7. **Unsupplied precondition** — for every requirement an instruction places on its reader (data to check against, a capability to use, an artifact to write into), the source must be reachable by the actor that must satisfy it, at the moment it must. Three ways it fails, each a hit: the source sits in another **distribution unit** (a check that ships elsewhere than the surface claiming it), outside the actor's **load-set** (a list a mode must validate against but its row does not load), or is merely **assumed present in the target repo** (a tracker, hook, or command the repo may not have, with no branch for that). A reasonable requirement is still a hit — with no halt-and-ask primitive, an unsupplied precondition is met by a confident guess reported as a performed check, which is indistinguishable from the real thing.
 
 ## Self-review
 
