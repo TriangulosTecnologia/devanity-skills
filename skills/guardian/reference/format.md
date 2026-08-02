@@ -21,7 +21,7 @@ Headline axes, in order — each judges a different thing; the axes never mix:
 - **Severity** `P0–P3` — judges the finding (`SKILL.md` severity table).
 - **Fix-class** `dominant|trade` — judges the fix; always present, adjacent to severity but a distinct axis (`SKILL.md` Fix classification).
 - **`G-NNN`** — a session-local **alias** for the durable key, which is the canonical identity. Numbering continues across runs within a session — never restart at `G-001`. A stale or cross-session `G-NNN` does not resolve: use the key or an unambiguous suffix of it.
-- **Dimension** — exactly one of the 8 slugs in `reference/methodology.md`; the only lens tag (a basis-form test name is never a finding tag).
+- **Dimension** — exactly one of the slugs in `reference/methodology.md`; the only lens tag (a basis-form test name is never a finding tag).
 - **Rung** — the target ladder rung: `enforcement|path-scoped-context|procedure|prose` (`prose` is the human-review rung — a rule stated only in words).
 
 Detail tier fields:

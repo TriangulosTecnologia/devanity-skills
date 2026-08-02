@@ -29,6 +29,34 @@ const parseFrontmatter = (text) => {
   return fm;
 };
 
+// How many dimensions exist is derivable from the list in reference/methodology.md, which is that
+// list's one home. Any call site restating it goes stale the moment a dimension is added or removed.
+// "one" is deliberately excluded: "exactly one dimension" states a cardinality rule, not a count.
+const COUNT_WORDS = 'two|three|four|five|six|seven|eight|nine|ten|eleven|twelve';
+const DIM_COUNT_RE = new RegExp(`\\b(\\d+|${COUNT_WORDS})\\s+(?:dimensions?|slugs?)\\b`, 'i');
+const ROW_COUNT_RE = new RegExp(`\\b(\\d+|${COUNT_WORDS})\\s+rows?\\b`, 'i');
+const isDerivedCount = (m) => (/^\d+$/.test(m[1]) ? Number(m[1]) >= 2 : true);
+// A row count is a *dimension* row count only inside the sentence that is about dimensions: one
+// line may legitimately count rows of something else beside a mention of dimensions.
+const SENTENCES = /(?<=\.)\s+/;
+
+// Every relative markdown link must resolve on disk. A link to something that was removed reads as
+// current to anyone — human or agent — who does not try it: the "stale doc" criterion applied to a
+// doc's own references. Fences are stripped; a link inside a code block renders as text, not a link.
+export function checkRelativeLinks(file) {
+  if (!existsSync(file)) return [];
+  const dir = dirname(file);
+  const errors = [];
+  for (const m of stripFences(readFileSync(file, 'utf8')).matchAll(/\[[^\]\n]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)) {
+    const target = m[1];
+    // Skip anything not resolved against the filesystem: URL scheme, protocol-relative, in-page anchor.
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/|#)/i.test(target)) continue;
+    const rel = target.split('#')[0];
+    if (rel && !existsSync(resolve(dir, rel))) errors.push(`links to missing ${target}`);
+  }
+  return errors;
+}
+
 // Validate every skill under skillsDir. Returns a deduped array of error strings (empty = valid).
 export function validate(skillsDir) {
   const errors = [];
@@ -193,6 +221,25 @@ export function validate(skillsDir) {
     // If any file emits concrete tags, the slug list must have loaded — else slug validation is blind.
     if (anyTags && slugs.size === 0) err(skill, 'emits finding tags but reference/methodology.md is missing or unparseable — cannot validate dimension slugs');
 
+    // 4b. No literal dimension count anywhere but the list itself. Fences are NOT stripped: an
+    //     output template or worked example that fixes the count goes stale exactly like prose.
+    //     The row form only fires on a line that is about dimensions — tables count other things.
+    for (const file of scanFiles) {
+      const rel = file.slice(root.length + 1);
+      for (const line of readFileSync(file, 'utf8').split('\n')) {
+        const dim = line.match(DIM_COUNT_RE);
+        if (dim && isDerivedCount(dim)) {
+          err(skill, `${rel} states the dimension count literally ("${dim[0]}") — name the list in reference/methodology.md, not the number`);
+        }
+        for (const sentence of line.split(SENTENCES)) {
+          const row = sentence.match(ROW_COUNT_RE);
+          if (row && isDerivedCount(row) && /dimension/i.test(sentence)) {
+            err(skill, `${rel} fixes the dimension table's row count ("${row[0]}") — require one row per dimension, none omitted`);
+          }
+        }
+      }
+    }
+
     // 5. Mode dependency agreement: a mode file may not cite a reference its table row omits.
     //    A row may list MORE than the mode cites (a mode can need a contract without naming its
     //    path), never less — otherwise a fresh-session run that loads only the row is missing a
@@ -245,15 +292,22 @@ export function validate(skillsDir) {
         if (!fileModes.has(m[1])) err(skill, `README references /${skill} ${m[1]} but modes/${m[1]}.md does not exist`);
       }
     }
+
+    // 8. Every relative link in the skill README resolves (checked whether or not modes/ exists).
+    for (const e of checkRelativeLinks(readmePath)) err(skill, `README.md ${e}`);
   }
 
   return [...new Set(errors)];
 }
 
-// CLI: run against this repo's skills/ and exit non-zero on any error.
+// CLI: run against this repo's skills/ plus the root README, and exit non-zero on any error.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const skillsRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'skills');
-  const errors = validate(skillsRoot);
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+  const skillsRoot = join(repoRoot, 'skills');
+  const errors = [
+    ...validate(skillsRoot),
+    ...checkRelativeLinks(join(repoRoot, 'README.md')).map((e) => `repo: README.md ${e}`),
+  ];
   if (errors.length) {
     console.error(`✗ skill validation failed (${errors.length}):`);
     for (const e of errors) console.error(`  - ${e}`);

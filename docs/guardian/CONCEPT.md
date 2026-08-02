@@ -74,7 +74,7 @@ The success metric follows directly from this: **Guardian does not succeed by ho
 
 Guardian must distinguish two different kinds of claim it will encounter, because conflating them turns it into either a bully or a rubber stamp:
 
-- **Quality methodology** (Guardian adjudicates, unconditionally): the eight quality dimensions — context compressibility, executable specification, co-located specs, verification loop, boundary integrity, pattern hygiene, debt containment, instruction hygiene — and the durability ladder. These are general properties of any AI Repo, true regardless of what the repo does.
+- **Quality methodology** (Guardian adjudicates, unconditionally): a fixed set of quality dimensions — the operational lenses every finding is tagged with, enumerated in exactly one place per implementation (`reference/methodology.md` here) and never restated, as a list or as a count, anywhere else — and the durability ladder. These are general properties of any AI Repo, true regardless of what the repo does.
 - **Product and architecture intent** (humans own; Guardian never overrides): choice of language, framework, theme, business rules, security posture, chosen conventions where more than one reasonable answer exists. Guardian's job here is to respect the choice and hold it to a consistent standard — not to relitigate it.
 
 The dividing line: *a choice with no universally correct answer is intent; a property that is true of any well-run AI Repo is methodology.*

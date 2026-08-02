@@ -2,7 +2,7 @@
 
 basis-form is Guardian's definition of quality. It governs **structure, code, scripts, and instructions** alike: describe the decision space by its **basis** (the axes), never by its **cases** (the points). A finite basis generates every case, including ones never written; a case-list only covers what was enumerated.
 
-Its projections are the 8 dimensions (`methodology.md`) and its consequences are the 4 AI Repo properties; the **canonical crosswalk** below is the single source for how tests, dimensions, and checks map — `methodology.md` and `enforcement.md` reference it, never restate it.
+Its projections are the dimensions (`methodology.md`) and its consequences are the four AI Repo properties; the **canonical crosswalk** below is the single source for how tests, dimensions, and checks map — `methodology.md` and `enforcement.md` reference it, never restate it.
 
 ## The four tests
 
@@ -20,7 +20,7 @@ Never create an axis speculatively; never leave a visible axis as cases. This gu
 
 ## Canonical crosswalk (single source of truth)
 
-Every finding is tagged with exactly one **dimension** (the operational lens; the 8 live in `methodology.md`). Each dimension has exactly one parent **test** (the generative theory above). The 4 **properties** (compressible, contractual, verifiable, safe) are consequences — outcome adjectives for framing, never a finding tag. The 4 tests are theory: used in `plan` (derive axes before points) and to judge a novel case no dimension yet names. This table is the one home; `methodology.md` and `enforcement.md` reference it.
+Every finding is tagged with exactly one **dimension** (the operational lens; they live in `methodology.md`, which is their one home — never restate their count from here). Each dimension has exactly one parent **test** (the generative theory above). The four **properties** (compressible, contractual, verifiable, safe) are consequences — outcome adjectives for framing, never a finding tag. The four tests are theory: used in `plan` (derive axes before points) and to judge a novel case no dimension yet names. This table is the one home; `methodology.md` and `enforcement.md` reference it.
 
 | Test (theory) | Dimensions (finding tags) | Syndrome | Mechanizable check | Evidence beyond the change |
 |---|---|---|---|---|

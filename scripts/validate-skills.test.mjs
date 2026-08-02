@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validate } from './validate-skills.mjs';
+import { validate, checkRelativeLinks } from './validate-skills.mjs';
 
 const fm = (name) => `---\nname: ${name}\ndescription: test skill\n---\n\n# ${name}\n`;
 
@@ -400,4 +400,60 @@ test('SKILL.md over 130 lines fails', () => {
     const errors = validate(dir);
     assert.ok(errors.some((e) => e.includes('max 130')), errors.join('; '));
   });
+});
+
+test('restating the dimension count fails — as a digit, as a word, and inside a fence', () => {
+  for (const body of ['Tag with one of the 8 slugs.', 'The eight dimensions are the lens.', '```md\n### Status — all 9 dimensions\n```']) {
+    withSkill('foo', `${fm('foo')}\n${body}\n`, (dir) => {
+      assert.ok(validate(dir).some((e) => e.includes('states the dimension count')), `not caught: ${body}`);
+    });
+  }
+});
+
+test('naming the list instead of the number passes', () => {
+  const body = `${fm('foo')}\nExactly one of the slugs in \`reference/methodology.md\`; one row per dimension, none omitted.\n`;
+  withSkill('foo', body, (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    assert.deepEqual(validate(dir), []);
+  });
+});
+
+test('a cardinality rule and counts of other things are not dimension counts', () => {
+  // "exactly one dimension" is a rule, not a derived constant; "four tests" and "14 files" count
+  // things enumerated elsewhere. Only dimensions/slugs — and rows on a dimension line — are gated.
+  const body = `${fm('foo')}\nEvery finding carries exactly one dimension. The four tests are theory. Read 14 files, 3 rows of config.\n`;
+  withSkill('foo', body, (dir) => assert.deepEqual(validate(dir), []));
+});
+
+test('a fixed row count fails only on a line about dimensions', () => {
+  withSkill('foo', `${fm('foo')}\n| Dimension | Status | — a table, all 8 rows\n`, (dir) => {
+    assert.ok(validate(dir).some((e) => e.includes("row count")), 'dimension table row count must be rejected');
+  });
+  withSkill('foo', `${fm('foo')}\nThe severity table has 4 rows.\n`, (dir) => {
+    assert.deepEqual(validate(dir), [], 'an unrelated table may state its own row count');
+  });
+});
+
+test('a skill README link to a missing path fails; resolvable and non-filesystem links pass', () => {
+  withSkill('foo', fm('foo'), (dir) => {
+    const readme = join(dir, 'foo', 'README.md');
+    writeFileSync(readme, 'See [the kit](templates/kit) for more.\n');
+    assert.ok(validate(dir).some((e) => e.includes('links to missing templates/kit')), 'broken relative link must be rejected');
+    writeFileSync(readme, 'See [the skill](SKILL.md), [the site](https://ttoss.dev), [below](#layout).\n');
+    assert.deepEqual(validate(dir), [], 'resolvable, external and anchor links must all pass');
+  });
+});
+
+test('a link inside a fenced block is not a link (no false positive)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'linktest-'));
+  try {
+    const file = join(dir, 'README.md');
+    writeFileSync(file, '```md\n[example](does/not/exist.md)\n```\n');
+    assert.deepEqual(checkRelativeLinks(file), []);
+    writeFileSync(file, '[example](does/not/exist.md)\n');
+    assert.ok(checkRelativeLinks(file).some((e) => e.includes('does/not/exist.md')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

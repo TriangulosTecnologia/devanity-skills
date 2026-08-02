@@ -29,6 +29,19 @@ The Tool policy's origin rule (`SKILL.md`) is propose-and-stop: the skill requir
 - **Execution isolation** — only a platform sandbox (restricted filesystem, network, secrets, processes) contains untrusted code; whether one exists is a platform fact to state, never to assume.
 - **Human consent** — confirmation records that the human accepted the exposure; it mitigates nothing. The acceptance decision's options map here: *sandboxed* needs real isolation, *confirmed risk* is consent with the residual exposure named.
 
+## What the skill does not enforce
+
+Several of Guardian's own rules are carried only by the prompt, and a prompt cannot contain a prompt: an instruction competes with the model's other signals rather than overriding them, so these hold by **preference, not by construction**. This is the same distinction Execution trust draws — the skill can require a gate; only the platform can provide one. State the limit; never present preference as guarantee.
+
+| Rule | What holds it today | The mechanism that would hold it |
+| --- | --- | --- |
+| Core rule 7 — no high-risk autonomy | the model following the rule | `PreToolUse` on the guarded paths (exit 2) |
+| Action axis — DIAGNOSE writes nothing outside the conversation | the model following the rule | `PreToolUse` denying writes for the run |
+| Action axis — ACT writes one approved unit | the model following the rule | `PreToolUse` scoped to the unit's expected file set |
+| Core rule 10 — no check result without a run this session | the model following the rule | `Stop` requiring the focused check |
+
+Two consequences. **For the run:** a rule in this table is still a rule — the entry records what would fail silently if the model is outvoted, not permission to skip it. **For the repo:** where the host offers the mechanism, that is where the rule belongs, and the prose shrinks to a pointer at it (`reference/enforcement.md` — promotion is a move, not a copy). A repo that has installed such a gate is the one case where these rules hold structurally; the Reconciliation row on governing declarations (`reference/baseline.md`) is how a run recognizes one.
+
 ## Interactive menus
 
 The `SKILL.md` **Interactive menus** rule (when a run may close with a chooser, and the anti-flooding limits) is realized here with the `AskUserQuestion` tool: a menu is the projection of an emitted `[DECIDE]` block (`reference/format.md` Decision format) — each option is a label mapping 1:1 to one of the block's `options:`, i.e. the `/guardian …` command the user would otherwise type (e.g. `improve <G-NNN|key>`, a mode, or a sub-scope), plus the block's no-op ("stop here"). This is the swap point when porting — replace it with the host agent's chooser, or drop it entirely: the text next-step line is always emitted and is the source of truth, so removing the menu changes nothing about correctness.

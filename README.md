@@ -48,7 +48,7 @@ trivia, judgment, or edits.
 
 ## Layout
 
-Each skill lives in `skills/<name>/` with a `SKILL.md` entrypoint, following the Agent Skills standard. `agents/` holds subagent definitions, one file each. `templates/` holds opt-in companion kits you copy into your own repos (e.g. [guardian-field-kit](templates/guardian-field-kit) — usage telemetry for guardian, recorded to your own private sink).
+Each skill lives in `skills/<name>/` with a `SKILL.md` entrypoint, following the Agent Skills standard. `agents/` holds subagent definitions, one file each.
 
 ## License
 
