@@ -240,6 +240,33 @@ export function validate(skillsDir) {
       }
     }
 
+    // 4c. A dimension table — one whose first header cell is exactly "Dimension" — carries one row
+    //     per slug, no unknown slug, no duplicate: the template-drift syndrome applied to the worked
+    //     example that instantiates the audit contract, which states the same invariant in prose.
+    //     Anchored on the header cell rather than a filename or heading, so it fires wherever such a
+    //     table appears and nowhere else — the crosswalk (first cell "Test (theory)") and the mode
+    //     and bindings tables are untouched. Fences are not stripped: the example lives inside one.
+    if (slugs.size) {
+      for (const file of scanFiles) {
+        const rel = file.slice(root.length + 1);
+        const lines = readFileSync(file, 'utf8').split('\n');
+        lines.forEach((line, i) => {
+          if (!/^\|\s*Dimension\s*\|/.test(line)) return;
+          const rows = [];
+          for (let j = i + 1; j < lines.length && lines[j].startsWith('|'); j++) {
+            const cell = lines[j].split('|')[1]?.trim();
+            if (cell && !/^:?-+:?$/.test(cell)) rows.push(cell);
+          }
+          const missing = [...slugs].filter((s) => !rows.includes(s));
+          const unknown = [...new Set(rows.filter((r) => !slugs.has(r)))];
+          const dupes = [...new Set(rows.filter((r, k) => rows.indexOf(r) !== k))];
+          if (missing.length) err(skill, `${rel} dimension table omits ${missing.join(', ')} — one row per dimension in reference/methodology.md, none omitted`);
+          if (unknown.length) err(skill, `${rel} dimension table has row(s) not in reference/methodology.md: ${unknown.join(', ')}`);
+          if (dupes.length) err(skill, `${rel} dimension table repeats ${dupes.join(', ')} — one row per dimension`);
+        });
+      }
+    }
+
     // 5. Mode dependency agreement: a mode file may not cite a reference its table row omits.
     //    A row may list MORE than the mode cites (a mode can need a contract without naming its
     //    path), never less — otherwise a fresh-session run that loads only the row is missing a

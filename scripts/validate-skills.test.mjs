@@ -445,6 +445,40 @@ test('a skill README link to a missing path fails; resolvable and non-filesystem
   });
 });
 
+const twoSlugs = '1. **Alpha** (`alpha`) — x.\n2. **Beta** (`beta`) — y.\n';
+const withSlugs = (dir) => {
+  mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+  writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), twoSlugs);
+};
+
+test('a dimension table must carry one row per slug — omission, unknown row and duplicate all fail', () => {
+  // Inside a fence, like the worked example in modes/audit.md that this rule exists to keep honest.
+  const table = (rows) => `${fm('foo')}\n\`\`\`md\n| Dimension | Status |\n| --- | --- |\n${rows}\`\`\`\n`;
+  const cases = [
+    ['| alpha | GOOD |\n', 'omits beta'],
+    ['| alpha | GOOD |\n| beta | GOOD |\n| gamma | GOOD |\n', 'not in reference/methodology.md: gamma'],
+    ['| alpha | GOOD |\n| alpha | WEAK |\n| beta | GOOD |\n', 'repeats alpha'],
+  ];
+  for (const [rows, expected] of cases) {
+    withSkill('foo', table(rows), (dir) => {
+      withSlugs(dir);
+      assert.ok(validate(dir).some((e) => e.includes(expected)), `not caught: ${expected}`);
+    });
+  }
+  withSkill('foo', table('| alpha | GOOD |\n| beta | WEAK |\n'), (dir) => {
+    withSlugs(dir);
+    assert.deepEqual(validate(dir), []);
+  });
+});
+
+test('only a table whose first header cell is Dimension is checked (crosswalk and mode tables are not)', () => {
+  const crosswalk = `${fm('foo')}\n| Test (theory) | Dimensions (finding tags) |\n| --- | --- |\n| irreducible | alpha |\n`;
+  withSkill('foo', crosswalk, (dir) => {
+    withSlugs(dir);
+    assert.deepEqual(validate(dir), [], 'a table listing dimensions in a later column is not a dimension table');
+  });
+});
+
 test('a link inside a fenced block is not a link (no false positive)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'linktest-'));
   try {
