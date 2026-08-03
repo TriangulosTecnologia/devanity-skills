@@ -63,13 +63,13 @@ This whole section is the swap point when porting — replace it with the host a
 
 ## Fresh-context adjudication pass
 
-`reference/methodology.md` Self-review requires a pass by something that did not write the surface. Three rungs on this host, strongest first — which one was used is stated in the output, never assumed:
+`reference/methodology.md` Self-review requires a pass by something that did not write the surface. Nothing needs installing for it: the contract ships with the skill as `reference/adjudication.md`, and is passed **verbatim** as the subagent's whole prompt. Take the highest rung the host offers and state which one in the output rather than assuming it:
 
-- **`critic`** — the packaged agent, published in the source repo at `agents/critic.md` and copied into `.claude/agents/` by the user; it is not part of the installed skill, so check for it (project `.claude/agents/critic.md`, then user-level `~/.claude/agents/critic.md`) rather than assuming it. Its body **is** `reference/adjudication.md` — CI gates them identical — so the only thing it adds over the rung below is that read-only comes from its tool grant instead of from the prompt.
-- **the host's general-purpose subagent** — always available, nothing to install (a subagent type is optional and defaults to general-purpose). It has no session history, which is the property that matters, so this is a real fresh pass and not a fallback in name only. Pass `reference/adjudication.md` **verbatim** as its prompt: the contract ships with the skill, so nothing here depends on the user having installed an agent. What this rung does not carry is the tool restriction — read-only is prompt-held, not structural (What the skill does not enforce, above).
-- **none** — a host with no subagent facility at all. Record the self-review as unmitigated under missing verification. A same-context reread is a separate requirement, never this one.
+- **a built-in read-only subagent type** — one whose tool grant excludes the edit and write tools (on Claude Code, `Explore` and `Plan` are built in and do). Writes are then structurally impossible rather than prompt-held. Two costs to weigh, not hide: the grant still permits commands, so "runs nothing" stays prompt-held either way (What the skill does not enforce, above); and such a type carries its own task-shaped system prompt, which competes with the contract rather than yielding to it.
+- **the host's general-purpose subagent** — the neutral fallback, and the default when no type is named. No session history, which is the property that matters, so this is a real pass and not one in name only; writes are prompt-held here too.
+- **none** — no subagent facility at all. Record the self-review as unmitigated under missing verification. A same-context reread is a separate requirement, never this one.
 
-Either way the caller adds only what `reference/adjudication.md` says it must: the surface paths, the syndrome set, and the taxonomy with its path if findings are to be tagged. **Never why the surface is written the way it is** — supplying the author's reasoning re-contaminates the pass with the context it exists to escape. Its return is evidence for this run to adjudicate, never a verdict to adopt.
+Whichever rung, the caller adds only what `reference/adjudication.md` says it must: the surface paths, the syndrome set, and the taxonomy with its path if findings are to be tagged. **Never why the surface is written the way it is** — supplying the author's reasoning re-contaminates the pass with the context it exists to escape. Its return is evidence for this run to adjudicate, never a verdict to adopt.
 
 ## Skill mechanics
 
