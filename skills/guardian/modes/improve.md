@@ -47,7 +47,18 @@ Rules: one finding only; small patch; add/update verification if behavior change
 
 ## Example
 
-Fixing `G-001` from the audit example.
+Fixing `G-001` from the audit example. It alters what a billing path returns, so it is in the high-risk class: the invocation proposes and stops (Core rule 7), and only the confirmation authorizes the write.
+
+```md
+- **[DECIDE][blocking][G-005][acceptance] Authorize the cents fix to `sumLineItems`?**
+  - decision: whether Guardian may write to the billing path — the authorization G-003 asked for at audit time, re-rendered here with the patch attached.
+  - context: anchors G-001 — the patch changes the sum from float to integer cents and adds the failing case as a test; both files are shown below.
+  - options: authorize → the oracle-first sequence runs and the fix applies · decline → the patch stays a proposal, G-001 stays open · test only → land the oracle, leave the arithmetic, re-decide with the failure recorded in CI.
+  - recommendation: authorize — the failing case is already known, and the oracle lands with the fix rather than after it.
+  - if undecided: nothing is written; G-001 re-fires on the next audit.
+```
+
+Authorized, the run proceeds and reports:
 
 ```md
 ### Finding fixed [G-001] (key: src/payments/totals.ts:sumLineItems:verification-loop:float-money)

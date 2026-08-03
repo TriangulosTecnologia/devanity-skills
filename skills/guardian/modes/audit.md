@@ -76,7 +76,13 @@ Enforced: strict TS (tsconfig), lint + unit tests (CI test job). Prose-only: "al
 none in examined dimensions
 
 ### Decisions
-- **[DECIDE][blocking][G-003][trade] Is "money integers" a contract worth an enforcement gate?**
+- **[DECIDE][blocking][G-003][acceptance] Authorize a write to the money path to fix G-001?**
+  - decision: whether Guardian may alter what the billing sum returns — an authorization it does not hold on its own (Core rule 7), not a technical choice.
+  - context: anchors G-001 — `sumLineItems` is a billing path, so any change to its arithmetic is in the high-risk class; the fix is proposed, never applied by the `improve` invocation alone.
+  - options: authorize → `/guardian improve G-001` proposes the patch and stops for this confirmation, then writes · decline → G-001 stays open and the float math keeps shipping · test only → add the failing case as a test, leave the arithmetic, and re-decide with the failure recorded.
+  - recommendation: authorize — the defect is arithmetic with a known failing case, and the fix is smaller than the exposure it removes.
+  - if undecided: verdict keeps its unaccepted P0; re-fires on the next audit.
+- **[DECIDE][blocking][G-004][trade] Is "money integers" a contract worth an enforcement gate?**
   - decision: whether the CLAUDE.md rule is durable intent (→ enforce) or a stale preference (→ demote) — product intent, not methodology.
   - context: anchors G-002 — the rule is in force in CLAUDE.md, but nothing can fail when it is violated.
   - options: enforce → `/guardian improve G-002` (lint/test gate; adds a CI check) · demote → rewrite the CLAUDE.md line as guidance, close G-002 · defer → dormant, worth doing when the next money bug lands.
@@ -84,11 +90,11 @@ none in examined dimensions
   - if undecided: proposed for tracker promotion as an open decision (the human records it); re-surfaces on the next audit.
 
 ### Suggested sequence
-G-001 first (high-risk), then G-002 per the decision above.
+G-001 first, once G-003 authorizes it; then G-002 per G-004.
 
 ### First safe improvement
-Run `/guardian improve G-001` — smallest change with the highest risk reduction.
+Run `/guardian improve G-001` — smallest change with the highest risk reduction. It is high-risk class, so the invocation proposes the patch and stops at G-003 rather than writing.
 
 ### Do-not-touch without approval
-The Stripe webhook signature check (high-risk class).
+Anything altering the billing path, `sumLineItems` included (that is G-003). The Stripe webhook signature check, which no finding here proposes touching.
 ```
