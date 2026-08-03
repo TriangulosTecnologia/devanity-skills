@@ -2,11 +2,17 @@
 
 Contract: `SKILL.md` governs this run — if the host does not keep it loaded in context (`reference/bindings.md`), re-read it before anything else.
 
-Bounded health review; require a scope (ask if missing). The target is the **working tree** in scope — tracked files plus untracked (`??`) ones, gitignored excluded — the same definition the baseline uses for a change. Probe first, NUL-safe so paths with spaces survive: `git ls-files -z <scope> | tr '\0' '\n' | grep -c .` for the tracked count (add untracked from `git status --short <scope>`), and `git ls-files -z <scope> | xargs -0 wc -l | tail -1` for volume. Binary or generated files are enumerated but neither line-counted nor syndrome-swept, and are named with that reason. The bound is the **exhaustive contract** — every file read, every syndrome applied, every dimension in `reference/methodology.md` scored with a cited check — not a fixed count; beyond ~100 files or ~30k total lines the contract degrades silently (heuristics; the human may override): propose 2–4 sub-scopes by seam (package/layer/domain) — interactive: offer them as a menu (`reference/bindings.md`) — and audit one. Narrowing trades holism for depth: the syndromes that live **between** sub-scopes — duplication across them (irreducible), dependency cycles between them (orthogonal) — are invisible to every sub-audit. So when narrowing, still run any repo-wide mechanical check the repo already has (duplication detector, import/dependency-graph lint) at full width, and record cross-scope checks not run under Coverage. Steps:
+Bounded health review; require a scope (ask if missing). The target is the **working tree** in scope — tracked files plus untracked (`??`) ones, gitignored excluded. That is a wider set than the baseline's *change* (a diff, `reference/baseline.md`); the two share only how they treat untracked and gitignored files. Probe first, NUL-safe so paths with spaces survive, and over the whole target rather than its tracked half — `git ls-files` alone omits every untracked file the line above just included:
+
+```txt
+{ git ls-files -z <scope>; git ls-files -z --others --exclude-standard <scope>; } > /tmp/t
+tr '\0' '\n' < /tmp/t | grep -c .          # file count
+xargs -0 cat < /tmp/t | wc -l              # volume — one total, not one per xargs batch
+``` Binary or generated files are enumerated but neither line-counted nor syndrome-swept, and are named with that reason. The bound is the **exhaustive contract** — every file read, every syndrome applied, every dimension in `reference/methodology.md` scored with a cited check — not a fixed count; beyond ~100 files or ~30k total lines the contract degrades silently (heuristics; the human may override): propose 2–4 sub-scopes by seam (package/layer/domain) — interactive: offer them as a menu (`reference/bindings.md`) — and audit one. Narrowing trades holism for depth: the syndromes that live **between** sub-scopes — duplication across them (irreducible), dependency cycles between them (orthogonal) — are invisible to every sub-audit. So when narrowing, still run any repo-wide mechanical check the repo already has (duplication detector, import/dependency-graph lint) at full width, and record cross-scope checks not run under Coverage. Steps:
 
 1. Run the Deep baseline (`reference/baseline.md`); disposition every item (`enforced`/`prose-only`/`absent`).
 2. Enumerate every file in scope; apply the applicable syndrome set to each — code: the crosswalk checks (`reference/basis-form.md`); instruction surfaces incl. skill files: the instruction-artifact syndromes (`reference/methodology.md`). When the scope is itself an instruction artifact, its files are the surface set for reconciliation.
-3. Status **every dimension listed in `reference/methodology.md`**, one row each, none omitted — the status is derived from this run's open findings, never judged separately: examined (a cited performed check — command run, per-file sweep, claim diff — and its result) → `GOOD` (no open finding) | `WEAK` (only open P2/P3) | `BAD` (≥1 open P0/P1; human-accepted → render `BAD — accepted risk`, never upgraded: acceptance changes governance, not the repo). `UNKNOWN` is a disposition, not an escape hatch: it means the dimension was addressed and the evidence is insufficient or unavailable — no discriminating check exists, or running it is unsafe/needs approval — with that reason cited. A relevant dimension skipped for time or capacity is **not dispositioned**: the run ends `### Verdict none — audit completion pending` and proposes a narrower scope or batches (SKILL Completion invariant) instead of emitting `AUDIT_BACKLOG`. No cited check → `UNKNOWN`, never `GOOD`. The Evidence column cites the check; a status contradicting its dimension's findings is a defect of the run. Omitted rows are not allowed.
+3. Status **every dimension listed in `reference/methodology.md`**, one row each, none omitted — the status is derived from this run's open findings, never judged separately: examined (a cited performed check — command run, per-file sweep, claim diff — and its result) → `GOOD` (no open finding) | `WEAK` (only open P2/P3) | `BAD` (≥1 open P0/P1; human-accepted → render `BAD — accepted risk`, never upgraded: acceptance changes governance, not the repo). `NOT RELEVANT` when the scope contains no artifact the dimension governs (`reference/methodology.md` relevance rule) — the reason cited like any other, and never a substitute for the two below. `UNKNOWN` is a disposition, not an escape hatch: it means the dimension **is** relevant, was addressed, and the evidence is insufficient or unavailable — no discriminating check exists, or running it is unsafe/needs approval — with that reason cited. A relevant dimension skipped for time or capacity is **not dispositioned**: the run ends `### Verdict none — audit completion pending` and proposes a narrower scope or batches (SKILL Completion invariant) instead of emitting `AUDIT_BACKLOG`. No cited check → `UNKNOWN`, never `GOOD`. The Evidence column cites the check; a status contradicting its dimension's findings is a defect of the run. Omitted rows are not allowed.
 4. Reconcile declared-vs-enforced; check boundary enforcement.
 5. List findings in the finding format (`reference/format.md`, incl. `Key:`); emit a `[DECIDE]` block (SKILL Decisions) for each stop-and-ask owed — an unaccepted P0 and each P0/P1 whose fix is a trade; propose a safe sequence.
 
@@ -17,11 +23,11 @@ Output — render findings per SKILL **Output discipline** (every P0 full; P1 to
 
 ### Scope audited
 
-### Coverage files read · checks applied, with results and — for any that executed project code — its side effect · explicitly not checked
+### Coverage files read · checks applied, with results and — for any that executed project code — its side effect · `focused check: none` when the repo declares none (`reference/baseline.md`) · explicitly not checked
 
 ### Baseline every item dispositioned enforced / prose-only / absent, where enforcement runs
 
-### Dimension status | Dimension | Status (GOOD/WEAK/BAD[ — accepted risk]/UNKNOWN, derived from open findings — step 3) | Evidence (cited check + result, or UNKNOWN reason) | — a markdown table (header + separator row), one row per dimension in `reference/methodology.md`, none omitted
+### Dimension status | Dimension | Status (GOOD/WEAK/BAD[ — accepted risk]/UNKNOWN/NOT RELEVANT, derived from open findings — step 3) | Evidence (cited check + result, or the UNKNOWN / NOT RELEVANT reason) | — a markdown table (header + separator row), one row per dimension in `reference/methodology.md`, none omitted
 
 ### Required fixes all P0s · top-3 P1s in full (finding format, `reference/format.md`) · every further P1 as a one-line finding
 
@@ -70,7 +76,11 @@ Enforced: strict TS (tsconfig), lint + unit tests (CI test job). Prose-only: "al
   - Key: src/payments/totals.ts:sumLineItems:verification-loop:float-money
   - why: `10.10+20.20+30.30 !== 60.6`, no test — billing drift.
   - basis: checked — the failing case becomes the test; no API change; one deterministic case in a suite the CI test job already runs, so nothing in CI changes — no new dependency, phase, config, or boundary (de minimis, named).
-- [P1][trade][G-002][executable-spec][enforcement] "money integers" rule unenforced — Key: CLAUDE.md:money-rule:executable-spec:prose-only
+- **[P1][trade][G-002][executable-spec][enforcement] "money integers" rule unenforced**
+  - fix: add a lint rule banning float literals in `src/payments/**`, wired into the CI test job  ·  CLAUDE.md:31
+  - Key: CLAUDE.md:money-rule:executable-spec:prose-only
+  - why: CLAUDE.md states the rule and nothing can fail when it is violated — G-001 is that violation, shipped.
+  - basis: trade — improves executable-spec, but adds a lint config surface this repo does not have; cost unpriced, and whether the rule is durable intent is G-004's open question.
 
 ### Suggested improvements
 none in examined dimensions
@@ -82,7 +92,7 @@ none in examined dimensions
   - options: authorize → `/guardian improve G-001` proposes the patch and stops for this confirmation, then writes · decline → G-001 stays open and the float math keeps shipping · test only → add the failing case as a test, leave the arithmetic, and re-decide with the failure recorded.
   - recommendation: authorize — the defect is arithmetic with a known failing case, and the fix is smaller than the exposure it removes.
   - if undecided: verdict keeps its unaccepted P0; re-fires on the next audit.
-- **[DECIDE][blocking][G-004][trade] Is "money integers" a contract worth an enforcement gate?**
+- **[DECIDE][blocking][G-004][rule] Is "money integers" a contract worth an enforcement gate?**
   - decision: whether the CLAUDE.md rule is durable intent (→ enforce) or a stale preference (→ demote) — product intent, not methodology.
   - context: anchors G-002 — the rule is in force in CLAUDE.md, but nothing can fail when it is violated.
   - options: enforce → `/guardian improve G-002` (lint/test gate; adds a CI check) · demote → rewrite the CLAUDE.md line as guidance, close G-002 · defer → dormant, worth doing when the next money bug lands.
