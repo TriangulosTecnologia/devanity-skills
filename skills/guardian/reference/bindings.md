@@ -9,7 +9,7 @@ These are the platform-specific mechanics Guardian relies on. The methodology (b
 - `@import` in `CLAUDE.md` expands at launch (no context saving).
 - Claude Code does not read `AGENTS.md` natively; import it (`@AGENTS.md`) or symlink.
 - Precedence between a nested `CLAUDE.md` and a path-scoped rule for the same file is undefined — avoid overlap.
-- Other tools' surfaces to discover during the Deep baseline: `.github/copilot-instructions.md`, `.github/instructions/**`, `.cursorrules`, `.windsurfrules`, `.devin/rules/**`.
+- Agent **skill files** are instruction surfaces too (`reference/methodology.md`, `SKILL.md` Scope control): `.claude/skills/*/SKILL.md` and everything it loads. Other tools' surfaces to discover during the Deep baseline: `.github/copilot-instructions.md`, `.github/instructions/**`, `.cursorrules`, `.windsurfrules`, `.devin/rules/**`.
 
 ## Enforcement mechanisms
 
@@ -55,7 +55,7 @@ A menu is realized with the `AskUserQuestion` tool, and is always the projection
 
 Cap at ~4 options, recommended first, a no-op always present. Selecting an option is **exactly** typing that `/guardian …` command, so ACT safety is unchanged: a `dominant` fix applies; a *trade*, high-risk, new-dependency or hook change still stops for confirmation.
 
-**Never fire** on a trivial or clean PASS, on `plan`, on a *trade*/high-risk confirmation (the tool-approval flow already prompts — a menu would double-prompt), or on a non-interactive run.
+**Never fire** on a trivial or clean PASS, on `plan`, on an **ACT** *trade*/high-risk confirmation (there the tool-approval flow already prompts — a menu would double-prompt), or on a non-interactive run. The ACT scoping is the whole rule: in DIAGNOSE no write is proposed, so nothing else prompts, and the same stop-and-ask renders as a menu like any other.
 
 Detecting a **non-interactive** run (where the menu must be skipped): a headless invocation — `claude -p`, or any CI workflow — has no interactive channel; end with the text next-step only. A manual `/guardian` in a terminal or web session is interactive. When in doubt, skip the menu (the text next-step never regresses).
 

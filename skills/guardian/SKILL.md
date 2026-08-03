@@ -63,8 +63,8 @@ Arguments: `$ARGUMENTS`. Route by the first whitespace-delimited token:
 
 1. Token is a mode (`plan|review|audit|improve|docs`) → run it; the remaining tokens are its argument.
 2. No arguments: a git diff exists → `review`; none → ask for a mode.
-3. One unknown token (`help`, `status`, a likely typo) → print the mode table and ask.
-4. Unknown multi-word arguments containing a finding reference (a durable key, `G-NNN`, or a pasted finding) → state the `improve <ref>` interpretation and confirm before acting — only a literal mode token authorizes an ACT write. Otherwise, if they read as a task → run `plan` on them and state that assumption; if neither, ask.
+3. One unknown token that is not a finding reference (`help`, `status`, a likely typo) → print the mode table and ask.
+4. Unknown arguments containing a finding reference (rule 7 defines it) or a pasted finding → state the `improve <ref>` interpretation and confirm before acting — only a literal mode token authorizes an ACT write. Otherwise, if they read as a task → run `plan` on them and state that assumption; if neither, ask.
 5. `review`: an optional path narrows the diff.
 6. `audit`: requires a bounded scope (path/package/domain) — ask if missing.
 7. `improve`: requires one finding reference — the durable key or an unambiguous suffix of it, or an in-session `G-NNN` alias — ask if missing.
@@ -96,10 +96,10 @@ Finding format — a scannable **headline** (one line, all five axes) over a nes
   - fix: add rounding unit test (the CI test job already gates this suite)  ·  src/pricing/discount.ts:88
   - Key: src/pricing/discount.ts:applyDiscount:verification-loop:missing-test
   - why: no test covers the new rounding branch; a refactor could silently change money math
-  - basis: checked — test-only addition, no runtime surface; one deterministic case in a suite CI already runs — no new dependency, phase, config, or boundary (de minimis, named) (trade → name what worsens / the open premise / verification cost)
+  - basis: checked — test-only addition, no runtime surface; one deterministic case in a suite CI already runs — no new dependency, phase, config, or boundary (de minimis, named)
 ```
 
-Headline axes, in order: severity · fix-class · `G-NNN` · dimension · rung — each judges a different thing, and they never mix. A one-line finding carries all five plus the title and `— Key: …`, and grows no detail tier. Axis semantics, the durable key, alias resolution, field semantics, and tracker promotion: `reference/format.md`.
+Headline axes, in order: severity · fix-class · `G-NNN` · dimension · rung — each judges a different thing, and they never mix. A one-line finding carries all five plus the title and `— Key: …`, and grows no detail tier; a one-line `dominant` also carries `— basis: <check>` inline, or its class is trade. Axis semantics, the durable key, alias resolution, field semantics, and tracker promotion: `reference/format.md`.
 
 **Compose order vs. render order** (distinct axes — never conflate them): a finding is *composed* surface → sink/effect → axis (the crosswalk test it maps to) → only then severity/dimension are derived from that axis; it is *rendered* headline first, detail tier after, for scanability. The reader sees the conclusion before the evidence; the model must not decide in that order — severity/dimension tokens are never chosen before the axis behind `why:` has been named.
 
@@ -118,11 +118,11 @@ Behavioral invariants live in this file (always loaded); rationale and the porta
 | plan    | `reference/basis-form.md`, `reference/baseline.md`, `reference/format.md`, `modes/plan.md`; `reference/methodology.md` (stewardship + quantifier audit), `reference/bindings.md` (menus) |
 | review  | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/format.md`, `modes/review.md`; `reference/bindings.md` (menus; fresh-context pass) |
 | audit   | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/enforcement.md`, `reference/bindings.md`, `reference/format.md`, `modes/audit.md` |
-| improve | `reference/basis-form.md`, `reference/baseline.md`, `reference/enforcement.md`, `reference/format.md`, `modes/improve.md`; `reference/bindings.md` (menus)                    |
+| improve | `reference/basis-form.md`, `reference/baseline.md`, `reference/enforcement.md`, `reference/format.md`, `modes/improve.md`; `reference/bindings.md` (menus), `reference/methodology.md` (self-review) |
 | docs    | `reference/basis-form.md`, `reference/methodology.md`, `reference/baseline.md`, `reference/bindings.md`, `reference/format.md`, `modes/docs.md`                              |
 
 Platform mechanics live in `reference/bindings.md` — the primary file to swap when porting to another coding agent.
 
-**Interactive menus** — a menu is only ever the projection of an emitted `[DECIDE]` block: the text block is the source of truth, the menu is disposable and never load-bearing, and selecting an option is exactly typing that `/guardian …` command, so ACT safety is unchanged. When one may fire, the caps, when it must never, and how to detect a non-interactive run: `reference/bindings.md` (Claude Code).
+**Interactive menus** — a menu is only ever the closing next-step chooser or the projection of an emitted `[DECIDE]` block: the emitted text is the source of truth, the menu is disposable and never load-bearing, and selecting an option is exactly typing that `/guardian …` command, so ACT safety is unchanged. When one may fire, the caps, when it must never, and how to detect a non-interactive run: `reference/bindings.md` (Claude Code).
 
 End every run with exactly one actionable next step, under its own heading: a correction prompt, a verification command, the first safe improvement, or a clear PASS.
