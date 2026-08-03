@@ -4,16 +4,17 @@ Contract: `SKILL.md` governs this run — if the host does not keep it loaded in
 
 Fix exactly one approved finding, by ladder position (`reference/enforcement.md`). Resolve the reference first:
 
-1. Resolve the reference to a durable key (the canonical identity): a `G-NNN` present in this session's finding list → its key; a full key **or an unambiguous suffix of one** (e.g. `applyDiscount:verification-loop:missing-test`) → that finding — a suffix matching more than one known finding is ambiguous, so list the matches (interactive: offer them as a menu, `reference/bindings.md`) and ask; a stale or cross-session `G-NNN` that doesn't resolve → ask for the key or re-run the diagnostic. Then read the **resolved** key right-to-left: last segment is the rule, second-last is the dimension, the remainder is the path, then the symbol/heading. This parse never runs on a suffix as typed — a suffix is shorter by design, and turning it into a key is what the clause above does. A resolved key is malformed, so stop and ask rather than guess which was meant, when it carries fewer than four segments or when its dimension is not among the slugs the crosswalk names (`reference/basis-form.md`).
-2. Read the path; locate the symbol/heading.
-3. Re-verify the violation still exists; if absent, report the single line `ALREADY_RESOLVED [<ref>] — <evidence run this session>` and stop (no write). If it exists but the evidence points to an undeclared invariant — the diverging behavior is intentional and the rule is stale (`reference/baseline.md` Reconciliation) — stop and report `RECLASSIFIED [<ref>] — <the stale rule + evidence>` plus the replacement finding, instead of writing.
-4. If the path or symbol no longer exists, stop and ask (or propose a narrow re-audit).
+1. Resolve the reference to a durable key (the canonical identity): a `G-NNN` present in this session's finding list → its key; a full key **or an unambiguous suffix of one** (e.g. `applyDiscount:verification-loop:missing-test`) → that finding, where the finding list is this session's, the same one `G-NNN` resolves against. A suffix matching more than one is ambiguous: list the matches (interactive: offer them as a menu, `reference/bindings.md`) and ask. A suffix matching **none** does not resolve either — that is every suffix in a fresh session, where no list exists yet, and a suffix has already dropped the path step 2 needs — so ask for the full key. Likewise a stale or cross-session `G-NNN` → ask for the key or re-run the diagnostic. Then read the **resolved** key right-to-left: last segment is the rule, second-last is the dimension, the remainder is the path, then the symbol/heading. This parse never runs on a suffix as typed — a suffix is shorter by design, and turning it into a key is what the clause above does. A resolved key is malformed, so stop and ask rather than guess which was meant, when it carries fewer than four segments or when its dimension is not among the slugs the crosswalk names (`reference/basis-form.md`).
+2. Read the path and locate the symbol/heading. If either no longer exists, stop and ask (or propose a narrow re-audit). This precedes step 3 deliberately: a deleted file makes the violation absent too, and the two outcomes must not collapse — reporting a vanished file as a resolved finding closes it on evidence that only shows the file is gone.
+3. Re-verify the violation still exists in what you just read; if absent, report the single line `ALREADY_RESOLVED [<ref>] — <evidence run this session>` and stop (no write). If it exists but the evidence points to an undeclared invariant — the diverging behavior is intentional and the rule is stale (`reference/baseline.md` Reconciliation) — stop and report `RECLASSIFIED [<ref>] — <the stale rule + evidence>` plus the replacement finding, instead of writing.
 
 Then fix:
 
 - **Mechanizable** → codify the enforcement (lint/type/schema/test/coverage gate), not just patch the instance; first check the rule/plugin is already available; if a new dep or hook/CI change is needed, stop and propose.
 - **Not mechanizable** → smallest correct prose/spec change, or produce a `plan` if it needs architectural/product judgment.
 - **basis-form migration** → migrate case→basis or collapse an empty axis under the visible-axis guardrail (`reference/basis-form.md`); then promote the syndrome to a check (`reference/enforcement.md`).
+
+The first two partition the space; the third cuts across both, so it takes precedence when it applies: a finding that is a basis-form migration **and** mechanizable migrates first and codifies after, because a check written against the case-list outlives the cases it was meant to remove.
 
 **Oracle before fix.** When the unit adds or alters an **oracle** — anything whose job is to fail when the contract breaks: a test, type, schema, validator or lint rule, coverage threshold, CI gate — write the oracle **first** and run the focused check to watch it **fail against the unfixed code**, before writing the correction. An oracle nobody has seen fail is not an oracle, and one written after the code it judges cannot be told apart from one shaped to pass it. This is the mode that writes, so it is where that confusion is most expensive; the order removes it at no extra cycle, since the check has to run anyway. Three outcomes — only the second ends the unit here, and only the first continues without a human:
 
@@ -40,7 +41,7 @@ Rules: one finding only; small patch; add/update verification if behavior change
 
 ### Fix class dominant (checked: <what>) | trade — the [DECIDE] block above carried its terms; record the human's answer
 
-### Verification command / result both runs, this session — the oracle's red before the fix existed, then green after; `NOT RUN` or `NOT FALSIFIED` + reason otherwise, `n/a` when the unit carries no oracle; observed delta vs expected file set, any verification side effect dispositioned
+### Verification command / result both runs, this session — the oracle's red before the fix existed, then green after. One token per state, all four live: `n/a` when the unit carries no oracle · `focused check: none` when the repo declares none for these files (`reference/baseline.md`) · `NOT FALSIFIED` + reason when a check exists but no red state was reachable · `NOT RUN` + reason when one was reachable and still not run. Then the observed delta vs the expected file set — inventory **and** identity, since neither substitutes for the other (`reference/baseline.md`) — with any verification side effect dispositioned
 
 ### Residual risk
 
@@ -77,7 +78,7 @@ Turns a prose rule ("money integers") into a test + type; the syndrome (non-span
 dominant (checked: the oracle was observed failing on the exact defect while the correction did not yet exist, so it discriminates rather than describes; no API, dependency, or behavior change beyond the fixed bug; one test file in the payments suite that already runs — no new phase, config, or boundary; de minimis, named).
 
 ### Verification command / result
-`pnpm test --filter payments`, twice. Red, oracle only: 1 failed — `sumLineItems([10.10, 20.20, 30.30])` returned `60.599999999999994`, expected `60.60`. Green, after the fix: 6 passed. Status delta matched the expected set on both captures (`totals.test.ts`, then `totals.ts`) — no verification side effect.
+`pnpm test --filter payments`, twice. Red, oracle only: 1 failed — `sumLineItems([10.10, 20.20, 30.30])` returned `60.599999999999994`, expected `60.60`. Green, after the fix: 6 passed. Captured around both runs: status delta matched the expected set (`totals.test.ts`, then `totals.ts`), and the diff hash changed only across the edits, not across either run — no verification side effect.
 
 ### Residual risk
 Other modules may still do float money math — proposed a repo-wide follow-up finding, not fixed here (one finding per improve).
