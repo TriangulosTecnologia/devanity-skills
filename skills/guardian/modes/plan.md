@@ -1,6 +1,6 @@
 # Mode: plan
 
-Contract: `SKILL.md` governs this run — if the host does not keep it loaded in context (`reference/bindings.md`), re-read it before anything else.
+Contract: `SKILL.md` governs this run — if the host no longer keeps it loaded in context, re-read it before anything else.
 
 Turn a task into a small, verifiable, bounded plan before any code.
 

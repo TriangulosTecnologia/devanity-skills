@@ -32,6 +32,8 @@ mkdir -p .claude/agents && curl -fsSL \
   -o .claude/agents/worker.md
 ```
 
+For the adjudication half of the pair there is nothing to install: [`guardian/reference/adjudication.md`](skills/guardian/reference/adjudication.md) ships with the skill and is passed verbatim to a subagent as its whole prompt. Wrap it in your own `.claude/agents/` file if you want a named agent — the contract is the same text either way.
+
 `-f` matters: without it, a failed request writes the error body into the agent file. `-o` overwrites any local edits without asking.
 
 For the main agent to delegate, add to `AGENTS.md` or `CLAUDE.md`:
@@ -48,7 +50,7 @@ trivia, judgment, or edits.
 
 ## Layout
 
-Each skill lives in `skills/<name>/` with a `SKILL.md` entrypoint, following the Agent Skills standard. `agents/` holds subagent definitions, one file each. `templates/` holds opt-in companion kits you copy into your own repos (e.g. [guardian-field-kit](templates/guardian-field-kit) — usage telemetry for guardian, recorded to your own private sink).
+Each skill lives in `skills/<name>/` with a `SKILL.md` entrypoint, following the Agent Skills standard. `agents/` holds subagent definitions, one file each.
 
 ## License
 

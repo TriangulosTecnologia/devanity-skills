@@ -1,6 +1,6 @@
 # Mode: review
 
-Contract: `SKILL.md` governs this run — if the host does not keep it loaded in context (`reference/bindings.md`), re-read it before anything else.
+Contract: `SKILL.md` governs this run — if the host no longer keeps it loaded in context, re-read it before anything else.
 
 Use after implementation, before commit. Steps:
 
@@ -22,7 +22,7 @@ Use after implementation, before commit. Steps:
 
 ### Required fixes [P0/P1][dominant|trade][G-###][dimension][rung] title + detail tier (finding format, `reference/format.md`; P0 first, then P1 — top 3 full, rest one-line) ...
 
-### Suggested improvements [P2/P3][dominant|trade][G-###][dimension][rung] title — one line each, or counts per dimension when >~5 ...
+### Suggested improvements [P2/P3][dominant|trade][G-###][dimension][rung] title — Key: … — one line each in the one-line form (`reference/format.md`: the key always rides the headline; a one-line dominant adds — basis:), or counts per dimension when >~5 ...
 
 ### Decisions [DECIDE] blocks, only when a decision is owed (SKILL Decisions)
 

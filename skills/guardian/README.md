@@ -18,6 +18,8 @@ npx skills add ttoss/skills --skill guardian --agent claude-code
 
 Only install unscoped if the target repo also runs another agent (Copilot/Cursor/etc.) that should read the skill from its own directory.
 
+Nothing else to install. Reviewing a surface written in the same session calls for a fresh-context pass, and the skill ships the contract for it (`reference/adjudication.md`), passed verbatim to a subagent as its whole prompt — see `reference/bindings.md` for which subagent type to prefer and what each rung does and does not guarantee.
+
 ## Use (Claude Code)
 
 Manual only (`disable-model-invocation`). The first token selects the mode:

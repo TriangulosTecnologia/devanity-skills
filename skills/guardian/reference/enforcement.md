@@ -12,13 +12,27 @@ Promote by class and by observable evidence — never by a remembered count you 
 
 ## Enforcement type by target
 
+Two independent choices — **what kind of check** the rule needs, and **where it fires**. Conflating them is how a rule that a configured lint could decide in the editor ends up as a CI job instead.
+
 ```txt
 static rule       → lint / typecheck
 behavior          → test
 domain contract   → spec + test
-at PR/merge       → CI
-before an action / on stop / after an edit → platform hooks (see bindings.md)
 ```
+
+## Trigger — the latency axis of the `enforcement` rung
+
+Two mechanisms on the same rung can differ by orders of magnitude in feedback latency, and a loop's stability tracks that latency. So the rung alone does not finish the decision: within `enforcement` (`SKILL.md` ladder), pick the **innermost trigger that can decide the rule**. A check that only runs at PR when a configured lint could have decided it in the editor leaves the agent iterating open-loop until the PR — every wrong step in between is a step it took believing it was fine.
+
+```txt
+editor / on save             type, schema, a lint rule already configured   ← innermost, prefer
+before an action / on stop   platform hooks (see bindings.md)
+pre-commit / pre-push        fast focused check, formatter, targeted lint
+at PR / merge                CI: full suite, coverage gate, cross-package check
+runtime                      assertion, invariant check, alert              ← outermost, slowest signal
+```
+
+Innermost is a preference, not a mandate: a rule that needs the whole repo (cross-package boundary, coverage across the suite) cannot decide in the editor, and forcing it inward buys latency with false positives. Moving inward also moves cost onto every keystroke or commit — so the trigger chosen is named in the fix's `basis:` alongside that cost, exactly like any other enforcement cost (`SKILL.md` Fix classification).
 
 ## Syndrome → check
 

@@ -20,8 +20,8 @@ Headline axes, in order — each judges a different thing; the axes never mix:
 
 - **Severity** `P0–P3` — judges the finding (`SKILL.md` severity table).
 - **Fix-class** `dominant|trade` — judges the fix; always present, adjacent to severity but a distinct axis (`SKILL.md` Fix classification).
-- **`G-NNN`** — a session-local **alias** for the durable key, which is the canonical identity. Numbering continues across runs within a session — never restart at `G-001`. A stale or cross-session `G-NNN` does not resolve: use the key or an unambiguous suffix of it.
-- **Dimension** — exactly one of the 8 slugs in `reference/methodology.md`; the only lens tag (a basis-form test name is never a finding tag).
+- **`G-NNN`** — a session-local **alias** for the durable key, which is the canonical identity. Numbering continues across runs within a session — never restart at `G-001`. A stale or cross-session `G-NNN` does not resolve: use the full key — a suffix resolves only while the session's finding list is live to match it against (`modes/improve.md` step 1).
+- **Dimension** — exactly one of the slugs in `reference/methodology.md`; the only lens tag (a basis-form test name is never a finding tag).
 - **Rung** — the target ladder rung: `enforcement|path-scoped-context|procedure|prose` (`prose` is the human-review rung — a rule stated only in words).
 
 Detail tier fields:
@@ -39,9 +39,9 @@ Detail tier fields:
 
 Exception: a one-line **dominant** also carries its check inline (`— basis: <what was checked>`); without that clause the class is trade.
 
-The two forms are **exclusive**, and CI enforces the boundary structurally: a full-form headline opens **and closes** its bold and carries each mandatory field as its own nested list item, exactly once — extra nested items are fine (`review` lists instances under Evidence); a one-line object keeps every field on its headline and grows no nested item at all. Likewise for decisions — `blocking` always renders full-form, `dormant` always one line. The detail tier is the indented block immediately below the headline, so no object can borrow a field from what follows it.
+The two forms are **exclusive**: a full-form headline opens **and closes** its bold and carries each mandatory field as its own nested list item, exactly once — extra nested items are fine (`review` lists instances under Evidence); a one-line object keeps every field on its headline and grows no nested item at all. The source repo's CI holds that boundary on the skill's **own** example blocks; nothing observes a run's emitted output, here or in a target repo, so at runtime the form is yours to keep. Likewise for decisions — `blocking` always renders full-form, `dormant` always one line. The detail tier is the indented block immediately below the headline, so no object can borrow a field from what follows it.
 
-For durable/team tracking, promote a finding into the existing issue tracker/TODOs — never a bespoke backlog file. **Promotion is proposed, not performed**: DIAGNOSE writes no external record (Action axis), so Guardian drafts the entry and the human (or an ACT run the user explicitly asked for) creates it. A promoted entry carries the open question and the durable key — never a coverage claim: a later session re-establishes coverage itself (Core rule 10).
+For durable/team tracking, promote a finding into the existing issue tracker/TODOs. The drafted entry **renders in this run's output either way** — that is the artifact Guardian produces, and it is satisfiable in any repo; naming a destination is not, so a run that has not observed a tracker names none and states the consequence instead of leaving it implicit: with no promotion path, this finding's recurrence cannot be observed across sessions. Never a bespoke backlog file in either branch — an artifact Guardian maintains becomes exactly the stale context it audits. **Promotion is proposed, not performed**: DIAGNOSE writes no external record unless the user explicitly asks for one (Action axis — the exception is theirs to invoke, not Guardian's to assume), so Guardian drafts the entry and the human creates it, or asks Guardian to. A promoted entry carries the open question and the durable key — never a coverage claim: a later session re-establishes coverage itself (Core rule 10).
 
 ## Decision format
 
@@ -68,7 +68,7 @@ The block transfers the **decision space, not the case**: it must be decidable f
 
 ## Section conventions
 
-- The verdict value sits on its heading line (`### Verdict BLOCK`); every other section puts its value on the lines below the heading.
+- A section whose whole value is one scalar — the verdict, a cost level, a rung, a surface name, a finding ref — carries it on the heading line (`### Verdict BLOCK`, `### Context cost HIGH`); prose, lists, and any multi-value content sit on the lines below the heading.
 - An **empty section renders the single line `none`** (optionally `none — <one-clause reason>`) — never omit the heading: an absent section reads as unchecked, not empty.
 - `### Decisions` renders after all findings and before the closing next step, **only when at least one decision is owed** — the one section whose absence means "none owed". Blocking decisions render full, in the severity order of their anchors; dormant ones one line each.
 - Findings render per `SKILL.md` **Output discipline**: strict severity order, prose never between findings, P0 full, P1 top-3 full + rest one-line, P2/P3 one line each.

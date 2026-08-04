@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validate } from './validate-skills.mjs';
+import { validate, checkRelativeLinks, checkSkillTotal } from './validate-skills.mjs';
 
 const fm = (name) => `---\nname: ${name}\ndescription: test skill\n---\n\n# ${name}\n`;
 
@@ -394,10 +394,132 @@ test('a mode citing references with no table row at all fails; one citing none n
   });
 });
 
+test('SKILL.md over the token cap fails even while under the line cap', () => {
+  // The exact shape a line cap cannot see, and the one this repo drifted into: few lines, huge ones.
+  const body = fm('foo') + Array.from({ length: 20 }, () => 'x'.repeat(1100)).join('\n');
+  withSkill('foo', body, (dir) => {
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('max ~5000')), errors.join('; '));
+    assert.ok(!errors.some((e) => e.includes('max 130')), 'the line cap must stay silent — that is the point');
+  });
+});
+
+test('a typographic character counts as a whole token, not a quarter of one', () => {
+  // 5200 em-dashes are ~5200 tokens but only ~1300 by chars/4 — a naive cap waves this straight through.
+  const body = `${fm('foo')}\n${'—'.repeat(5200)}\n`;
+  withSkill('foo', body, (dir) => {
+    assert.ok(validate(dir).some((e) => e.includes('max ~5000')), 'wide characters must not be discounted');
+  });
+});
+
 test('SKILL.md over 130 lines fails', () => {
   const body = fm('foo') + Array.from({ length: 130 }, (_, i) => `line ${i}`).join('\n');
   withSkill('foo', body, (dir) => {
     const errors = validate(dir);
     assert.ok(errors.some((e) => e.includes('max 130')), errors.join('; '));
   });
+});
+
+test('restating the dimension count fails — as a digit, as a word, and inside a fence', () => {
+  for (const body of ['Tag with one of the 8 slugs.', 'The eight dimensions are the lens.', '```md\n### Status — all 9 dimensions\n```']) {
+    withSkill('foo', `${fm('foo')}\n${body}\n`, (dir) => {
+      assert.ok(validate(dir).some((e) => e.includes('states the dimension count')), `not caught: ${body}`);
+    });
+  }
+});
+
+test('naming the list instead of the number passes', () => {
+  const body = `${fm('foo')}\nExactly one of the slugs in \`reference/methodology.md\`; one row per dimension, none omitted.\n`;
+  withSkill('foo', body, (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    assert.deepEqual(validate(dir), []);
+  });
+});
+
+test('a cardinality rule and counts of other things are not dimension counts', () => {
+  // "exactly one dimension" is a rule, not a derived constant; "four tests" and "14 files" count
+  // things enumerated elsewhere. Only dimensions/slugs — and rows on a dimension line — are gated.
+  const body = `${fm('foo')}\nEvery finding carries exactly one dimension. The four tests are theory. Read 14 files, 3 rows of config.\n`;
+  withSkill('foo', body, (dir) => assert.deepEqual(validate(dir), []));
+});
+
+test('a fixed row count fails only on a line about dimensions', () => {
+  withSkill('foo', `${fm('foo')}\n| Dimension | Status | — a table, all 8 rows\n`, (dir) => {
+    assert.ok(validate(dir).some((e) => e.includes("row count")), 'dimension table row count must be rejected');
+  });
+  withSkill('foo', `${fm('foo')}\nThe severity table has 4 rows.\n`, (dir) => {
+    assert.deepEqual(validate(dir), [], 'an unrelated table may state its own row count');
+  });
+});
+
+test('a skill README link to a missing path fails; resolvable and non-filesystem links pass', () => {
+  withSkill('foo', fm('foo'), (dir) => {
+    const readme = join(dir, 'foo', 'README.md');
+    writeFileSync(readme, 'See [the kit](templates/kit) for more.\n');
+    assert.ok(validate(dir).some((e) => e.includes('links to missing templates/kit')), 'broken relative link must be rejected');
+    writeFileSync(readme, 'See [the skill](SKILL.md), [the site](https://ttoss.dev), [below](#layout).\n');
+    assert.deepEqual(validate(dir), [], 'resolvable, external and anchor links must all pass');
+  });
+});
+
+const twoSlugs = '1. **Alpha** (`alpha`) — x.\n2. **Beta** (`beta`) — y.\n';
+const withSlugs = (dir) => {
+  mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+  writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), twoSlugs);
+};
+
+test('a dimension table must carry one row per slug — omission, unknown row and duplicate all fail', () => {
+  // Inside a fence, like the worked example in modes/audit.md that this rule exists to keep honest.
+  const table = (rows) => `${fm('foo')}\n\`\`\`md\n| Dimension | Status |\n| --- | --- |\n${rows}\`\`\`\n`;
+  const cases = [
+    ['| alpha | GOOD |\n', 'omits beta'],
+    ['| alpha | GOOD |\n| beta | GOOD |\n| gamma | GOOD |\n', 'not in reference/methodology.md: gamma'],
+    ['| alpha | GOOD |\n| alpha | WEAK |\n| beta | GOOD |\n', 'repeats alpha'],
+  ];
+  for (const [rows, expected] of cases) {
+    withSkill('foo', table(rows), (dir) => {
+      withSlugs(dir);
+      assert.ok(validate(dir).some((e) => e.includes(expected)), `not caught: ${expected}`);
+    });
+  }
+  withSkill('foo', table('| alpha | GOOD |\n| beta | WEAK |\n'), (dir) => {
+    withSlugs(dir);
+    assert.deepEqual(validate(dir), []);
+  });
+});
+
+test('only a table whose first header cell is Dimension is checked (crosswalk and mode tables are not)', () => {
+  const crosswalk = `${fm('foo')}\n| Test (theory) | Dimensions (finding tags) |\n| --- | --- |\n| irreducible | alpha |\n`;
+  withSkill('foo', crosswalk, (dir) => {
+    withSlugs(dir);
+    assert.deepEqual(validate(dir), [], 'a table listing dimensions in a later column is not a dimension table');
+  });
+});
+
+test('skill total over its ratchet budget fails; within passes; a missing entry fails', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ratchet-'));
+  try {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'SKILL.md'), 'x'.repeat(600));
+    writeFileSync(join(dir, 'foo', 'reference', 'big.md'), 'y'.repeat(600));
+    assert.ok(checkSkillTotal(dir, { foo: 1000 }).some((e) => e.includes('raise SKILL_TOTAL_BUDGETS')), 'over budget must fail');
+    assert.deepEqual(checkSkillTotal(dir, { foo: 2000 }), [], 'within budget must pass');
+    assert.ok(checkSkillTotal(dir, {}).some((e) => e.includes('no total-size budget')), 'an unbudgeted skill must fail, not bypass');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a link inside a fenced block is not a link (no false positive)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'linktest-'));
+  try {
+    const file = join(dir, 'README.md');
+    writeFileSync(file, '```md\n[example](does/not/exist.md)\n```\n');
+    assert.deepEqual(checkRelativeLinks(file), []);
+    writeFileSync(file, '[example](does/not/exist.md)\n');
+    assert.ok(checkRelativeLinks(file).some((e) => e.includes('does/not/exist.md')));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
