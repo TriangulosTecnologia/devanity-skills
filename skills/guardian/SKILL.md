@@ -67,7 +67,7 @@ Arguments: `$ARGUMENTS`. Route by the first whitespace-delimited token:
 4. Unknown arguments containing a finding reference (rule 7 defines it) or a pasted finding → state the `improve <ref>` interpretation and confirm before acting — only a literal mode token authorizes an ACT write. Otherwise, if they read as a task → run `plan` on them and state that assumption; if neither, ask.
 5. `review`: an optional path narrows the diff.
 6. `audit`: requires a bounded scope (path/package/domain) — ask if missing.
-7. `improve`: requires one finding reference — the durable key or an unambiguous suffix of it, or an in-session `G-NNN` alias — ask if missing.
+7. `improve`: requires one finding reference — the durable key, or (in-session) an unambiguous suffix of it or a `G-NNN` alias — ask if missing.
 8. `docs`: the second token selects the submode **only when it is one of** `review|improve`; otherwise the submode is `review` and that token begins the target surface. The target is optional for `review` — a file path diagnoses that surface; a directory path runs the full-review contract bounded to the surfaces beneath it; without one, run the **full review** of every instruction surface (`modes/docs.md`) — and a file path is required for `improve` (ask if missing).
 
 ## Tool policy
