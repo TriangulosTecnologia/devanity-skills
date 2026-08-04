@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validate, checkRelativeLinks } from './validate-skills.mjs';
+import { validate, checkRelativeLinks, checkSkillTotal } from './validate-skills.mjs';
 
 const fm = (name) => `---\nname: ${name}\ndescription: test skill\n---\n\n# ${name}\n`;
 
@@ -495,6 +495,20 @@ test('only a table whose first header cell is Dimension is checked (crosswalk an
     withSlugs(dir);
     assert.deepEqual(validate(dir), [], 'a table listing dimensions in a later column is not a dimension table');
   });
+});
+
+test('skill total over its ratchet budget fails; within passes; a missing entry fails', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ratchet-'));
+  try {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'SKILL.md'), 'x'.repeat(600));
+    writeFileSync(join(dir, 'foo', 'reference', 'big.md'), 'y'.repeat(600));
+    assert.ok(checkSkillTotal(dir, { foo: 1000 }).some((e) => e.includes('raise SKILL_TOTAL_BUDGETS')), 'over budget must fail');
+    assert.deepEqual(checkSkillTotal(dir, { foo: 2000 }), [], 'within budget must pass');
+    assert.ok(checkSkillTotal(dir, {}).some((e) => e.includes('no total-size budget')), 'an unbudgeted skill must fail, not bypass');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('a link inside a fenced block is not a link (no false positive)', () => {

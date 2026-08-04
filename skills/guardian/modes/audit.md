@@ -1,19 +1,19 @@
 # Mode: audit
 
-Contract: `SKILL.md` governs this run — if the host does not keep it loaded in context (`reference/bindings.md`), re-read it before anything else.
+Contract: `SKILL.md` governs this run — if the host no longer keeps it loaded in context, re-read it before anything else.
 
 Bounded health review; require a scope (ask if missing). The target is the **working tree** in scope — tracked files plus untracked (`??`) ones, gitignored excluded. That is a wider set than the baseline's *change* (a diff, `reference/baseline.md`); the two share only how they treat untracked and gitignored files. Probe first, NUL-safe so paths with spaces survive, and over the whole target rather than its tracked half — `git ls-files` alone omits every untracked file the line above just included:
 
 ```txt
-{ git ls-files -z <scope>; git ls-files -z --others --exclude-standard <scope>; } | tr '\0' '\n' | grep -c .   # file count
-{ git ls-files -z <scope>; git ls-files -z --others --exclude-standard <scope>; } | xargs -0 cat | wc -l       # volume — one total, not one per xargs batch
+{ git ls-files -z "<scope>"; git ls-files -z --others --exclude-standard "<scope>"; } | tr '\0' '\n' | grep -c .   # file count
+{ git ls-files -z "<scope>"; git ls-files -z --others --exclude-standard "<scope>"; } | xargs -0 cat | wc -l       # volume — one total, not one per xargs batch
 ```
 
-The listing runs twice so the probe stays a pure pipeline — DIAGNOSE writes no file, a probe's scratch file included (Action axis). Binary or generated files are enumerated but neither line-counted nor syndrome-swept, and are named with that reason. The bound is the **exhaustive contract** — every file read, every syndrome applied, every dimension in `reference/methodology.md` scored with a cited check — not a fixed count; beyond ~100 files or ~30k total lines the contract degrades silently (heuristics; the human may override): propose 2–4 sub-scopes by seam (package/layer/domain) — interactive: offer them as a menu (`reference/bindings.md`) — and audit one. Narrowing trades holism for depth: the syndromes that live **between** sub-scopes — duplication across them (irreducible), dependency cycles between them (orthogonal) — are invisible to every sub-audit. So when narrowing, still run any repo-wide mechanical check the repo already has (duplication detector, import/dependency-graph lint) at full width, and record cross-scope checks not run under Coverage. Steps:
+The listing runs twice so the probe stays a pure pipeline — a scratch file would be a write the Action axis forbids (`SKILL.md`). The volume figure is a raw sizing heuristic: binary and generated files inflate it here and are excluded only at step 2, where they are enumerated but not line-counted. Binary or generated files are enumerated but neither line-counted nor syndrome-swept, and are named with that reason. The bound is the **exhaustive contract** — every file read, every syndrome applied, every dimension in `reference/methodology.md` scored with a cited check — not a fixed count; beyond ~100 files or ~30k total lines the contract degrades silently (heuristics; the human may override): propose 2–4 sub-scopes by seam (package/layer/domain) — interactive: offer them as a menu (`reference/bindings.md`) — and audit one. Narrowing trades holism for depth: the syndromes that live **between** sub-scopes — duplication across them (irreducible), dependency cycles between them (orthogonal) — are invisible to every sub-audit. So when narrowing, still run any repo-wide mechanical check the repo already has (duplication detector, import/dependency-graph lint) at full width, and record cross-scope checks not run under Coverage. Steps:
 
 1. Run the Deep baseline (`reference/baseline.md`); disposition every item (`enforced`/`prose-only`/`absent`).
 2. Enumerate every file in scope; apply the applicable syndrome set to each — code: the crosswalk checks (`reference/basis-form.md`); instruction surfaces incl. skill files: the instruction-artifact syndromes (`reference/methodology.md`). When the scope is itself an instruction artifact, its files are the surface set for reconciliation.
-3. Status **every dimension listed in `reference/methodology.md`**, one row each, none omitted — the status is derived from this run's open findings, never judged separately: examined (a cited performed check — command run, per-file sweep, claim diff — and its result) → `GOOD` (no open finding) | `WEAK` (only open P2/P3) | `BAD` (≥1 open P0/P1; human-accepted → render `BAD — accepted risk`, never upgraded: acceptance changes governance, not the repo). `NOT RELEVANT` when the scope contains no artifact the dimension governs (`reference/methodology.md` relevance rule) — the reason cited like any other, and never a substitute for the two below. `UNKNOWN` is a disposition, not an escape hatch: it means the dimension **is** relevant, was addressed, and the evidence is insufficient or unavailable — no discriminating check exists, or running it is unsafe/needs approval — with that reason cited. A relevant dimension skipped for time or capacity is **not dispositioned**: the run ends `### Verdict none — audit completion pending` and proposes a narrower scope or batches (SKILL Completion invariant) instead of emitting `AUDIT_BACKLOG`. No cited check → `UNKNOWN`, never `GOOD`. The Evidence column cites the check; a status contradicting its dimension's findings is a defect of the run. Omitted rows are not allowed.
+3. Status **every dimension listed in `reference/methodology.md`**, one row each, none omitted — the status is derived from this run's open findings, never judged separately: examined (a cited performed check — command run, per-file sweep, claim diff — and its result) → `GOOD` (no open finding) | `WEAK` (only open P2/P3) | `BAD` (≥1 open P0/P1; human-accepted → render `BAD — accepted risk`, never upgraded: acceptance changes governance, not the repo). `NOT RELEVANT` when the scope contains no artifact the dimension governs (`reference/methodology.md` relevance rule) — the reason cited like any other, and never a substitute for the two below. `UNKNOWN` is a disposition, not an escape hatch: it means the dimension **is** relevant, was addressed, and the evidence is insufficient or unavailable — no discriminating check exists, or running it is unsafe/needs approval — with that reason cited. A relevant dimension skipped for time or capacity is **not dispositioned**: the run ends `### Verdict none — audit completion pending` and proposes a narrower scope or batches (SKILL Completion invariant) instead of emitting `AUDIT_BACKLOG`. No cited check → `UNKNOWN`, never `GOOD`. When both apply — an open P0/P1 exists **and** further evidence is unavailable — `BAD` wins: the status is derived from open findings, and `UNKNOWN` speaks only where no finding already has. The Evidence column cites the check; a status contradicting its dimension's findings is a defect of the run. Omitted rows are not allowed.
 4. Reconcile declared-vs-enforced; check boundary enforcement.
 5. List findings in the finding format (`reference/format.md`, incl. `Key:`); emit a `[DECIDE]` block (SKILL Decisions) for each stop-and-ask owed — an unaccepted P0 and each P0/P1 whose fix is a trade; propose a safe sequence.
 
@@ -38,9 +38,9 @@ Output — render findings per SKILL **Output discipline** (every P0 full; P1 to
 
 ### Suggested sequence
 
-### First safe improvement (a runnable `/guardian improve <ref>` command)
-
 ### Do-not-touch without approval
+
+### First safe improvement (a runnable `/guardian improve <ref>` command — the run's closing next step, so it ends the report)
 ```
 
 ## Example
@@ -103,9 +103,9 @@ none in examined dimensions
 ### Suggested sequence
 G-001 first, once G-003 authorizes it; then G-002 per G-004.
 
-### First safe improvement
-Run `/guardian improve G-001` — smallest change with the highest risk reduction. It is high-risk class, so the invocation proposes the patch and stops at G-003 rather than writing.
-
 ### Do-not-touch without approval
 Anything altering the billing path, `sumLineItems` included (that is G-003). The Stripe webhook signature check, which no finding here proposes touching.
+
+### First safe improvement
+Run `/guardian improve G-001` — smallest change with the highest risk reduction. It is high-risk class, so the invocation proposes the patch and stops at G-003 rather than writing.
 ```

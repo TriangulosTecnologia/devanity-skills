@@ -1,6 +1,6 @@
 # Mode: docs
 
-Contract: `SKILL.md` governs this run — if the host does not keep it loaded in context (`reference/bindings.md`), re-read it before anything else.
+Contract: `SKILL.md` governs this run — if the host no longer keeps it loaded in context, re-read it before anything else.
 
 Review/improve the repo's context/instruction surfaces. A **surface = one file** (for a JSDoc/TSDoc target, one file's doc blocks). Submodes: `review` (diagnose — with a file path, that one surface; with a directory path, the full-review contract bounded to the surfaces beneath it, always Deep bounded to that directory (`reference/baseline.md`); with no path, the **full review**: every instruction surface, the instruction-surface projection of `audit`, always Deep baseline), `improve` (edit one approved surface — a JSDoc/TSDoc target is just a surface whose doc blocks are the content; Core rule 7 applies). The Action axis (`SKILL.md`) governs which submodes write, and its one-approved-unit rule has a corollary here: a fix that must write beyond the one approved surface (create or edit a second file) is never a `docs improve` — route it as `improve <finding>`, where the approved unit is the finding and may span files.
 

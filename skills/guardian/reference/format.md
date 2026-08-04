@@ -68,7 +68,7 @@ The block transfers the **decision space, not the case**: it must be decidable f
 
 ## Section conventions
 
-- The verdict value sits on its heading line (`### Verdict BLOCK`); every other section puts its value on the lines below the heading.
+- A section whose whole value is one scalar — the verdict, a cost level, a rung, a surface name, a finding ref — carries it on the heading line (`### Verdict BLOCK`, `### Context cost HIGH`); prose, lists, and any multi-value content sit on the lines below the heading.
 - An **empty section renders the single line `none`** (optionally `none — <one-clause reason>`) — never omit the heading: an absent section reads as unchecked, not empty.
 - `### Decisions` renders after all findings and before the closing next step, **only when at least one decision is owed** — the one section whose absence means "none owed". Blocking decisions render full, in the severity order of their anchors; dormant ones one line each.
 - Findings render per `SKILL.md` **Output discipline**: strict severity order, prose never between findings, P0 full, P1 top-3 full + rest one-line, P2/P3 one line each.

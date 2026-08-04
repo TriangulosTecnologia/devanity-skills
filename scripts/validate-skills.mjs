@@ -63,6 +63,34 @@ const estimateTokens = (s) => {
   return Math.round((s.length - wide) / 4 + wide);
 };
 
+// The on-demand files have no platform boundary like the 5,000-token re-attach budget that anchors
+// SKILL.md's cap, so no fixed number would be honest — but silent growth is still the failure mode:
+// this skill grew 17% in one PR with every added sentence individually justified, and per-file line
+// counts stayed green throughout. The honest mechanism is a ratchet, not a cap: the budget sits at
+// the last deliberate size, and the PR that grows the skill raises it in the same diff — growth
+// stays possible and stops being free. Lowering it after a trim is the same deliberate act.
+export const SKILL_TOTAL_BUDGETS = { guardian: 129000 }; // chars, every file under skills/<name>/
+export function checkSkillTotal(skillsDir, budgets) {
+  const errors = [];
+  const sizeOf = (d) => readdirSync(d).reduce((n, f) => {
+    const p = join(d, f);
+    return n + (statSync(p).isDirectory() ? sizeOf(p) : statSync(p).size);
+  }, 0);
+  if (!existsSync(skillsDir)) return errors;
+  for (const skill of readdirSync(skillsDir).filter((n) => statSync(join(skillsDir, n)).isDirectory())) {
+    const budget = budgets[skill];
+    if (budget === undefined) {
+      errors.push(`${skill}: no total-size budget — add a SKILL_TOTAL_BUDGETS entry (current size: ${sizeOf(join(skillsDir, skill))} chars); every skill's growth is deliberate, including its first size`);
+      continue;
+    }
+    const total = sizeOf(join(skillsDir, skill));
+    if (total > budget) {
+      errors.push(`${skill}: totals ${total} chars against a budget of ${budget} — growing is fine when deliberate: raise SKILL_TOTAL_BUDGETS in the same PR that grows the skill (or trim)`);
+    }
+  }
+  return errors;
+}
+
 // Every relative markdown link must resolve on disk. A link to something that was removed reads as
 // current to anyone — human or agent — who does not try it: the "stale doc" criterion applied to a
 // doc's own references. Fences are stripped; a link inside a code block renders as text, not a link.
@@ -361,6 +389,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const errors = [
     ...validate(skillsRoot),
     ...checkRelativeLinks(join(repoRoot, 'README.md')).map((e) => `repo: README.md ${e}`),
+    ...checkSkillTotal(skillsRoot, SKILL_TOTAL_BUDGETS).map((e) => `repo: ${e}`),
   ];
   if (errors.length) {
     console.error(`✗ skill validation failed (${errors.length}):`);
