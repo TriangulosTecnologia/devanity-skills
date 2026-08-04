@@ -32,7 +32,7 @@ Output — render findings per SKILL **Output discipline** (every P0 full; P1 to
 
 ### Required fixes all P0s · top-3 P1s in full (finding format, `reference/format.md`) · every further P1 as a one-line finding
 
-### Suggested improvements [P2/P3][dominant|trade][G-###][dimension][rung] title — one line each, or counts per dimension when >~5
+### Suggested improvements [P2/P3][dominant|trade][G-###][dimension][rung] title — Key: … — one line each in the one-line form (`reference/format.md`: the key always rides the headline; a one-line dominant adds — basis:), or counts per dimension when >~5
 
 ### Decisions [DECIDE] blocks, only when a decision is owed (SKILL Decisions)
 
