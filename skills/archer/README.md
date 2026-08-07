@@ -30,4 +30,4 @@ ARCHER first classifies significance:
 
 It is directly usable and also serves as the architecture owner when Maestro routes an A2 change.
 
-[`reference/method.md`](reference/method.md) is the self-contained operational method shipped with the skill. The source repository also keeps the longer design definition at [`../../docs/archer/DEFINITION.md`](../../docs/archer/DEFINITION.md); the runtime skill does not depend on that file being installed.
+[`reference/method.md`](reference/method.md) is the self-contained operational method shipped with the skill.
