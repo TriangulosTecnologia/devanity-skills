@@ -1,56 +1,95 @@
-# skills
+# Devanity Open
 
-Agent artifacts published by **ttoss**: [Agent Skills](https://agentskills.io), installable via [`npx skills`](https://github.com/vercel-labs/skills), and Claude Code subagents you copy in.
+Open agent artifacts for building software changes from **intent to verified candidate** with explicit architecture, evidence, human authority, and repository assurance.
 
-## Available skills
+Devanity Open is intentionally small:
 
-| Skill | Description | Install |
-| ----- | ----------- | ------- |
-| [guardian](skills/guardian) | Guard and improve a repository's AI-readiness — keep it in basis-form and migrate rules from prose into deterministic enforcement. | `npx skills add ttoss/skills --skill guardian` |
+```text
+skills                         agents
+------                         ------
+maestro   change lifecycle     worker     collection
+archer    architecture         verifier   independent proof
+guardian  repository quality
+```
 
-## Install
+The default path is `/maestro <goal>`. Every skill is also directly usable, and CI/other agent hosts may compose the same capabilities through contracts rather than slash-command coupling.
 
-Install a single skill by name:
+Read [`docs/OPEN_DEVELOPMENT_MODEL.md`](docs/OPEN_DEVELOPMENT_MODEL.md) for the architecture, ownership, runtime graph, progressive-depth rules, evaluation model, and evolution constraints.
+
+## Skills
+
+| Skill | Owns | Typical use |
+| --- | --- | --- |
+| [maestro](skills/maestro) | change lifecycle, routing, completion accounting | `/maestro <goal>` |
+| [archer](skills/archer) | material architecture decisions | `/archer <system/change/question>` |
+| [guardian](skills/guardian) | repository quality, basis-form, durable enforcement | `/guardian review`, `audit`, `improve`, `docs` |
+
+Install only what you need:
 
 ```bash
-npx skills add ttoss/skills --skill guardian
+npx skills add TriangulosTecnologia/devanity-skills --skill maestro --agent claude-code
+npx skills add TriangulosTecnologia/devanity-skills --skill archer --agent claude-code
+npx skills add TriangulosTecnologia/devanity-skills --skill guardian --agent claude-code
 ```
 
-For Claude Code, skills install to `.claude/skills/` (project) or `~/.claude/skills/` (global).
+Skills follow the [Agent Skills](https://agentskills.io) standard. `npx skills` may support other agent hosts; host-specific mechanics belong in bindings/reference surfaces, not in the core method.
 
-## Available agents
+## Agents
 
-Claude Code subagents. `npx skills` does not handle these — copy the file into `.claude/agents/`.
+Claude Code subagent definitions are optional companions. Copy the roles you want into `.claude/agents/`:
 
-| Agent | Description |
-| ----- | ----------- |
-| [worker](agents/worker.md) | Read-only collection subagent on Haiku. Runs declared project commands, digests long output, enumerates occurrences — reports data, never decisions. Keeps the main model's context for interpretation. |
+| Agent | Owns |
+| --- | --- |
+| [worker](agents/worker.md) | read-only collection and compression; never judgment |
+| [verifier](agents/verifier.md) | fresh-context independent proof; never edits or sequencing |
 
 ```bash
-mkdir -p .claude/agents && curl -fsSL \
-  https://raw.githubusercontent.com/ttoss/skills/main/agents/worker.md \
-  -o .claude/agents/worker.md
+mkdir -p .claude/agents
+for agent in worker verifier; do
+  curl -fsSL \
+    "https://raw.githubusercontent.com/TriangulosTecnologia/devanity-skills/main/agents/${agent}.md" \
+    -o ".claude/agents/${agent}.md"
+done
 ```
 
-For the adjudication half of the pair there is nothing to install: [`guardian/reference/adjudication.md`](skills/guardian/reference/adjudication.md) ships with the skill and is passed verbatim to a subagent as its whole prompt. Wrap it in your own `.claude/agents/` file if you want a named agent — the contract is the same text either way.
+`-f` makes curl fail instead of writing an HTTP error body. `-o` overwrites the destination if it already exists.
 
-`-f` matters: without it, a failed request writes the error body into the agent file. `-o` overwrites any local edits without asking.
+Maestro can use these roles when installed, but correctness does not depend on them being present. A missing capability becomes an explicit handoff or reduced-assurance state, never fabricated evidence.
 
-For the main agent to delegate, add to `AGENTS.md` or `CLAUDE.md`:
+## Shared protocol
 
-```markdown
-Delegate collection to the `worker` subagent: build/test/lint runs, long
-logs, broad searches, environment state. Treat its return as evidence to
-interpret, never as a finished conclusion; if its output is insufficient
-or malformed, re-delegate with a narrower ask. Do not delegate one-liner
-trivia, judgment, or edits.
+Maestro ships the open lifecycle protocol because it is the owner of Change state:
+
+- [`skills/maestro/reference/protocol.md`](skills/maestro/reference/protocol.md) — Change, Evidence, Decision, Finding, lifecycle and projection semantics;
+- [`skills/maestro/reference/change.schema.json`](skills/maestro/reference/change.schema.json) — machine-readable interchange schema.
+
+The protocol is local-first. No Devanity account, managed runtime, hidden telemetry, or proprietary service is required.
+
+## Evaluation
+
+Behavioral revisions are evaluated against [`evals/scenarios.json`](evals/scenarios.json) using the discipline in [`evals/README.md`](evals/README.md): regression, adversarial, holdout, and field evidence; old-vs-new comparisons; outcome + error guardrail + cost rather than a vanity score.
+
+Repository CI validates skill structure, Guardian's internal contracts, canonical repository identity, the deliberate capability set, protocol JSON, and the eval catalog.
+
+## Repository layout
+
+```text
+skills/
+  maestro/
+  archer/
+  guardian/
+agents/
+  worker.md
+  verifier.md
+docs/
+  OPEN_DEVELOPMENT_MODEL.md
+  archer/
+  guardian/
+evals/
+scripts/
 ```
 
-`worker` only runs commands the repo declares (Makefile target, manifest script, CI step, documented run line) — without those it reports `NOT RUN` instead of guessing a command.
-
-## Layout
-
-Each skill lives in `skills/<name>/` with a `SKILL.md` entrypoint, following the Agent Skills standard. `agents/` holds subagent definitions, one file each.
+New top-level skills or agents are architecture changes: add one only when it owns an irreducible responsibility with a stable contract and measurable outcome.
 
 ## License
 
