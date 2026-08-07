@@ -60,10 +60,6 @@ Typical loop — the ratchet that makes it pay off:
 - `reference/` — `basis-form` (the standard), `methodology` (dimensions + instruction-artifact syndromes), `baseline` (discovery + reconciliation), `enforcement` (promotion + checks), `bindings` (Claude Code specifics)
 - `modes/` — `plan`, `review`, `audit`, `improve`, `docs` (each with a worked example)
 
-## Devanity Open composition
-
-Guardian remains directly usable and does not depend on Maestro. In the orchestrated path, Guardian owns the repository-assurance stage after implementation/independent verification; Maestro consumes Guardian's result without redefining Guardian's severity or finding semantics.
-
 ## License
 
 MIT
