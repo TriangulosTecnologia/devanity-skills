@@ -38,6 +38,8 @@ if (agents.join(',') !== expectedAgents.join(',')) {
 }
 
 // Repository migration is complete only when published install/source references use the canonical repo.
+// Derive the legacy token so this validator does not contain the literal it is searching for.
+const legacyRepo = ['ttoss', 'skills'].join('/');
 const textFiles = [];
 const walk = (dir) => {
   for (const name of readdirSync(dir)) {
@@ -50,7 +52,7 @@ const walk = (dir) => {
 };
 walk(root);
 for (const file of textFiles) {
-  if (readFileSync(file, 'utf8').includes('ttoss/skills')) fail(`${file.slice(root.length + 1)} still references ttoss/skills`);
+  if (readFileSync(file, 'utf8').includes(legacyRepo)) fail(`${file.slice(root.length + 1)} still references ${legacyRepo}`);
 }
 
 const parseJson = (path) => {
