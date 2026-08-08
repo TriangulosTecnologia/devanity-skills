@@ -3,7 +3,7 @@
   "$id": "https://github.com/TriangulosTecnologia/devanity-skills/blob/main/skills/maestro/reference/change.schema.json",
   "title": "Devanity Open Change",
   "type": "object",
-  "required": ["id", "state", "intent", "scope", "requirements", "decisions", "impact", "verification", "execution", "evidence", "findings", "residual_risk", "completion"],
+  "required": ["id", "state", "intent", "scope", "requirements", "decisions", "impact", "authority", "verification", "execution", "evidence", "findings", "residual_risk", "completion"],
   "properties": {
     "id": { "type": "string", "minLength": 1 },
     "state": {
@@ -85,6 +85,28 @@
       },
       "additionalProperties": true
     },
+    "architecture": {
+      "type": "object",
+      "properties": {
+        "constraints": { "type": "array", "items": { "type": "string" } },
+        "decisions": { "type": "array", "items": { "type": "string" } },
+        "repository_topology": { "type": "array", "items": { "type": "string" } },
+        "status": { "enum": ["not-required", "conforming", "resolved", "needs-decision", "incomplete"] }
+      },
+      "additionalProperties": true
+    },
+    "authority": {
+      "type": "object",
+      "required": ["ceiling"],
+      "properties": {
+        "ceiling": { "enum": ["observe", "recommend", "prepare", "execute", "commit", "merge", "deploy"] },
+        "granted_by": { "type": "string" },
+        "basis": { "type": "string" },
+        "constraints": { "type": "array", "items": { "type": "string" } },
+        "expires_at": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
     "verification": {
       "type": "object",
       "required": ["obligations"],
@@ -94,7 +116,8 @@
           "items": { "$ref": "#/$defs/proofObligation" }
         },
         "independent_required": { "type": "boolean" },
-        "independent_result": { "enum": ["pending", "VERIFIED", "FAILED", "NOT VERIFIED", "INVALID TARGET"] }
+        "independent_result": { "enum": ["pending", "VERIFIED", "FAILED", "NOT VERIFIED", "INVALID TARGET"] },
+        "verified_target_fingerprint": { "type": "string" }
       },
       "additionalProperties": true
     },
@@ -114,6 +137,7 @@
               "expected_delta": { "type": "array", "items": { "type": "string" } },
               "forbidden_delta": { "type": "array", "items": { "type": "string" } },
               "proof_obligations": { "type": "array", "items": { "type": "string" } },
+              "required_authority": { "enum": ["observe", "recommend", "prepare", "execute", "commit", "merge", "deploy"] },
               "status": { "enum": ["pending", "active", "verified", "failed", "blocked"] }
             },
             "additionalProperties": true
@@ -154,6 +178,7 @@
         "type": { "enum": ["read", "command", "diff", "check", "human-confirmation", "external-reference"] },
         "source": { "type": "string" },
         "target": { "type": "string" },
+        "target_fingerprint": { "type": "string" },
         "observed_at": { "type": "string" },
         "claim": { "type": "string" },
         "result": {}
@@ -172,7 +197,8 @@
         "authority": { "type": "string" },
         "status": { "enum": ["pending", "resolved", "rejected", "expired"] },
         "resolution": { "type": "string" },
-        "blocks": { "type": "array", "items": { "type": "string" } }
+        "blocks": { "type": "array", "items": { "type": "string" } },
+        "durability": { "enum": ["one-off", "reusable", "unknown"] }
       },
       "additionalProperties": true
     },
