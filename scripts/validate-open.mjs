@@ -64,10 +64,14 @@ const schema = parseJson('skills/maestro/reference/change.schema.json');
 if (schema) {
   if (schema.title !== 'Devanity Open Change') fail('change.schema.json has unexpected title');
   const required = new Set(schema.required ?? []);
-  for (const key of ['id', 'state', 'intent', 'scope', 'requirements', 'decisions', 'impact', 'verification', 'execution', 'evidence', 'findings', 'completion']) {
+  for (const key of ['id', 'state', 'intent', 'scope', 'requirements', 'decisions', 'impact', 'authority', 'verification', 'execution', 'evidence', 'findings', 'completion']) {
     if (!required.has(key)) fail(`change.schema.json must require ${key}`);
   }
   if (!String(schema.$id ?? '').includes('TriangulosTecnologia/devanity-skills')) fail('change.schema.json $id must use the canonical repository');
+  const ceiling = schema.properties?.authority?.properties?.ceiling?.enum ?? [];
+  for (const action of ['observe', 'recommend', 'prepare', 'execute', 'commit', 'merge', 'deploy']) {
+    if (!ceiling.includes(action)) fail(`change.schema.json authority ceiling missing ${action}`);
+  }
 }
 
 const catalog = parseJson('evals/scenarios.json');
