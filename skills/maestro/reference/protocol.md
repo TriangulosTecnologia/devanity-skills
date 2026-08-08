@@ -1,21 +1,38 @@
 # Maestro protocol
 
-The protocol is the semantic boundary between change capabilities. It is intentionally smaller than the workflow that uses it.
+The protocol is the semantic boundary between software-change capabilities. It is intentionally smaller than the workflow that uses it.
 
-## Canonical objects
+## Canonical Change Contract
 
-### Change
+A **Change** is the evolving record of one intended software change and the only lifecycle source of truth.
 
-The evolving record of one intended software change. It is the only lifecycle source of truth.
+Before material implementation, the current slice should be represented as a sufficient **Change Contract**:
+
+```text
+intent / outcome
++ scope / non-goals
++ relevant repository/domain evidence
++ resolved decisions
++ architecture constraints
++ expected / forbidden delta
++ implementation boundaries
++ proof obligations
++ risk / authority
+```
+
+This is semantic state, not a requirement for a long document. PRD fragments, impact maps, plans, verification matrices, and PR descriptions are projections.
 
 A Change contains:
 
 - identity and lifecycle state;
+- target identity/fingerprint;
 - intent: problem/current state and desired outcome;
 - scope: included, excluded, non-goals;
 - acceptance claims;
 - decisions and unknowns;
 - impact: affected surfaces, architecture class, risk, origin/trust;
+- authority envelope;
+- architecture constraints when material;
 - verification obligations;
 - execution slices;
 - evidence;
@@ -23,13 +40,11 @@ A Change contains:
 - residual risk;
 - completion state and rationale.
 
-`reference/change.schema.json` defines the interchange shape. The schema is permissive about host-specific metadata but strict about the semantic fields that must not be conflated.
+`reference/change.schema.json` defines the interchange shape. The schema is permissive about host-specific metadata but strict about semantic fields that must not be conflated.
 
-### Evidence
+## Evidence
 
-An observation made against a target in this run.
-
-Required semantics:
+Evidence is an observation made against a target in this run.
 
 ```yaml
 id:
@@ -41,11 +56,17 @@ claim:
 result:
 ```
 
-Evidence is not a conclusion. A summary may point to evidence but never replace its provenance. Negative/completeness claims require a read or command capable of falsifying them.
+Evidence is not a conclusion. A summary may point to evidence but never replace provenance. Negative/completeness claims require an observation capable of falsifying them.
 
-### Decision
+### Validity domain
 
-A choice with explicit authority.
+Evidence belongs to the target it observed. Prefer a target identity/fingerprint precise enough to detect material drift.
+
+When the target changes, invalidate only the evidence whose subject or assumptions changed. Never carry a terminal verification verdict across an unverified target mutation.
+
+## Decision
+
+A Decision is a choice with explicit authority.
 
 ```yaml
 id:
@@ -57,13 +78,16 @@ authority:
 status: pending | resolved | rejected | expired
 resolution:
 blocks:
+durability: one-off | reusable | unknown
 ```
 
-A recommendation is not a resolution. If a pending decision materially changes dependent work, that work remains blocked.
+A recommendation is not a resolution. If a pending Decision materially changes dependent work, that work remains blocked.
 
-### Finding
+A resolved reusable Decision should be considered for durable promotion by the capability that owns the relevant concern. This metadata does not itself create a rule or enforcement mechanism.
 
-A discrepancy between expected and observed state.
+## Finding
+
+A Finding is a discrepancy between expected and observed state.
 
 ```yaml
 id:
@@ -75,7 +99,24 @@ disposition: open | fixed | accepted | rejected | deferred
 owner:
 ```
 
-Guardian may use its richer durable finding grammar. Maestro preserves Guardian's identity and disposition rather than translating it into a second competing taxonomy.
+Guardian may use its richer durable finding grammar. Maestro preserves Guardian identity/disposition rather than translating it into a competing taxonomy.
+
+## Authority envelope
+
+Authority is carried by the Change because autonomy is a property of the current action/state, not of an agent identity.
+
+```yaml
+authority:
+  ceiling: observe | recommend | prepare | execute | commit | merge | deploy
+  granted_by:
+  basis:
+  constraints:
+  expires_at:
+```
+
+A host may expose tools above the ceiling. Tool availability is not permission.
+
+The ceiling may be derived by a managed system or explicit human authority from risk, reversibility, observability, verification, policy, and context. Open Maestro preserves/enforces the supplied ceiling but does not invent broader permission.
 
 ## Acceptance claims and proof obligations
 
@@ -98,21 +139,21 @@ proof_obligation:
   status: pending | satisfied | failed | not-verifiable
 ```
 
-A proof obligation is valid only if the proposed observation can distinguish the desired behavior from at least one plausible failure. A test that restates the implementation or can pass while the requirement is false is not a sufficient oracle.
+A proof obligation is valid only if the proposed observation can distinguish desired behavior from at least one plausible failure. A test that restates implementation logic or can pass while the requirement is false is not a sufficient oracle.
 
 ## Architecture class
 
-- `A0` — implementation-local; no architectural meaning, ownership, boundary, public contract, state model, or critical property changes.
-- `A1` — extends or conforms to an already explicit architectural decision without creating a new material trade-off.
-- `A2` — requires a new or revised decision about semantics, state/consistency, ownership, boundaries, public contracts, failure behavior, deployment/operation, or critical qualities.
+- `A0` — implementation-local; no architectural meaning, ownership, boundary, public contract, state model, repository-topology rule, or critical property changes.
+- `A1` — extends/conforms to an already explicit architectural decision without creating a new material trade-off.
+- `A2` — requires a new/revised decision about semantics, state/consistency, ownership, boundaries, public contracts, repository topology/dependency direction, failure behavior, deployment/operation, or critical qualities.
 
 Uncertainty between A1 and A2 is not A1. Inspect until the existing decision is found or route to ARCHER.
 
 ## Target identity
 
-A conclusion is about a specific target. Record enough identity to detect material drift: repository/ref, base/head or worktree identity where available, and the affected content/diff fingerprint when the host can provide it.
+A conclusion is about a specific target. Record enough identity to detect material drift: repository/ref, base/head or worktree identity where available, plus affected content/diff fingerprint when the host can provide it.
 
-If the target changes after evidence is gathered, invalidate only the evidence whose subject changed; never carry a terminal conclusion across an unverified target mutation.
+Evidence and verification receipts are target-bound. If the target changes after evidence is gathered, invalidate affected evidence before terminal success.
 
 ## Lifecycle states
 
@@ -136,8 +177,10 @@ INVALID_TARGET
 
 Hosts may add non-semantic UI states. They must not weaken these transitions:
 
-- unresolved material decision -> no dependent execution;
+- unresolved material Decision -> no dependent execution;
 - unresolved A2 -> no architecture-dependent execution;
+- insufficient Change Contract/preflight -> no material execution;
+- action above authority ceiling -> no execution;
 - failed verification -> not candidate-ready;
 - target drift -> re-establish affected evidence;
 - unaccounted required work -> no terminal success.
@@ -148,6 +191,7 @@ The following are views of Change state:
 
 - change brief / PRD fragment = intent + scope + requirements;
 - impact map = impact + evidence;
+- architecture packet = material architecture constraints/decisions;
 - execution plan = slices + dependencies + proof obligations;
 - verification matrix = requirements + proof obligations + evidence;
 - PR package = intent + actual delta + evidence + residual risk;
@@ -157,6 +201,6 @@ Do not persist a projection as an independently editable source of truth when th
 
 ## Pipeline interchange
 
-A pipeline may serialize the Change as JSON and pass it between capabilities. A capability should update only the fields it owns and append evidence/findings rather than rewriting another owner's resolved decision.
+A pipeline may serialize the Change as JSON and pass it between capabilities. A capability updates only fields it owns and appends evidence/findings rather than rewriting another owner's resolved decision.
 
-The protocol is open and local-first. A future persistent system may ingest these records, but no semantic field requires a network service or Devanity account.
+The protocol is open and local-first. A future/managed Devanity system may persist and correlate these records, but no semantic field requires a network service or Devanity account.
