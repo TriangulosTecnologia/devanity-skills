@@ -1,56 +1,112 @@
-# skills
+# Devanity Open
 
-Agent artifacts published by **ttoss**: [Agent Skills](https://agentskills.io), installable via [`npx skills`](https://github.com/vercel-labs/skills), and Claude Code subagents you copy in.
+Devanity Open is the open distribution of reusable operational knowledge for AI-assisted software systems: methods, skills, agents, instructions, protocols, schemas, evals, and reference artifacts.
 
-## Available skills
+The current release focuses on the software-change path and is deliberately small:
 
-| Skill | Description | Install |
-| ----- | ----------- | ------- |
-| [guardian](skills/guardian) | Guard and improve a repository's AI-readiness — keep it in basis-form and migrate rules from prose into deterministic enforcement. | `npx skills add ttoss/skills --skill guardian` |
+```text
+skills                         agents
+------                         ------
+maestro   change lifecycle     worker     evidence collection
+archer    architecture         verifier   independent proof
+guardian  repository quality
+```
 
-## Install
+These artifacts are useful standalone. Managed Devanity may operationalize them with persistence, control, scheduling, authority, integrations, and longitudinal learning, but Open capabilities do not require a Devanity account or hidden runtime.
 
-Install a single skill by name:
+## Current development basis
+
+Default:
+
+```text
+/maestro <goal>
+```
+
+Direct:
+
+```text
+/archer <architecture question>
+/guardian review
+```
+
+The core development thesis is **specification before material coding**: compile intent, repository evidence, decisions, architecture constraints, implementation boundaries, proof obligations, and authority into a high-quality Change Contract; pass preflight; then execute the smallest sufficient slice and prove it independently when warranted.
+
+Read [`docs/OPEN_DEVELOPMENT_MODEL.md`](docs/OPEN_DEVELOPMENT_MODEL.md) for the current development model.
+
+## Skills
+
+| Skill | Owns | Typical use |
+| --- | --- | --- |
+| [maestro](skills/maestro) | Change lifecycle, contract compilation, routing, preflight, completion accounting | `/maestro <goal>` |
+| [archer](skills/archer) | material architecture decisions and architecture-to-repository projection | `/archer <system/change/question>` |
+| [guardian](skills/guardian) | repository quality, basis-form, drift, durable enforcement | `/guardian review`, `audit`, `improve`, `docs` |
+
+Install only what you need:
 
 ```bash
-npx skills add ttoss/skills --skill guardian
+npx skills add TriangulosTecnologia/devanity-skills --skill maestro --agent claude-code
+npx skills add TriangulosTecnologia/devanity-skills --skill archer --agent claude-code
+npx skills add TriangulosTecnologia/devanity-skills --skill guardian --agent claude-code
 ```
 
-For Claude Code, skills install to `.claude/skills/` (project) or `~/.claude/skills/` (global).
+Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific mechanics belong in bindings/reference surfaces, not in the core methods.
 
-## Available agents
+## Agents
 
-Claude Code subagents. `npx skills` does not handle these — copy the file into `.claude/agents/`.
-
-| Agent | Description |
-| ----- | ----------- |
-| [worker](agents/worker.md) | Read-only collection subagent on Haiku. Runs declared project commands, digests long output, enumerates occurrences — reports data, never decisions. Keeps the main model's context for interpretation. |
+| Agent | Owns |
+| --- | --- |
+| [worker](agents/worker.md) | read-only evidence collection and compression; never judgment |
+| [verifier](agents/verifier.md) | fresh-context independent proof; never edits or sequencing |
 
 ```bash
-mkdir -p .claude/agents && curl -fsSL \
-  https://raw.githubusercontent.com/ttoss/skills/main/agents/worker.md \
-  -o .claude/agents/worker.md
+mkdir -p .claude/agents
+for agent in worker verifier; do
+  curl -fsSL \
+    "https://raw.githubusercontent.com/TriangulosTecnologia/devanity-skills/main/agents/${agent}.md" \
+    -o ".claude/agents/${agent}.md"
+done
 ```
 
-For the adjudication half of the pair there is nothing to install: [`guardian/reference/adjudication.md`](skills/guardian/reference/adjudication.md) ships with the skill and is passed verbatim to a subagent as its whole prompt. Wrap it in your own `.claude/agents/` file if you want a named agent — the contract is the same text either way.
+Maestro can use these roles when installed, but correctness does not depend on them being present. Missing capabilities become explicit handoffs or reduced-assurance states, never fabricated evidence.
 
-`-f` matters: without it, a failed request writes the error body into the agent file. `-o` overwrites any local edits without asking.
+## Shared Change protocol
 
-For the main agent to delegate, add to `AGENTS.md` or `CLAUDE.md`:
+Maestro owns the current open software-change protocol:
 
-```markdown
-Delegate collection to the `worker` subagent: build/test/lint runs, long
-logs, broad searches, environment state. Treat its return as evidence to
-interpret, never as a finished conclusion; if its output is insufficient
-or malformed, re-delegate with a narrower ask. Do not delegate one-liner
-trivia, judgment, or edits.
+- [`skills/maestro/reference/protocol.md`](skills/maestro/reference/protocol.md) — Change Contract, Evidence, Decision, Finding, authority, lifecycle and projection semantics;
+- [`skills/maestro/reference/change.schema.json`](skills/maestro/reference/change.schema.json) — machine-readable interchange schema.
+
+The Change protocol is one open capability contract, not the entire semantic model of managed Devanity.
+
+## Evaluation
+
+Behavioral revisions are evaluated against [`evals/scenarios.json`](evals/scenarios.json) using the discipline in [`evals/README.md`](evals/README.md): regression, adversarial, holdout, and field evidence; old-vs-new comparisons; outcome + error guardrail + cost rather than a vanity score.
+
+Repository CI validates skill structure, Guardian's internal contracts, canonical repository identity, the deliberate capability set, protocol JSON, and the eval catalog.
+
+## Repository layout
+
+```text
+skills/
+  maestro/
+  archer/
+  guardian/
+agents/
+  worker.md
+  verifier.md
+docs/
+  OPEN_DEVELOPMENT_MODEL.md
+evals/
+scripts/
 ```
 
-`worker` only runs commands the repo declares (Makefile target, manifest script, CI step, documented run line) — without those it reports `NOT RUN` instead of guessing a command.
+New top-level skills or agents are architecture changes. Add one only when it owns an irreducible responsibility with a stable contract, independent use, and measurable outcome.
 
-## Layout
+## Boundary with managed Devanity
 
-Each skill lives in `skills/<name>/` with a `SKILL.md` entrypoint, following the Agent Skills standard. `agents/` holds subagent definitions, one file each.
+Managed Devanity owns persistent system operation: Integration Fabric, Signal Ledger, Control Plane, Change Engine runtime, integrations, authority, and longitudinal learning.
+
+Devanity Open owns reusable know-how. The managed system may consume Open capabilities at any layer; Open is not a vertical service dependency.
 
 ## License
 

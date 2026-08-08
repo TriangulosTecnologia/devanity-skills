@@ -7,13 +7,13 @@ Cross-agent — built on the [Agent Skills](https://agentskills.io) standard. `r
 ## Install
 
 ```bash
-npx skills add ttoss/skills --skill guardian
+npx skills add TriangulosTecnologia/devanity-skills --skill guardian
 ```
 
 Scope the agent to avoid duplication. Without `--agent`, the CLI mirrors the skill into every supported agent's directory (e.g. both `.claude/skills/` and `.agents/skills/`). For Claude Code only:
 
 ```bash
-npx skills add ttoss/skills --skill guardian --agent claude-code
+npx skills add TriangulosTecnologia/devanity-skills --skill guardian --agent claude-code
 ```
 
 Only install unscoped if the target repo also runs another agent (Copilot/Cursor/etc.) that should read the skill from its own directory.
@@ -55,7 +55,7 @@ Typical loop — the ratchet that makes it pay off:
 
 ## Layout
 
-- [`CONCEPT.md`](https://github.com/ttoss/skills/blob/main/docs/guardian/CONCEPT.md) — what Guardian is and why, independent of any host agent or file format; read this to understand the thesis or to port Guardian to a new platform (lives in the source repo under `docs/guardian/`, not shipped with the skill)
+- [`CONCEPT.md`](https://github.com/TriangulosTecnologia/devanity-skills/blob/main/docs/guardian/CONCEPT.md) — what Guardian is and why, independent of any host agent or file format; read this to understand the thesis or to port Guardian to a new platform (lives in the source repo under `docs/guardian/`, not shipped with the skill)
 - `SKILL.md` — router: identity, rules, severity, mode routing
 - `reference/` — `basis-form` (the standard), `methodology` (dimensions + instruction-artifact syndromes), `baseline` (discovery + reconciliation), `enforcement` (promotion + checks), `bindings` (Claude Code specifics)
 - `modes/` — `plan`, `review`, `audit`, `improve`, `docs` (each with a worked example)
