@@ -1,28 +1,45 @@
 # Devanity Open
 
-Open agent artifacts for building software changes from **intent to verified candidate** with explicit architecture, evidence, human authority, and repository assurance.
+Devanity Open is the open distribution of reusable operational knowledge for AI-assisted software systems: methods, skills, agents, instructions, protocols, schemas, evals, and reference artifacts.
 
-Devanity Open is intentionally small:
+The current release focuses on the software-change path and is deliberately small:
 
 ```text
 skills                         agents
 ------                         ------
-maestro   change lifecycle     worker     collection
+maestro   change lifecycle     worker     evidence collection
 archer    architecture         verifier   independent proof
 guardian  repository quality
 ```
 
-The default path is `/maestro <goal>`. Every skill is also directly usable, and CI/other agent hosts may compose the same capabilities through contracts rather than slash-command coupling.
+These artifacts are useful standalone. Managed Devanity may operationalize them with persistence, control, scheduling, authority, integrations, and longitudinal learning, but Open capabilities do not require a Devanity account or hidden runtime.
 
-Read [`docs/OPEN_DEVELOPMENT_MODEL.md`](docs/OPEN_DEVELOPMENT_MODEL.md) for the architecture, ownership, runtime graph, progressive-depth rules, evaluation model, and evolution constraints.
+## Current development basis
+
+Default:
+
+```text
+/maestro <goal>
+```
+
+Direct:
+
+```text
+/archer <architecture question>
+/guardian review
+```
+
+The core development thesis is **specification before material coding**: compile intent, repository evidence, decisions, architecture constraints, implementation boundaries, proof obligations, and authority into a high-quality Change Contract; pass preflight; then execute the smallest sufficient slice and prove it independently when warranted.
+
+Read [`docs/OPEN_DEVELOPMENT_MODEL.md`](docs/OPEN_DEVELOPMENT_MODEL.md) for the current development model.
 
 ## Skills
 
 | Skill | Owns | Typical use |
 | --- | --- | --- |
-| [maestro](skills/maestro) | change lifecycle, routing, completion accounting | `/maestro <goal>` |
-| [archer](skills/archer) | material architecture decisions | `/archer <system/change/question>` |
-| [guardian](skills/guardian) | repository quality, basis-form, durable enforcement | `/guardian review`, `audit`, `improve`, `docs` |
+| [maestro](skills/maestro) | Change lifecycle, contract compilation, routing, preflight, completion accounting | `/maestro <goal>` |
+| [archer](skills/archer) | material architecture decisions and architecture-to-repository projection | `/archer <system/change/question>` |
+| [guardian](skills/guardian) | repository quality, basis-form, drift, durable enforcement | `/guardian review`, `audit`, `improve`, `docs` |
 
 Install only what you need:
 
@@ -32,15 +49,13 @@ npx skills add TriangulosTecnologia/devanity-skills --skill archer --agent claud
 npx skills add TriangulosTecnologia/devanity-skills --skill guardian --agent claude-code
 ```
 
-Skills follow the [Agent Skills](https://agentskills.io) standard. `npx skills` may support other agent hosts; host-specific mechanics belong in bindings/reference surfaces, not in the core method.
+Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific mechanics belong in bindings/reference surfaces, not in the core methods.
 
 ## Agents
 
-Claude Code subagent definitions are optional companions. Copy the roles you want into `.claude/agents/`:
-
 | Agent | Owns |
 | --- | --- |
-| [worker](agents/worker.md) | read-only collection and compression; never judgment |
+| [worker](agents/worker.md) | read-only evidence collection and compression; never judgment |
 | [verifier](agents/verifier.md) | fresh-context independent proof; never edits or sequencing |
 
 ```bash
@@ -52,18 +67,16 @@ for agent in worker verifier; do
 done
 ```
 
-`-f` makes curl fail instead of writing an HTTP error body. `-o` overwrites the destination if it already exists.
+Maestro can use these roles when installed, but correctness does not depend on them being present. Missing capabilities become explicit handoffs or reduced-assurance states, never fabricated evidence.
 
-Maestro can use these roles when installed, but correctness does not depend on them being present. A missing capability becomes an explicit handoff or reduced-assurance state, never fabricated evidence.
+## Shared Change protocol
 
-## Shared protocol
+Maestro owns the current open software-change protocol:
 
-Maestro ships the open lifecycle protocol because it is the owner of Change state:
-
-- [`skills/maestro/reference/protocol.md`](skills/maestro/reference/protocol.md) — Change, Evidence, Decision, Finding, lifecycle and projection semantics;
+- [`skills/maestro/reference/protocol.md`](skills/maestro/reference/protocol.md) — Change Contract, Evidence, Decision, Finding, authority, lifecycle and projection semantics;
 - [`skills/maestro/reference/change.schema.json`](skills/maestro/reference/change.schema.json) — machine-readable interchange schema.
 
-The protocol is local-first. No Devanity account, managed runtime, hidden telemetry, or proprietary service is required.
+The Change protocol is one open capability contract, not the entire semantic model of managed Devanity.
 
 ## Evaluation
 
@@ -83,13 +96,17 @@ agents/
   verifier.md
 docs/
   OPEN_DEVELOPMENT_MODEL.md
-  archer/
-  guardian/
 evals/
 scripts/
 ```
 
-New top-level skills or agents are architecture changes: add one only when it owns an irreducible responsibility with a stable contract and measurable outcome.
+New top-level skills or agents are architecture changes. Add one only when it owns an irreducible responsibility with a stable contract, independent use, and measurable outcome.
+
+## Boundary with managed Devanity
+
+Managed Devanity owns persistent system operation: Integration Fabric, Signal Ledger, Control Plane, Change Engine runtime, integrations, authority, and longitudinal learning.
+
+Devanity Open owns reusable know-how. The managed system may consume Open capabilities at any layer; Open is not a vertical service dependency.
 
 ## License
 
