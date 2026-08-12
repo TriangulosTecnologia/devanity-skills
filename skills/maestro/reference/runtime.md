@@ -181,32 +181,6 @@ Property-based testing is not a default. Use it when a property is authoritative
 
 A newly written oracle should, when practical, be observed failing against the actual defect or a deliberate reversible violation before the implementation correction is allowed to prove it. If no reachable falsification exists, state that limitation.
 
-### Corrective proof loop
-
-Independent verification is not just a terminal gate; when it falsifies a still-valid Change Contract it may produce the highest-value next execution signal.
-
-Use this bounded loop:
-
-```text
-candidate
-→ independent falsification
-→ strongest material gap
-→ classify the gap
-   ├─ local implementation defect, contract still valid
-   │    → smallest responsible correction
-   │    → new target
-   │    → fresh proof
-   └─ spec / oracle / architecture / risk / authority invalidated
-        → stop execution
-        → return to the owning stage
-```
-
-The verifier's job is to expose the contradiction, not prescribe the patch. Prefer one minimal counterexample or reproducer that falsifies an important property over a large undifferentiated dump of failures when both carry the same information.
-
-Never let iterative repair hide a preflight failure. If a verifier finding reveals a requirement, boundary, architecture decision, proof strategy, risk classification, or authority condition that was economically discoverable before implementation, record it as `false-ready` and return to INSPECT / Decision / ARCHER / proof design as appropriate.
-
-Corrective execution remains bounded by the current slice, expected/forbidden delta, authority, risk, and explicit retry/step budget. Repeated attempts without new information are not progress; stop when the same gap recurs, the contract becomes invalid, the target becomes incoherent, or marginal verification value no longer justifies another cycle.
-
 ## 9. Authority gate
 
 The Change authority envelope may specify a maximum action:
@@ -302,7 +276,7 @@ Verifier outcomes:
 - `NOT VERIFIED` — required evidence could not safely or adequately be obtained;
 - `INVALID TARGET` — target drift makes supplied evidence non-reconcilable.
 
-On `FAILED`, preserve the falsifying evidence before deciding the route. Return to EXECUTE only when the supplied Change Contract, architecture, proof strategy, risk and authority remain valid and the finding is a bounded implementation defect. Otherwise return to the owner of the invalidated premise. A failed candidate must never be made to pass by weakening its requirement.
+On `FAILED`, preserve the strongest falsifier. Return to EXECUTE only for a bounded implementation defect while the Change Contract remains valid; otherwise return to the owner of the invalidated premise and record `false-ready` when it was discoverable before coding. Target drift invalidates affected evidence.
 
 ## 13. Guardian assurance and durable promotion
 
