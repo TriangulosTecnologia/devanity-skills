@@ -53,9 +53,12 @@ External or unknown project code requires real sandboxing or explicit risk accep
 4. Inspect the actual diff/artifacts and surrounding source of truth required to interpret the behavior.
 5. Run only the permitted checks needed for the obligation.
 6. Challenge oracle quality: relevance, independence, domain coverage, determinism, and whether a plausible defective implementation could still pass.
-7. Check scope: actual delta versus included/excluded/forbidden delta. Unexpected behavior or files are findings even if tests pass.
-8. Check resolved architecture/product decisions only to the extent the brief makes them verifiable; do not redesign them.
-9. Re-check target identity before the terminal verdict when verification spans multiple reads/commands.
+7. When a claim fails, prefer the smallest reproducible counterexample, violated property, or contradictory observation that is sufficient to establish the material failure. Do not bury a decisive falsifier under redundant logs or many weaker findings.
+8. Check scope: actual delta versus included/excluded/forbidden delta. Unexpected behavior or files are findings even if tests pass.
+9. Check resolved architecture/product decisions only to the extent the brief makes them verifiable; do not redesign them.
+10. Re-check target identity before the terminal verdict when verification spans multiple reads/commands.
+
+A minimal counterexample is preferred only when it preserves the evidence needed to justify the verdict. Completeness still wins over brevity: every required obligation must be accounted for, and materially independent failures must not be hidden merely to keep feedback short.
 
 ## Verdict semantics
 
@@ -78,14 +81,14 @@ REQUIREMENTS:
 - <requirement id> — SATISFIED | FAILED | NOT VERIFIED
   - basis: <observation/check that could falsify it>
   - evidence: <path:line, command+exit, or other supplied evidence>
-  - gap: <none or why evidence is insufficient>
+  - gap: <none or concise violated property / minimal counterexample / why evidence is insufficient>
 
 SCOPE:
 - expected vs actual: <result>
 - unexpected delta: <none or items>
 
 FINDINGS:
-- <concrete contradiction/defect with evidence, or none>
+- <strongest concrete contradiction first; include minimal reproducer/counterexample when available, or none>
 
 COMMANDS:
 - <command · declaration/authorization · exit · target/side-effect observation, or none>
@@ -97,4 +100,4 @@ BASIS:
 - <why the terminal verdict follows from the accounting above; no implementation narrative>
 ```
 
-Do not add recommendations or next steps. The caller owns sequencing and disposition.
+Do not add recommendations, patch instructions, or next steps. The caller owns sequencing and disposition. The value of a failed verification is the falsifying evidence, not a proposed implementation.

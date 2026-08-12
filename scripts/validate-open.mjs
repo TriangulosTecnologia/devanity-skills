@@ -87,6 +87,9 @@ if (catalog) {
     if (!['regression', 'adversarial', 'holdout', 'field'].includes(scenario.layer)) fail(`scenario ${scenario.id} has invalid layer ${scenario.layer}`);
     if (!Array.isArray(scenario.success) || scenario.success.length === 0) fail(`scenario ${scenario.id} has no observable success criteria`);
   }
+  for (const id of ['verifier-finds-defect', 'verifier-invalidates-preflight']) {
+    if (!ids.has(id)) fail(`evals/scenarios.json must preserve corrective-loop regression: ${id}`);
+  }
 }
 
 // Every public skill should install from the canonical repository; agents remain optional companions.

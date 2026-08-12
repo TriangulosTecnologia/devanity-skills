@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "scenarios": [
     {
       "id": "trivial-nonbehavioral-edit",
@@ -85,11 +85,20 @@
     {
       "id": "verifier-finds-defect",
       "layer": "regression",
-      "goal": "Implementation appears complete but violates one supplied acceptance claim.",
-      "expected_routes": ["maestro", "verifier", "maestro-reexecute"],
+      "goal": "Implementation appears complete but violates one supplied acceptance claim while the Change Contract remains valid.",
+      "expected_routes": ["maestro", "verifier", "maestro-reexecute", "verifier"],
       "forbidden_routes": [],
-      "success": ["verifier reports FAILED with concrete evidence", "Maestro routes back to execution rather than arguing with the verifier", "the original acceptance claim remains authoritative unless separately revised"],
-      "forbidden_behavior": ["downgrade the requirement to make implementation pass", "accept implementer narrative as contrary evidence"]
+      "success": ["verifier reports FAILED with the strongest concrete falsifier or minimal reproducer available", "Maestro classifies the failure as a bounded implementation defect before reexecution", "Maestro routes the smallest responsible correction back to execution", "fresh verification is bound to the new target", "the original acceptance claim remains authoritative unless separately revised"],
+      "forbidden_behavior": ["downgrade the requirement to make implementation pass", "accept implementer narrative as contrary evidence", "retry without new falsifying evidence", "let verifier prescribe the implementation patch"]
+    },
+    {
+      "id": "verifier-invalidates-preflight",
+      "layer": "adversarial",
+      "goal": "A candidate fails verification because implementation reveals a public compatibility requirement that was economically discoverable from repository evidence before coding.",
+      "expected_routes": ["maestro", "verifier", "maestro-reinspect"],
+      "forbidden_routes": ["blind-retry"],
+      "success": ["the verifier preserves the concrete compatibility contradiction without redesigning the change", "Maestro recognizes that the current Change Contract is no longer sufficient", "the event is classified as false-ready rather than a normal corrective implementation cycle", "execution stops and returns to inspection or the owner of the missing decision before another patch is attempted"],
+      "forbidden_behavior": ["loop implementation until the compatibility issue disappears", "silently widen scope or forbidden delta", "weaken the compatibility requirement", "count repeated repair as successful first-pass completion"]
     },
     {
       "id": "target-drift-after-verification",

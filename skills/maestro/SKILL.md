@@ -4,7 +4,7 @@ description: Orchestrate a software change from intent to verified candidate. Us
 license: MIT
 metadata:
   author: enniolopes@gmail.com
-  version: 0.2.0
+  version: 0.3.0
 disable-model-invocation: true
 argument-hint: '<goal>'
 ---
@@ -62,7 +62,7 @@ After each slice: inspect actual delta, run focused proof, compare expected/forb
 
 Use a fresh-context `verifier` for behavioral/material/high-risk/A2 changes, uncertain or newly created proof, or whenever self-verification would be circular. Supply the Change snapshot, target identity, diff/artifacts, proof obligations, and permitted commands — not implementer reasoning or persuasion.
 
-A failed verification returns to EXECUTE if the contract remains valid. Invalid assumptions return to INSPECT. Material target drift invalidates affected evidence before any terminal success.
+On `FAILED`, keep the strongest falsifier. Re-execute only if the contract still holds and the defect is bounded; otherwise return to the invalidated premise's owner and count a discoverable pre-code gap as `false-ready`. Target drift invalidates affected evidence.
 
 ### 6. ASSURE / HANDOFF
 
