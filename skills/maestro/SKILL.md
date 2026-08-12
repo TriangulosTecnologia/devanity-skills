@@ -62,7 +62,7 @@ After each slice: inspect actual delta, run focused proof, compare expected/forb
 
 Use a fresh-context `verifier` for behavioral/material/high-risk/A2 changes, uncertain or newly created proof, or whenever self-verification would be circular. Supply the Change snapshot, target identity, diff/artifacts, proof obligations, and permitted commands — not implementer reasoning or persuasion.
 
-On failure, preserve the strongest falsifier. Re-execute only for a bounded implementation defect while the Change Contract remains valid; otherwise return to the owner of the invalidated premise and record `false-ready` when it should have been known before coding. Target drift invalidates affected evidence.
+On `FAILED`, keep the strongest falsifier. Re-execute only if the contract still holds and the defect is bounded; otherwise return to the invalidated premise's owner and count a discoverable pre-code gap as `false-ready`. Target drift invalidates affected evidence.
 
 ### 6. ASSURE / HANDOFF
 
