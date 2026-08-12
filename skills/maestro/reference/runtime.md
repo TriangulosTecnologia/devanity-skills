@@ -276,7 +276,7 @@ Verifier outcomes:
 - `NOT VERIFIED` — required evidence could not safely or adequately be obtained;
 - `INVALID TARGET` — target drift makes supplied evidence non-reconcilable.
 
-On `FAILED`, preserve the strongest falsifier. Return to EXECUTE only for a bounded implementation defect while the Change Contract remains valid; otherwise return to the owner of the invalidated premise and record `false-ready` when it was discoverable before coding. Target drift invalidates affected evidence.
+FAILED returns to EXECUTE if the contract remains valid. Invalid assumptions return to INSPECT.
 
 ## 13. Guardian assurance and durable promotion
 
