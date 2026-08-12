@@ -4,7 +4,7 @@ description: Orchestrate a software change from intent to verified candidate. Us
 license: MIT
 metadata:
   author: enniolopes@gmail.com
-  version: 0.2.0
+  version: 0.3.0
 disable-model-invocation: true
 argument-hint: '<goal>'
 ---
@@ -31,6 +31,7 @@ Read `reference/protocol.md` before creating or updating the Change. Read `refer
 10. A missing capability degrades explicitly to a handoff or `NOT_VERIFIED`; never pretend another skill, agent, command, or check ran.
 11. `NO_CHANGE`, `BLOCKED`, `NOT_VERIFIED`, and `INVALID_TARGET` are valid outcomes. Never optimize for producing a diff.
 12. Tool availability is not authorization. Never exceed the Change authority ceiling merely because the host exposes an action.
+13. Failed verification is evidence, not permission to retry blindly. Re-execute only when the Change Contract and its architecture, proof, risk, scope, and authority remain valid; otherwise return to the owner of the invalidated premise.
 
 ## Lifecycle
 
@@ -62,7 +63,7 @@ After each slice: inspect actual delta, run focused proof, compare expected/forb
 
 Use a fresh-context `verifier` for behavioral/material/high-risk/A2 changes, uncertain or newly created proof, or whenever self-verification would be circular. Supply the Change snapshot, target identity, diff/artifacts, proof obligations, and permitted commands — not implementer reasoning or persuasion.
 
-A failed verification returns to EXECUTE if the contract remains valid. Invalid assumptions return to INSPECT. Material target drift invalidates affected evidence before any terminal success.
+On failure, preserve the strongest falsifying evidence and classify what it invalidates before choosing the next route. A bounded implementation defect with an otherwise valid contract returns to EXECUTE for the smallest responsible correction and then receives fresh target-bound proof. A finding that invalidates intent/specification, architecture, proof strategy, scope, risk, or authority returns to INSPECT / Decision / ARCHER / proof design as owned; if it should have been discovered before coding, record `false-ready`. Material target drift invalidates affected evidence before any terminal success.
 
 ### 6. ASSURE / HANDOFF
 
