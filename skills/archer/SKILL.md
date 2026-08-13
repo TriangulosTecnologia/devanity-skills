@@ -1,7 +1,7 @@
 ---
 name: archer
 description: Design or revise software architecture when a change is architecturally material. Use /archer for new systems, material boundary/state/contract/topology decisions, or when Maestro classifies a change A2. Start from required properties and semantics, then derive state, ownership, boundaries, repository topology, failure behavior, enforcement, evidence, and revision conditions. Avoid architecture by technology preference.
-license: MIT
+license: CC-BY-NC-4.0
 metadata:
   author: enniolopes@gmail.com
   version: 0.2.0
