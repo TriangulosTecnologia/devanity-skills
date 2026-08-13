@@ -59,7 +59,3 @@ Typical loop — the ratchet that makes it pay off:
 - `SKILL.md` — router: identity, rules, severity, mode routing
 - `reference/` — `basis-form` (the standard), `methodology` (dimensions + instruction-artifact syndromes), `baseline` (discovery + reconciliation), `enforcement` (promotion + checks), `bindings` (Claude Code specifics)
 - `modes/` — `plan`, `review`, `audit`, `improve`, `docs` (each with a worked example)
-
-## License
-
-MIT
