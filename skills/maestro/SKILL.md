@@ -1,7 +1,7 @@
 ---
 name: maestro
 description: Orchestrate a software change from intent to verified candidate. Use /maestro <goal> to compile a decision-complete, architecture-aware, proof-ready Change Contract, pass preflight, execute bounded slices, verify independently when warranted, and hand off to repository assurance without inventing human-owned decisions or authority.
-license: MIT
+license: CC-BY-NC-4.0
 metadata:
   author: enniolopes@gmail.com
   version: 0.3.0
