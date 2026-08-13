@@ -1,7 +1,7 @@
 ---
 name: guardian
 description: Guard and improve a repository's AI-readiness. Run /guardian plan, review, audit, improve, or docs to keep it in basis-form (a basis of decisions, not a list of cases) — compressible, contractual, verifiable, safe — and to migrate rules from prose into deterministic enforcement.
-license: MIT
+license: CC-BY-NC-4.0
 metadata:
   author: enniolopes@gmail.com
   version: 0.24.0
