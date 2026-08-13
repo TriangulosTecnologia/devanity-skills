@@ -114,6 +114,11 @@ New top-level skills or agents are architecture changes. Add one only when it ow
 
 Devanity Open owns reusable know-how and works standalone. Managed Devanity may operationalize it with persistent state, control, integrations, authority, scheduling, and longitudinal learning; Open is not a vertical service dependency.
 
-## License
+## License and Terms of Use
 
-MIT
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-orange.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
+
+This repository contains instructions and routines licensed under the **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**.
+
+* **Allowed:** Use the instructions in your personal or professional workflow, study, adapt, and apply them in your projects.
+* **Prohibited:** Sell, repackage, or monetize this set of instructions (or derivative works) in paid products, e-books, or courses without authorization.
