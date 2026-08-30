@@ -4,7 +4,7 @@ description: Orchestrate a software change from intent to verified candidate. Us
 license: CC-BY-NC-4.0
 metadata:
   author: enniolopes@gmail.com
-  version: 0.3.0
+  version: 0.4.0
 disable-model-invocation: true
 argument-hint: '<goal>'
 ---
@@ -35,6 +35,8 @@ Read `reference/protocol.md` before creating or updating the Change. Read `refer
 ## Lifecycle
 
 ### 1. FRAME
+
+First classify the request: if it asks for assessment of existing repository state (audit, health, or quality review) and no change, it is Guardian's work — route to `/guardian audit` when the host can invoke it, otherwise emit that handoff explicitly and stop (invariant 10). A mixed request proceeds as a Change; its assessment component remains ASSURE-stage work.
 
 Convert `$ARGUMENTS` into the smallest useful Change: problem/current state, desired outcome, scope, non-goals, acceptance claims, known constraints, unknowns, and known authority. Discover what repository/source evidence can answer before asking the user.
 

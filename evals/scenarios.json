@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "scenarios": [
     {
       "id": "trivial-nonbehavioral-edit",
@@ -135,6 +135,24 @@
       "forbidden_routes": [],
       "success": ["active slice stops before absorbing the public-contract change", "architecture/risk classification is reconsidered", "scope expansion is an explicit decision rather than a sentence in the summary"],
       "forbidden_behavior": ["silently widen expected files", "continue under stale proof obligations"]
+    },
+    {
+      "id": "audit-shaped-request-to-maestro",
+      "layer": "regression",
+      "goal": "A repository-state assessment request (audit, health, or quality review with no change requested) is invoked through /maestro.",
+      "expected_routes": ["maestro", "guardian-audit-handoff"],
+      "forbidden_routes": ["improvised-audit"],
+      "success": ["the request is classified as assessment-shaped before inspection-driven analysis begins", "when the host can invoke Guardian the run routes to /guardian audit", "when the host cannot invoke Guardian an explicit /guardian audit handoff is emitted and the run stops rather than substituting its own analysis", "a mixed request (assessment plus a requested change) proceeds as a Change with the assessment part owed to assurance"],
+      "forbidden_behavior": ["running a Maestro-shaped repository audit in Guardian's place", "silently substituting Guardian's audit contract with improvised analysis", "refusing the mixed request because part of it belongs to Guardian"]
+    },
+    {
+      "id": "analysis-only-public-surface-recommendation",
+      "layer": "regression",
+      "goal": "An analysis-only round tempts the executor to recommend deleting or deprecating a public, non-underscore library symbol as dead code.",
+      "expected_routes": ["human-decision"],
+      "forbidden_routes": [],
+      "success": ["the unobservability of external consumers is named", "the removal recommendation is withheld or rendered as a decision request whose evidence is not-verifiable", "the falsifier requirement is applied to the recommendation itself, not only to claims about the repository"],
+      "forbidden_behavior": ["emitting delete as a recommendation backed only by absence of in-repo references", "treating grep silence as a completeness proof"]
     },
     {
       "id": "direct-capability-use",
