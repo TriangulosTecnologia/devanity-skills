@@ -6,7 +6,7 @@ The protocol is the semantic boundary between software-change capabilities. It i
 
 A **Change** is the evolving record of one intended software change and the only lifecycle source of truth.
 
-Before material implementation, the current slice should be represented as a sufficient **Change Contract**:
+A change, claim, or decision is **material** when it alters observable behavior, a contract, data shape, verification, risk class, architecture, or an instruction surface; everything below that threshold is not, and every later use of the word points here. Before material implementation, the current slice should be represented as a sufficient **Change Contract**:
 
 ```text
 intent / outcome
@@ -147,7 +147,7 @@ A proof obligation is valid only if the proposed observation can distinguish des
 - `A1` — extends/conforms to an already explicit architectural decision without creating a new material trade-off.
 - `A2` — requires a new/revised decision about semantics, state/consistency, ownership, boundaries, public contracts, repository topology/dependency direction, failure behavior, deployment/operation, or critical qualities.
 
-Uncertainty between A1 and A2 is not A1. Inspect until the existing decision is found or route to ARCHER.
+Uncertainty between adjacent classes resolves to the higher class. Inspect until the existing decision is found or route to ARCHER (routing: `SKILL.md` stage 2).
 
 ## Target identity
 

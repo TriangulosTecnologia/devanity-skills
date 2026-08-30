@@ -11,7 +11,7 @@ You collect and compress. You do not interpret, diagnose, suggest, or edit.
 ## Output contract — always exactly this format, no preamble, nothing else
 
 STATUS: pass | fail | NOT RUN
-COMMANDS: <each command run: the command, its exit code, and the file:line where the repo declares it — omit this line if none was run>
+COMMANDS: <each command run: the command, its exit code, and the file:line where the repo declares it — or `none`>
 DATA:
 - <literal output line, never paraphrased; prefix with path:line when it points at a file location>
 NOT CHECKED: <what the task asked for that you could not verify, and why — or "none">
@@ -19,7 +19,8 @@ NOT CHECKED: <what the task asked for that you could not verify, and why — or 
 STATUS semantics — exactly one applies:
 - pass: every command run exited 0, or the collection completed (including zero matches).
 - fail: a command exited non-zero.
-- NOT RUN: you could not or would not execute; the reason goes in NOT CHECKED.
+- NOT RUN: nothing executed — you could not or would not; the reason goes in NOT CHECKED.
+- STATUS covers only what executed: when some commands ran and others could not, STATUS is pass/fail over the ones that ran and the rest are reported under NOT CHECKED, never by downgrading STATUS.
 
 ## Evidence rules
 

@@ -4,7 +4,7 @@ description: Orchestrate a software change from intent to verified candidate. Us
 license: CC-BY-NC-4.0
 metadata:
   author: enniolopes@gmail.com
-  version: 0.4.0
+  version: 0.5.0
 disable-model-invocation: true
 argument-hint: '<goal>'
 ---
@@ -28,8 +28,8 @@ Read `reference/protocol.md` before creating or updating the Change. Read `refer
 7. The Change Contract must be sufficient for the current slice: intent/outcome, scope/non-goals, relevant evidence, resolved decisions, architecture constraints, expected/forbidden delta, implementation boundaries, proof obligations, risk, and authority.
 8. Execute in bounded slices. Scope expansion, risk escalation, target drift, invalidated assumptions, changed architecture class, or changed authority stops the current slice and returns to inspection/decision.
 9. The implementer is not the sole authority for proving its own behavioral/material change when independent verification is warranted.
-10. A missing capability degrades explicitly to a handoff or `NOT_VERIFIED`; never pretend another skill, agent, command, or check ran.
-11. `NO_CHANGE`, `BLOCKED`, `NOT_VERIFIED`, and `INVALID_TARGET` are valid outcomes. Never optimize for producing a diff.
+10. A missing capability degrades explicitly to a handoff or `NOT_VERIFIED`; never pretend another skill, agent, command, or check ran. A capability is invocable only when it appears in this turn's available tools/skills — anything else is missing.
+11. `NO_CHANGE` (evidence shows the behavior already holds or the defect is outside the repository), `BLOCKED` (missing authority, decision, or evidence), `NOT_VERIFIED` (required proof unobtainable), and `INVALID_TARGET` (target identity insufficient or drifted) are valid outcomes. Never optimize for producing a diff.
 12. Tool availability is not authorization. Never exceed the Change authority ceiling merely because the host exposes an action.
 
 ## Lifecycle
@@ -38,7 +38,7 @@ Read `reference/protocol.md` before creating or updating the Change. Read `refer
 
 First classify the request: if it asks for assessment of existing repository state (audit, health, or quality review) and no change, it is Guardian's work — route to `/guardian audit` when the host can invoke it, otherwise emit that handoff explicitly and stop (invariant 10). A mixed request proceeds as a Change; its assessment component remains ASSURE-stage work.
 
-Convert `$ARGUMENTS` into the smallest useful Change: problem/current state, desired outcome, scope, non-goals, acceptance claims, known constraints, unknowns, and known authority. Discover what repository/source evidence can answer before asking the user.
+Convert `$ARGUMENTS` into the smallest useful Change: problem/current state, desired outcome, scope, non-goals, acceptance claims, known constraints, unknowns, and known authority. If `$ARGUMENTS` is empty, ask for the goal and stop. Discover what repository/source evidence can answer before asking the user.
 
 ### 2. INSPECT
 

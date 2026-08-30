@@ -4,7 +4,7 @@ description: Design or revise software architecture when a change is architectur
 license: CC-BY-NC-4.0
 metadata:
   author: enniolopes@gmail.com
-  version: 0.2.0
+  version: 0.3.0
 argument-hint: '<system|change|architecture question>'
 ---
 
@@ -79,16 +79,8 @@ boundaries_and_ownership:
 contracts_and_dependencies:
 repository_topology:
 failure_security_and_operations:
-decisions:
-  - context:
-    alternatives:
-    decision:
-    properties_favored:
-    costs_and_tradeoffs:
-    assumptions:
-    evidence_expected:
-    revise_when:
-enforcement_and_evidence:
+decisions:                  # one Cross-phase decision record per material decision — fields owned by reference/method.md, never restated here
+enforcement_and_evidence:   # one P5 property record per critical property — fields owned by reference/method.md
 implementation_constraints:
 blocking_decisions:
 residual_risk:

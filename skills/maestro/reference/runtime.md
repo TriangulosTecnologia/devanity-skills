@@ -137,7 +137,7 @@ Implementation is `READY` only when the current slice has a sufficient Change Co
 - relevant stable repository/domain knowledge has been located rather than reinvented;
 - architecture is A0/A1 with evidence or A2 resolved;
 - high-risk membership is known;
-- no blocking human/external Decision remains;
+- no blocking human/external Decision (shape: `reference/protocol.md`) remains;
 - expected and forbidden delta are bounded;
 - implementation placement/ownership is clear enough to avoid architectural guessing;
 - a proof strategy exists for every material claim;
@@ -165,6 +165,8 @@ claim
 -> method
 -> evidence
 ```
+
+Each proof obligation's `oracle` names the existing check it relies on, or states `none found` when a new oracle had to be created — the preference for existing checks becomes visible in the record.
 
 Prefer the cheapest reliable method:
 
@@ -276,7 +278,7 @@ Verifier outcomes:
 - `NOT VERIFIED` — required evidence could not safely or adequately be obtained;
 - `INVALID TARGET` — target drift makes supplied evidence non-reconcilable.
 
-FAILED returns to EXECUTE if the contract remains valid. Invalid assumptions return to INSPECT.
+FAILED returns to EXECUTE if the contract remains valid. Invalid assumptions return to INSPECT. NOT VERIFIED returns to PROVE when the missing evidence can still be safely obtained, otherwise stands as the visible terminal state (invariant 10). VERIFIED proceeds to ASSURE.
 
 ## 13. Guardian assurance and durable promotion
 
@@ -295,7 +297,7 @@ Do not require a repository to become ideal before a bounded change can ship.
 If tests, topology, boundaries, or instructions are weak:
 
 - state reduced assurance explicitly;
-- introduce the smallest regression harness needed for current behavior when proportional;
+- introduce the smallest regression harness needed for current behavior when proportional, or state why it was judged disproportionate;
 - constrain scope more tightly;
 - preserve unknown residual integration risk;
 - let Guardian surface structural improvement separately.

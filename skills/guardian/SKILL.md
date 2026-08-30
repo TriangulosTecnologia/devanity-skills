@@ -4,7 +4,7 @@ description: Guard and improve a repository's AI-readiness. Run /guardian plan, 
 license: CC-BY-NC-4.0
 metadata:
   author: enniolopes@gmail.com
-  version: 0.24.0
+  version: 0.25.0
 disable-model-invocation: true
 argument-hint: 'plan|review|audit|improve|docs [task|path|finding|surface]'
 ---
@@ -46,7 +46,7 @@ Every mode sits on one axis — **DIAGNOSE** or **ACT** — stated once here; mo
 5. No style-only blocking.
 6. No documentation for its own sake.
 7. No high-risk autonomy (any change in the high-risk class → propose, don't act).
-8. Convert recurring findings into durable structure.
+8. Convert recurring findings into durable structure (recurring: the 3-point threshold, `reference/basis-form.md`; target: the stewardship ladder, `reference/methodology.md`).
 9. Never codify a bad or imprecise rule.
 10. Report a check result only from a command or read run in this session; otherwise write `NOT RUN` + reason. Negative and completeness claims ("no X", "reviewed N/N", "nothing else") are check results — name what was run that could have falsified them.
 11. Prefer the dominant fix over the trade; never apply a trade autonomously (Fix classification below).
@@ -59,7 +59,7 @@ Every mode sits on one axis — **DIAGNOSE** or **ACT** — stated once here; mo
 
 ## Argument parsing
 
-Arguments: `$ARGUMENTS`. Route by the first whitespace-delimited token:
+Arguments: `$ARGUMENTS`. Route by the first whitespace-delimited token; rules are evaluated in listed order and the first match wins:
 
 1. Token is a mode (`plan|review|audit|improve|docs`) → run it; the remaining tokens are its argument.
 2. No arguments: a git diff exists → `review`; none → ask for a mode.
@@ -67,7 +67,7 @@ Arguments: `$ARGUMENTS`. Route by the first whitespace-delimited token:
 4. Unknown arguments containing a finding reference (rule 7 defines it) or a pasted finding → state the `improve <ref>` interpretation and confirm before acting — only a literal mode token authorizes an ACT write. Otherwise, if they read as a task → run `plan` on them and state that assumption; if neither, ask.
 5. `review`: an optional path narrows the diff.
 6. `audit`: requires a bounded scope (path/package/domain) — ask if missing.
-7. `improve`: requires one finding reference — the durable key, or (in-session) an unambiguous suffix of it or a `G-NNN` alias — ask if missing.
+7. `improve`: requires one finding reference — the durable key, or (in-session) an unambiguous suffix of it or a `G-NNN` alias — ask if missing; an alias or suffix that cannot be resolved against this session's history is treated as missing, never guessed.
 8. `docs`: the second token selects the submode **only when it is one of** `review|improve`; otherwise the submode is `review` and that token begins the target surface. The target is optional for `review` — a file path diagnoses that surface; a directory path runs the full-review contract bounded to the surfaces beneath it; without one, run the **full review** of every instruction surface (`modes/docs.md`) — and a file path is required for `improve` (ask if missing).
 
 ## Tool policy
@@ -116,10 +116,10 @@ Behavioral invariants live in this file (always loaded). Read each file below re
 | Mode    | Read                                                                                                                                                                         |
 | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | plan    | `reference/basis-form.md`, `reference/baseline.md`, `reference/format.md`, `modes/plan.md`; `reference/methodology.md` (stewardship + quantifier audit), `reference/bindings.md` (menus) |
-| review  | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/format.md`, `modes/review.md`; `reference/bindings.md` (menus; fresh-context pass) |
+| review  | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/format.md`, `modes/review.md`; `reference/bindings.md` (menus; fresh-context pass), `modes/plan.md` (a session plan covers this diff) |
 | audit   | `reference/basis-form.md`, `reference/baseline.md`, `reference/methodology.md`, `reference/enforcement.md`, `reference/bindings.md`, `reference/format.md`, `modes/audit.md` |
 | improve | `reference/basis-form.md`, `reference/baseline.md`, `reference/enforcement.md`, `reference/format.md`, `modes/improve.md`; `reference/bindings.md` (menus), `reference/methodology.md` (self-review) |
-| docs    | `reference/basis-form.md`, `reference/methodology.md`, `reference/baseline.md`, `reference/bindings.md`, `reference/format.md`, `modes/docs.md`                              |
+| docs    | `reference/basis-form.md`, `reference/methodology.md`, `reference/baseline.md`, `reference/bindings.md`, `reference/format.md`, `modes/docs.md`; `reference/enforcement.md` (full review: enforced/prose-only dispositions) |
 
 Platform mechanics live in `reference/bindings.md` — the primary file to swap when porting to another coding agent.
 
