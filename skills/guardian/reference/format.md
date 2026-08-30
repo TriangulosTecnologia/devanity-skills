@@ -22,7 +22,7 @@ Headline axes, in order — each judges a different thing; the axes never mix:
 - **Fix-class** `dominant|trade` — judges the fix; always present, adjacent to severity but a distinct axis (`SKILL.md` Fix classification).
 - **`G-NNN`** — a session-local **alias** for the durable key, which is the canonical identity. Numbering continues across runs within a session — never restart at `G-001`. A stale or cross-session `G-NNN` does not resolve: use the full key — a suffix resolves only while the session's finding list is live to match it against (`modes/improve.md` step 1).
 - **Dimension** — exactly one of the slugs in `reference/methodology.md`; the only lens tag (a basis-form test name is never a finding tag).
-- **Rung** — the target ladder rung: `enforcement|path-scoped-context|procedure|prose` (`prose` is the human-review rung — a rule stated only in words).
+- **Rung** — the target ladder rung: `enforcement|path-scoped-context|procedure|prose` (`prose` is the human-review rung — a rule stated only in words). The collapse from the stewardship surfaces to these four tags lives in `reference/methodology.md`.
 
 Detail tier fields:
 
@@ -35,9 +35,10 @@ Detail tier fields:
 
 ```txt
 - [P2][trade][G-007][pattern-hygiene][prose] Title — Key: <path>:<symbol>:<dimension>:<rule>
+- [P2][dominant][G-008][verification-loop][enforcement] Title — Key: <path>:<symbol>:<dimension>:<rule> — basis: <what was checked>
 ```
 
-Exception: a one-line **dominant** also carries its check inline (`— basis: <what was checked>`); without that clause the class is trade.
+Exception: a one-line **dominant** also carries its check inline (`— basis: <what was checked>`, second example above); without that clause the class is trade.
 
 The two forms are **exclusive**: a full-form headline opens **and closes** its bold and carries each mandatory field as its own nested list item, exactly once — extra nested items are fine (`review` lists instances under Evidence); a one-line object keeps every field on its headline and grows no nested item at all. The source repo's CI holds that boundary on the skill's **own** example blocks; nothing observes a run's emitted output, here or in a target repo, so at runtime the form is yours to keep. Likewise for decisions — `blocking` always renders full-form, `dormant` always one line. The detail tier is the indented block immediately below the headline, so no object can borrow a field from what follows it.
 
@@ -59,7 +60,7 @@ The block transfers the **decision space, not the case**: it must be decidable f
 ```
 
 - **Status** — `blocking`: owed this run; its `if undecided:` names the fate (verdict stays BLOCK, re-fires on the next run, or is proposed for tracker promotion as an open decision — the same promotion rule findings use). `dormant`: explicitly allowed to sleep — a deferred trade or a P2/P3 opportunity; its `if undecided:` is its activation condition (`worth doing when <pain observed>`). Deciding "defer" converts a blocking decision into a dormant one-liner.
-- **Kind** — `rule` (a recurring rule or product intent — a yes resolves to `<rule> → codify at <surface>`), `trade` (a fix-class trade confirmation), `acceptance` (a human taking on a risk Guardian will not assume on its own authority — an unfixed P0/P1, or exposure from an action such as running untrusted code; record who/what/why and any compensating control. Accepting a finding additionally sets `PASS_WITH_ACCEPTED_RISK` and owes a follow-up/expiry; accepting an action records the residual exposure, since confirmation is acceptance, not containment — `reference/bindings.md`), `scope` (what falls inside or outside this run's unit — routing, submode, an audit sub-scope, or absorbing an unexpected change into an approved unit).
+- **Kind** — `rule` (a recurring rule or product intent — a yes resolves to `<rule> → codify at <surface>`), `trade` (a fix-class trade confirmation), `acceptance` (a human taking on a risk Guardian will not assume on its own authority — an unfixed P0/P1, or exposure from an action such as running untrusted code; record who/what/why and any compensating control. Accepting a finding additionally sets `PASS_WITH_ACCEPTED_RISK` and owes a follow-up/expiry; accepting an action records the residual exposure, since confirmation is acceptance, not containment — `reference/bindings.md`), `scope` (what falls inside or outside this run's unit — routing, submode, an audit sub-scope, or absorbing an unexpected change into an approved unit). When both `trade` and `acceptance` describe one stop, `acceptance` wins: owed residual risk decides the kind.
 - **G-numbering is shared with findings** — one session sequence, so `improve G-NNN` and a decision answer never collide.
 - **Anchor, don't repeat**: a decision riding on a finding cites it (`anchors G-NNN`) and adds only what the finding lacks — the rule-level question, the options with consequences, the recommendation, the fate. Evidence stays in the finding's `why:`.
 - **One-line dormant form**: `- [DECIDE][dormant][G-###][trade] Title — worth doing when <pain observed> — anchors <Key>`.

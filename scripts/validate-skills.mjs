@@ -69,7 +69,7 @@ const estimateTokens = (s) => {
 // counts stayed green throughout. The honest mechanism is a ratchet, not a cap: the budget sits at
 // the last deliberate size, and the PR that grows the skill raises it in the same diff — growth
 // stays possible and stops being free. Lowering it after a trim is the same deliberate act.
-export const SKILL_TOTAL_BUDGETS = { archer: 20000, guardian: 129000, maestro: 36000 }; // chars, every file under skills/<name>/
+export const SKILL_TOTAL_BUDGETS = { archer: 20000, guardian: 132809, maestro: 37500 }; // chars, every file under skills/<name>/
 export function checkSkillTotal(skillsDir, budgets) {
   const errors = [];
   const sizeOf = (d) => readdirSync(d).reduce((n, f) => {

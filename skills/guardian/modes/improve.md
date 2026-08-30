@@ -16,7 +16,7 @@ Then fix:
 
 The first two partition the space; the third cuts across both, so it takes precedence when it applies: a finding that is a basis-form migration **and** mechanizable migrates first and codifies after, because a check written against the case-list outlives the cases it was meant to remove.
 
-**Oracle before fix.** When the unit adds or alters an **oracle** — anything whose job is to fail when the contract breaks: a test, type, schema, validator or lint rule, coverage threshold, CI gate — write the oracle **first** and run the focused check to watch it **fail against the unfixed code**, before writing the correction. An oracle nobody has seen fail is not an oracle, and one written after the code it judges cannot be told apart from one shaped to pass it. This is the mode that writes, so it is where that confusion is most expensive; the order removes it at no extra cycle, since the check has to run anyway. Three outcomes — only the second ends the unit here, and only the first continues without a human:
+**Oracle before fix.** When the unit adds or alters an **oracle** — anything whose job is to fail when the contract breaks: a test, type, schema, validator or lint rule, coverage threshold, CI gate — write the oracle **first** and run the focused check to watch it **fail against the unfixed code**, before writing the correction. An oracle nobody has seen fail is not an oracle, and one written after the code it judges cannot be told apart from one shaped to pass it. This is the mode that writes, so it is where that confusion is most expensive; the order removes it at no extra cycle, since the check has to run anyway. Three outcomes — red and a manufactured deliberate violation continue without a human; green-where-red-expected and `NOT FALSIFIED` stop:
 
 - **red** → the oracle discriminates. Write the correction, re-run, expect green.
 - **green where red was expected** → the oracle does not test the thing. Stop before writing the correction; the oracle is the unit now.
@@ -26,7 +26,7 @@ An erroring or crashing run is none of the three: it decides nothing about the o
 
 For a `verification-loop:missing-test` finding the red run is also the strongest available form of step 3: the violation is re-verified by the oracle failing on it, not by inspection.
 
-**Classification order when the unit carries an oracle.** The class gates the ACT stop and the oracle's outcome can change it, so: classify **provisionally before any write**; a provisional *trade* stops there, before the oracle exists. A provisional *dominant* writes the oracle and runs it — the oracle is the instrument the decision needs, not the patch the stop is about — and a `NOT FALSIFIED` outcome makes the class *trade*, which stops before the correction. The stop always precedes the correction, and only the **trade-classification** stop may come after the oracle — every other stop (high-risk class, new dependency, hook/CI change; Core rule 7, Action axis) precedes **every** write, the oracle included.
+**Classification order when the unit carries an oracle.** The class gates the ACT stop and the oracle's outcome can change it, so: classify **provisionally before any write**; a provisional *trade* stops there, before the oracle exists. A provisional *dominant* writes the oracle and runs it — the oracle is the instrument the decision needs, not the patch the stop is about — and a `NOT FALSIFIED` outcome makes the class *trade*, which stops before the correction. The stop always precedes the correction, and only the **trade-classification** and **green-where-red-expected** stops may come after the oracle — every other stop (high-risk class, new dependency, hook/CI change; Core rule 7, Action axis) precedes **every** write, the oracle included.
 
 Rules: one finding only; small patch; add/update verification if behavior changes; never mix feature work with repo-health cleanup; high-risk guard: Core rule 7; classify the fix before writing, per the order above (`SKILL.md` Fix classification) — a trade stops per the Action axis and renders its confirmation as a `[DECIDE][blocking][G-###][trade]` block (SKILL Decisions), the proposed patch beneath it. A structural change (many files or redrawn boundaries) is not one `improve`: run `plan`, then execute it as an ordered sequence of contained, verified `improve` steps.
 
@@ -37,7 +37,7 @@ Rules: one finding only; small patch; add/update verification if behavior change
 
 ### Ladder rung targeted enforcement | path-scoped-context | procedure | prose
 
-### Files changed oracle: <the files whose job is to fail> · implementation: <the rest> — listed apart so the oracle diff can be read on its own
+### Files changed oracle: <the files whose job is to fail> (`oracle: n/a` when the unit carries none) · implementation: <the rest> — listed apart so the oracle diff can be read on its own
 
 ### Why this improves the AI Repo
 

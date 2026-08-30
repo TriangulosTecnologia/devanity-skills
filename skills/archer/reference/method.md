@@ -1,6 +1,6 @@
 # ARCHER method
 
-ARCHER is a six-phase architecture method. The phases are ordered by dependency, not ceremony. Skip depth that cannot affect a decision; never skip an unresolved class of information that a later decision depends on.
+ARCHER is a six-phase architecture method. The phases are ordered by dependency, not ceremony. Skip depth that cannot affect a decision; never skip an unresolved class of information that a later decision depends on — anything skipped is named in a one-line `Skipped:` register with its reason, since silence is not a disposition. Each phase closes with a literal `Gate: PASS` or `Gate: FAIL — <unmet criterion>` line in the run's output.
 
 ## P1 — Align
 
@@ -32,6 +32,8 @@ measure:
 criticality:
 owner:
 ```
+
+**Critical**, here and in every later gate, means: a driver or property whose scenario record above carries a high `criticality:` or a hard constraint — the word never floats free of that record.
 
 **Gate:** no critical driver is undispositioned; purpose, boundary, non-goals, authority, and critical properties are explicit enough to constrain later choices.
 
@@ -223,7 +225,7 @@ enforcement:
 evidence_expected:
 revise_when:
 authority:
-status:
+status:      # the P2 epistemic-status vocabulary
 ```
 
 Do not manufacture alternatives after deciding. If there was one forced solution, state the constraint that forced it.

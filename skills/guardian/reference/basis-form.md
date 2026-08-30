@@ -13,7 +13,7 @@ Its projections are the dimensions (`methodology.md`) and its consequences are t
 
 ## Two directions of failure (both violate basis-form)
 
-- **Case-enumeration** (under-abstraction): a point-list where an axis exists — a `switch`/`if` per case, copy-paste, hardcoded variants. Migrate case→basis **only when the axis is already visible** (≈3 concrete points) and the migration reduces blast radius or ambiguity.
+- **Case-enumeration** (under-abstraction): a point-list where an axis exists — a `switch`/`if` per case, copy-paste, hardcoded variants. Migrate case→basis **only when the axis is already visible** (3 or more concrete points) and the migration reduces blast radius or ambiguity.
 - **Empty axis** (over-abstraction): a basis vector added before its span exists — a generic wrapper/framework/config with no concrete consumer. It spans a space with no points. Collapse it back to cases until the axis reappears.
 
 Never create an axis speculatively; never leave a visible axis as cases. This guardrail is intrinsic to basis-form, not borrowed from any repo.
@@ -31,17 +31,17 @@ Every finding is tagged with exactly one **dimension** (the operational lens; th
 
 Don't over-collapse (these are *not* redundant): `compressibility` sits under orthogonal, and duplication (irreducible's check) also drains it — but the tag follows the **cause**, never the impact: duplication evidence always tags irreducible's dimensions (`debt-containment` for code/config/scripts, `instruction-hygiene` for instruction surfaces); the compressibility drain belongs in `why:` as a consequence. The dimension is part of the durable key, so classification must be a deterministic function of the evidence — the same duplication in two runs must produce the same key, or recurrence tracking counts one problem as two. `decodable` has no general check — "clever/over-compressed" is judgment; never invent a clever-code lint. `executable-spec` (the contract exists) and `verification-loop` (a check runs fast, is discoverable, and can actually fail) both survive under spanning. The two migration directions stay distinct because their fixes are **opposite**: case-enumeration (under-abstraction → migrate case→basis, tag `pattern-hygiene`) vs empty-axis (over-abstraction → collapse axis→cases, tag `compressibility`).
 
-The last column is why a diff alone rarely decides a dimension: both directions of basis-form drift are properties of the space, not of the change — case-enumeration needs the instance count (the ≈3-point threshold above), an empty axis needs the absence of consumers. What counts as having checked a dimension follows from it (`methodology.md` Sufficiency rule).
+The last column is why a diff alone rarely decides a dimension: both directions of basis-form drift are properties of the space, not of the change — case-enumeration needs the instance count (the 3-point threshold above), an empty axis needs the absence of consumers. What counts as having checked a dimension follows from it (`methodology.md` Sufficiency rule).
 
 The essence — are these the domain's true axes? — is judgment; propose it, let the human confirm at the edges. The syndromes are mechanizable: promote each into the repo's own enforcement (`enforcement.md`). The instruction-side parallel of these checks — the instruction-artifact syndromes — lives in `methodology.md`.
 
-Properties are consequences, framing only: compressible ← orthogonal + irreducible; contractual ← spanning captured in types/schemas; verifiable ← spanning + enforcement; safe ← off-axis points quarantined — safety-relevant exceptions and off-axis behavior become **explicit, bounded, and easier to verify**. That is the whole claim: basis-form makes deviations detectable; it never certifies that a contract is itself correct or safe (Core rule 9 — never codify a bad rule — exists precisely because form does not establish merit).
+Properties are consequences, framing only: compressible ← orthogonal + irreducible; contractual ← spanning captured in types/schemas; verifiable ← spanning + enforcement; safe ← off-axis points quarantined — safety-relevant exceptions and off-axis behavior become **explicit, bounded, and easier to verify**. That is the whole claim: basis-form makes deviations detectable; it never certifies that a contract is itself correct or safe (Core rule 9 — never codify a bad or imprecise rule — exists precisely because form does not establish merit).
 
 ## Surfaces (basis-form applies uniformly)
 
 - **structure** — folders are axes, files are points; "where does X go?" and "what do I change for Y?" have one obvious answer.
 - **code / scripts** — functions, parameters, and types over branches, duplication, and partial cases.
-- **instructions** — the repo's instruction surfaces (per `bindings.md`) must themselves be written in basis-form (axes, not case-lists). Where a basis-form rule belongs in a durable surface and is missing, **propagate it there** (write it), then promote its syndrome to enforcement where one exists. An evidenced rule's span already exists — its points are the observed decisions — so writing its surface is propagation, never an empty axis; the empty-axis guardrail forbids only a surface for a rule with no evidence yet.
+- **instructions** — the repo's instruction surfaces (per `bindings.md`) must themselves be written in basis-form (axes, not case-lists). Where a basis-form rule belongs in a durable surface and is missing, **propagate it there** (write it), then promote its syndrome to enforcement where one exists — when none exists, record `no enforcement available: <reason>` rather than staying silent. An evidenced rule's span already exists — its points are the observed decisions — so writing its surface is propagation, never an empty axis; the empty-axis guardrail forbids only a surface for a rule with no evidence yet.
 
 ## How Guardian applies it
 

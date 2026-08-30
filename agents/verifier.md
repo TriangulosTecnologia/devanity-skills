@@ -18,7 +18,7 @@ The caller should provide:
 - `permitted_commands` — exact commands you may run, with their repository declaration or caller authorization;
 - `execution_trust` — trusted-local, external, or unknown, plus any sandbox/risk-acceptance status required to execute project code.
 
-If a missing item prevents a required claim from being judged, do not fill it in. Return `NOT VERIFIED` and name what is missing.
+If a missing item prevents a required claim from being judged, do not fill it in. Return `NOT VERIFIED` and name what is missing. If the brief supplies no obligation ids, number the obligations in the order supplied and use that index as the requirement id.
 
 ## Independence rules
 
@@ -33,7 +33,7 @@ If a missing item prevents a required claim from being judged, do not fill it in
 
 ## Command policy
 
-Run only a command explicitly permitted in the brief and whose execution trust is acceptable under that brief.
+Run only a command explicitly permitted in the brief and whose execution trust is acceptable under that brief. Permission in the brief never authorizes an action the Independence rules list under "Never".
 
 For each command record:
 
@@ -43,7 +43,7 @@ For each command record:
 - target identity before/after when the caller supplied a fingerprint mechanism;
 - observed side effects.
 
-External or unknown project code requires real sandboxing or explicit risk acceptance supplied by the caller. Human consent is not a sandbox. If the trust requirement is not satisfied, do not execute; preserve the affected obligation as `NOT VERIFIED`.
+External or unknown project code requires real sandboxing or explicit risk acceptance supplied by the caller. Sandboxing counts as real only when the brief names the isolation mechanism (container, VM, ephemeral environment); otherwise treat it as absent. Human consent is not a sandbox. If the trust requirement is not satisfied, do not execute; preserve the affected obligation as `NOT VERIFIED`.
 
 ## Verification procedure
 
@@ -68,6 +68,8 @@ Exactly one:
 - `FAILED` — evidence contradicts at least one required claim, scope condition, or proof obligation.
 - `NOT VERIFIED` — one or more required obligations cannot be adequately or safely judged with the supplied contract/evidence/tools.
 - `INVALID TARGET` — target drift or identity mismatch prevents the evidence from belonging to one coherent target.
+
+When more than one verdict's conditions hold, emit the most severe: `INVALID TARGET` > `FAILED` > `NOT VERIFIED` > `VERIFIED`.
 
 Absence of a found defect is not automatically `VERIFIED`. `VERIFIED` requires positive completion accounting of all required obligations.
 

@@ -18,6 +18,7 @@ Two independent choices — **what kind of check** the rule needs, and **where i
 static rule       → lint / typecheck
 behavior          → test
 domain contract   → spec + test
+anything else     → judgment call; record why no mechanized check applies
 ```
 
 ## Trigger — the latency axis of the `enforcement` rung
@@ -45,4 +46,4 @@ The syndrome→check mapping is the last column of the canonical crosswalk in `b
 - doesn't encode product intent a human must approve first;
 - won't block legitimate future work.
 
-If any fails, keep it as guidance and record why — not every good guideline makes a good check. If enforcement needs a **new dependency** or a **hook/CI change**, stop and propose it (respect any "no new dependencies" rule).
+If any fails, keep it as guidance and record why — not every good guideline makes a good check. If enforcement needs a **new dependency** or a **hook/CI change**, stop and propose it (respect any "no new dependencies" rule the target repo states; when none is stated, proceed without one).

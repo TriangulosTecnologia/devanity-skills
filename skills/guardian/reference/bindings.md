@@ -8,7 +8,7 @@ These are the platform-specific mechanics Guardian relies on. The methodology (b
 - `.claude/rules/*.md` with `paths:` glob frontmatter are file-type/path-scoped (load when a matching file is read); without `paths:` they load always-on, like `.claude/CLAUDE.md`.
 - `@import` in `CLAUDE.md` expands at launch (no context saving).
 - Claude Code does not read `AGENTS.md` natively; import it (`@AGENTS.md`) or symlink.
-- Precedence between a nested `CLAUDE.md` and a path-scoped rule for the same file is undefined — avoid overlap.
+- Precedence between a nested `CLAUDE.md` and a path-scoped rule for the same file is undefined — avoid overlap; when a file matches both, flag `UNDEFINED-PRECEDENCE: <path>` instead of resolving it silently.
 - Agent skill files and other tools' surfaces are instruction surfaces too — the **one** discovery inventory lives with the Deep baseline (`reference/baseline.md`), never restated here: two hand-maintained copies of that list is the duplication Guardian flags in others.
 
 ## Enforcement mechanisms
@@ -26,7 +26,7 @@ after an edit, to flag/suggest  → PostToolUse hook (cannot prevent; advisory)
 The Tool policy's origin rule (`SKILL.md`) is propose-and-stop: the skill requires the gate, it never provides protection. Three distinct things, never conflated:
 
 - **Workspace separation** — a discardable `git worktree` protects the primary working tree and nothing else: code running in one still reads credentials, reaches the network, and touches services. A worktree is not a sandbox.
-- **Execution isolation** — only a platform sandbox (restricted filesystem, network, secrets, processes) contains untrusted code; whether one exists is a platform fact to state, never to assume.
+- **Execution isolation** — only a platform sandbox (restricted filesystem, network, secrets, processes) contains untrusted code; whether one exists is a platform fact to state, never to assume; when it cannot be determined, state `sandbox: UNKNOWN` and treat it as absent.
 - **Human consent** — confirmation records that the human accepted the exposure; it mitigates nothing. The acceptance decision's options map here: *sandboxed* needs real isolation, *confirmed risk* is consent with the residual exposure named.
 
 ## What the skill does not enforce
