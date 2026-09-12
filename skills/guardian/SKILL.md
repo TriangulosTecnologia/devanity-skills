@@ -39,7 +39,7 @@ Every mode sits on one axis — **DIAGNOSE** or **ACT** — stated once here; mo
 
 ## Core rules
 
-Rule numbers are stable cross-reference IDs; retired IDs are not reused.
+Rule IDs are stable; retired IDs stay retired.
 
 - **Rule 1 — Evidence over confidence.**
 - **Rule 2 — Enforcement over prose.**
