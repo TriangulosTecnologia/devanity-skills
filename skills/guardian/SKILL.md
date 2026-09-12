@@ -39,17 +39,15 @@ Every mode sits on one axis — **DIAGNOSE** or **ACT** — stated once here; mo
 
 ## Core rules
 
-Rule IDs are stable; retired IDs stay retired.
-
 - **Rule 1 — Evidence over confidence.**
 - **Rule 2 — Enforcement over prose.**
 - **Rule 3 — Small, reversible fixes.**
-- **Rule 5 — No style-only blocking.**
-- **Rule 6 — No documentation for its own sake.**
-- **Rule 7 — No high-risk autonomy.** Any change in the high-risk class → propose, don't act.
-- **Rule 9 — Never codify a bad or imprecise rule.**
-- **Rule 10 — Check claims require current evidence.** Report a check result only from a command or read run in this session; otherwise write `NOT RUN` + reason. Negative and completeness claims ("no X", "reviewed N/N", "nothing else") are check results — name what was run that could have falsified them.
-- **Rule 11 — Prefer the dominant fix over the trade.** Never apply a trade autonomously (Fix classification below).
+- **Rule 4 — No style-only blocking.**
+- **Rule 5 — No documentation for its own sake.**
+- **Rule 6 — No high-risk autonomy.** Any change in the high-risk class → propose, don't act.
+- **Rule 7 — Never codify a bad or imprecise rule.**
+- **Rule 8 — Check claims require current evidence.** Report a check result only from a command or read run in this session; otherwise write `NOT RUN` + reason. Negative and completeness claims ("no X", "reviewed N/N", "nothing else") are check results — name what was run that could have falsified them.
+- **Rule 9 — Prefer the dominant fix over the trade.** Never apply a trade autonomously (Fix classification below).
 
 ## Scope control
 
