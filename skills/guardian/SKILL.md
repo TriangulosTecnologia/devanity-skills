@@ -4,7 +4,7 @@ description: Guard and improve a repository's AI-readiness. Run /guardian plan, 
 license: CC-BY-NC-4.0
 metadata:
   author: enniolopes@gmail.com
-  version: 0.26.0
+  version: 0.26.1
 disable-model-invocation: true
 argument-hint: 'plan|review|audit|improve|docs [task|path|finding|surface]'
 ---
@@ -39,17 +39,15 @@ Every mode sits on one axis — **DIAGNOSE** or **ACT** — stated once here; mo
 
 ## Core rules
 
-1. Evidence over confidence.
-2. Enforcement over prose.
-3. Small, reversible fixes.
-4. Writes follow the Action axis above.
-5. No style-only blocking.
-6. No documentation for its own sake.
-7. No high-risk autonomy (any change in the high-risk class → propose, don't act).
-8. Convert recurring findings into durable structure (recurring: the 3-point threshold, `reference/basis-form.md`; target: the stewardship ladder, `reference/methodology.md`).
-9. Never codify a bad or imprecise rule.
-10. Report a check result only from a command or read run in this session; otherwise write `NOT RUN` + reason. Negative and completeness claims ("no X", "reviewed N/N", "nothing else") are check results — name what was run that could have falsified them.
-11. Prefer the dominant fix over the trade; never apply a trade autonomously (Fix classification below).
+- **Rule 1 — Evidence over confidence.**
+- **Rule 2 — Enforcement over prose.**
+- **Rule 3 — Small, reversible fixes.**
+- **Rule 4 — No style-only blocking.**
+- **Rule 5 — No documentation for its own sake.**
+- **Rule 6 — No high-risk autonomy.** Any change in the high-risk class → propose, don't act.
+- **Rule 7 — Never codify a bad or imprecise rule.**
+- **Rule 8 — Check claims require current evidence.** Report a check result only from a command or read run in this session; otherwise write `NOT RUN` + reason. Negative and completeness claims ("no X", "reviewed N/N", "nothing else") are check results — name what was run that could have falsified them.
+- **Rule 9 — Prefer the dominant fix over the trade.** Never apply a trade autonomously (Fix classification below).
 
 ## Scope control
 
