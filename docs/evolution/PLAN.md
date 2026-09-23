@@ -18,7 +18,7 @@ Convenções:
 
 | id | Tarefa | Critério de aceite | Status |
 |---|---|---|---|
-| F0.1 | Portar `run.py`, `tasks.py`, `judge.py`, `complete.py` do ponytail (MIT, atribuição no cabeçalho) para `evals/harness/`; remover o que é específico do ponytail | `--selftest` verde; `--rescore` funciona num run preservado | todo |
+| F0.1 | Portar `run.py`, `tasks.py`, `judge.py`, `complete.py` do ponytail (MIT, atribuição no cabeçalho) para `evals/harness/`; remover o que é específico do ponytail | `--selftest` verde; `--rescore` funciona num run preservado | done (PR pendente; selftest 28/28, rescore verificado em run sintético; arms declarados, tier switch com guarda de container) |
 | F0.2 | Braços: `baseline`, `ponytail` (plugin real via `--plugin-dir`), `devanity-current` (três skills atuais como plugin), `devanity-kernel` (placeholder vazio até F1), `devanity-kernel+ponytail` | teste de contaminação prova que o baseline não recebe hook de nenhum plugin | todo |
 | F0.3 | Fixture: script que clona `full-stack-fastapi-template @ cd83fc1` para `evals/harness/fixtures/` (gitignored) ou lê `DEVANITY_TMPL` | `--selftest` falha alto se a fixture não existe | todo |
 | F0.4 | As 12 tarefas de tamanho e as 7 de segurança do ponytail, inalteradas | scorers passam `good`, reprovam `bad` | todo |
@@ -28,7 +28,7 @@ Convenções:
 | F0.8 | `evals/harness/README.md`: como reproduzir, o que pode e não pode mostrar (molde do ponytail) | revisor consegue rodar do zero seguindo só o README | todo |
 | F0.9 | Dois tiers de execução: *tamanho* sem Bash; *comportamento* com Bash dentro de container descartável (Dockerfile no harness, sem rede além da API) | `--selftest` recusa rodar o tier de comportamento fora do container | todo |
 | F0.10 | Tarefas de vibecoding e longo horizonte (SPEC §9.1b): `vibe-app-cli`, `vibe-app-web`, `vibe-autonomous-billing`, `long-3-tickets`, `long-compact`; scorers de `drift` e `queue_correct` | `good`/`bad` provados; `long-compact` força compactação de forma reproduzível | todo |
-| F0.11 | Cabeçalho de atribuição MIT em todo arquivo portado do ponytail | grep no CI | todo |
+| F0.11 | Cabeçalho de atribuição MIT em todo arquivo portado do ponytail | grep no CI | doing (cabeçalhos e `LICENSE-ponytail` prontos em F0.1; falta o grep no CI) |
 | F0.12 | Rodada de referência: 5 braços × Sonnet × `n=2` × todas as tarefas; writeup `evals/results/<data>-baseline.md` com custo e duração medidos | writeup commitado com limitações listadas; orçamento da fase 1 derivado do custo medido | todo |
 
 **Não fazer nesta fase:** escrever uma linha do kernel; alterar qualquer skill; otimizar custo do harness antes de ele funcionar.
