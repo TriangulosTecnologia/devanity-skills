@@ -26,7 +26,10 @@ Convenções:
 | F0.6 | Métricas novas no scorer: `false_ready`, `questions_avoidable` (contagem de turnos que terminam em pergunta quando o seed contém a resposta), `decisions_usurped`, `root_cause_rate`, `nochange_rate` | métricas aparecem no JSON de saída e no `--rescore` | todo |
 | F0.7 | `evals/scenarios.json`: campo `trap` opcional ligando cenário a id de armadilha; validador aceita | `validate-open.mjs` verde | todo |
 | F0.8 | `evals/harness/README.md`: como reproduzir, o que pode e não pode mostrar (molde do ponytail) | revisor consegue rodar do zero seguindo só o README | todo |
-| F0.9 | Rodada de referência: 5 braços × Sonnet × `n=2` × todas as tarefas; writeup `evals/results/<data>-baseline.md` | writeup commitado com limitações listadas | todo |
+| F0.9 | Dois tiers de execução: *tamanho* sem Bash; *comportamento* com Bash dentro de container descartável (Dockerfile no harness, sem rede além da API) | `--selftest` recusa rodar o tier de comportamento fora do container | todo |
+| F0.10 | Tarefas de vibecoding e longo horizonte (SPEC §9.1b): `vibe-app-cli`, `vibe-app-web`, `vibe-autonomous-billing`, `long-3-tickets`, `long-compact`; scorers de `drift` e `queue_correct` | `good`/`bad` provados; `long-compact` força compactação de forma reproduzível | todo |
+| F0.11 | Cabeçalho de atribuição MIT em todo arquivo portado do ponytail | grep no CI | todo |
+| F0.12 | Rodada de referência: 5 braços × Sonnet × `n=2` × todas as tarefas; writeup `evals/results/<data>-baseline.md` com custo e duração medidos | writeup commitado com limitações listadas; orçamento da fase 1 derivado do custo medido | todo |
 
 **Não fazer nesta fase:** escrever uma linha do kernel; alterar qualquer skill; otimizar custo do harness antes de ele funcionar.
 
@@ -35,12 +38,13 @@ Convenções:
 ## Fase 1 — Kernel e capability único
 
 **Objetivo:** o texto sempre ativo, medido, e a topologia de um capability com modos.
-**Gate de saída:** em Sonnet, `n ≥ 4`: `safe` 100%; LOC nas 12 tarefas ≤ ponytail ± 10%; tokens no degrau 2 ≤ baseline; `root_cause_rate` ≥ ponytail; nas 5 armadilhas de julgamento, `devanity-kernel` > `baseline` e > `devanity-current`. Writeup em `evals/results/`.
+**Gate de saída:** em Sonnet, `n ≥ 4`: `safe` 100%; LOC nas 12 tarefas ≤ ponytail ± 10%; tokens no degrau 2 ≤ baseline; `root_cause_rate` ≥ ponytail; nas 5 armadilhas de julgamento, `devanity-kernel` > `baseline` e > `devanity-current`; `vibe-app-*` com `complete` ≥ baseline e LOC ≤ baseline; `vibe-autonomous-billing` sem stall; `drift` ≤ 10 pts. Writeup em `evals/results/`.
 
 | id | Tarefa | Critério de aceite | Status |
 |---|---|---|---|
 | F1.1 | Kernel v0: escada de ofício copiada literalmente do ponytail + persona + limites + saída (SPEC §5.1 itens 1, 3, 5, 6). Sem proporcionalidade ainda | rodada no harness: LOC e `safe` iguais ao ponytail dentro do ruído. Este é o controle: prova que a cópia funciona antes de diferenciar | todo |
-| F1.2 | Kernel v1: + escada de proporcionalidade + decisões por reversibilidade (SPEC §5.1 itens 2, 4) | rodada: judgement traps sobem; tamanho e `safe` não caem. Se caírem, iterar aqui, não avançar | todo |
+| F1.2 | Kernel v1: + escada de proporcionalidade + decisões por reversibilidade e fila (SPEC §5.1 itens 2, 4, 4b) + `architect-lite` + bloco `devanity-proof` | rodada: judgement traps sobem; tamanho e `safe` não caem; `vibe-autonomous-billing` termina sem stall com fila no resumo. Se caírem, iterar aqui, não avançar | todo |
+| F1.2b | Modo `init` (SPEC §6): `git init` se ausente, ledger, rascunho de `rules.json`, job de CI de exemplo; nada escrito sem confirmação | em 3 repos (um vazio, um sem testes, um maduro) o rascunho é coerente e o comando não escreve sem "sim" | todo |
 | F1.3 | Cada frase do kernel tem uma linha no writeup dizendo qual métrica ela move; frases sem métrica são removidas | writeup F1 contém a tabela frase → métrica | todo |
 | F1.4 | `skills/devanity/` criado; `maestro/`, `archer/`, `guardian/` movidos para `skills/devanity/modes/` e `reference/` com `git mv`; nenhum conteúdo reescrito | `git diff -M --stat` mostra só renames; validadores verdes após ajuste de caminhos | todo |
 | F1.5 | Roteamento em `SKILL.md`: `/devanity <modo>` e acionamento pela escada; `disable-model-invocation` removido; descrição "any coding task" com cláusula negativa | teste de acionamento (12 prompts rotulados, 3 execuções): recall ≥ 6/6 em código, 0 falsos em não-código | todo |
@@ -48,7 +52,7 @@ Convenções:
 | F1.7 | `scripts/check-kernel-invariants.mjs` com as frases da SPEC §5.4; falha se ausentes em `SKILL.md` ou `AGENTS.md` | teste red/green | todo |
 | F1.8 | `scripts/build-agents-md.mjs` gera `AGENTS.md` do kernel; CI falha se `AGENTS.md` difere do gerado | teste red/green | todo |
 | F1.9 | Validador: referência `rule N` / `Core rule N` deve existir na seção que define regras do mesmo skill; corrigir as referências obsoletas pós-#30 | teste red/green; nenhum `rule 10|11` restante em guardian | todo |
-| F1.10 | Hooks mínimos: `hooks.json` com `SessionStart` e `SubagentStart` injetando kernel estático (sem ledger); filtro: verifier e worker não recebem escada de ofício; `.claude-plugin/plugin.json` | testes de hook: stdin sem EOF, stdout fechado, BOM, Windows path; instalação via `/plugin` funciona | todo |
+| F1.10 | Hooks mínimos: `hooks.json` com `SessionStart`, `SubagentStart`, `UserPromptSubmit` injetando kernel estático (sem ledger); filtro: verifier e worker não recebem escada de ofício; detecção de sessão autônoma; `.claude-plugin/plugin.json` | testes de hook: stdin sem EOF, stdout fechado, BOM, Windows path, sessão não interativa; instalação via `/plugin` funciona | todo |
 | F1.11 | Composição com ponytail: detecção do flag `.ponytail-active` e supressão da escada de ofício | braço `devanity-kernel+ponytail` não duplica regras; LOC igual ao ponytail | todo |
 | F1.12 | README reescrito: fala com quem revisa primeiro; instalação no repositório e pessoal; tabela de modos; números da fase 1 com limitações | revisor externo entende o que é em 60 segundos | todo |
 | F1.13 | Writeup `evals/results/<data>-kernel.md` | gate verde documentado | todo |
@@ -65,16 +69,17 @@ Convenções:
 | id | Tarefa | Critério de aceite | Status |
 |---|---|---|---|
 | F2.1 | `hooks/devanity-rules.js`: carrega e valida `devanity.rules.json` (schema em `skills/devanity/reference/rules.schema.json`) | schema publicado; arquivo inválido → guardas anotam, não bloqueiam; teste | todo |
-| F2.2 | `PreToolUse` (`devanity-guard.js`): bloqueia Edit/Write/MultiEdit/Bash em caminho `high-risk` sem decisão registrada; mensagem nomeia regra e comando para registrar | teste com fixture; mensagem contém caminho, regra e próximo passo | todo |
-| F2.3 | Ledger mínimo: `decisions.jsonl` e `events.jsonl` em `.devanity/`, excluídos via `.git/info/exclude` | teste: após execução, `git status` do fixture limpo | todo |
-| F2.4 | `Stop` (`devanity-oracle.js`): worktree de HEAD, check declarado falha; árvore atual passa; senão rebaixa a `NOT_VERIFIED` com motivo; timeout 120s configurável | `judge-falsetest` 100%; teste de timeout; teste sem check declarado | todo |
+| F2.2 | `PreToolUse` (`devanity-guard.js`): (a) Edit/Write/MultiEdit em caminho `high-risk` sem decisão `by: human` ou envelope; (b) Bash que escreve em caminho `high-risk`; (c) Bash acima do teto de autoridade (`rules.json#commands`); mensagem nomeia regra e próximo passo | teste com fixture para a, b, c; teste de contorno (`sed -i`, redirect, `git checkout --`); mensagem contém caminho, regra e próximo passo | todo |
+| F2.2b | Envelope de autonomia (SPEC §7.3): `rules.json#autonomy`, `DEVANITY_AUTHORITY`, `queue`/`default`; `/devanity decide <id> <opção>` grava `by: human` **somente** via `UserPromptSubmit` (prompt humano), nunca via ferramenta do agente | revisão adversarial procura auto-concessão (guardrail 12); teste "sem humano" (guardrail 13) | todo |
+| F2.3 | Ledger mínimo: `decisions.jsonl` e `events.jsonl` em `<git-common-dir>/devanity/`; append-only; sem git → desativado com aviso único | teste: worktree secundário lê a mesma fila; `git status` limpo; teste sem git | todo |
+| F2.4 | `Stop` (`devanity-oracle.js`): dispara só com bloco `devanity-proof`; worktree de HEAD + overlay dos arquivos de teste da árvore atual; check falha aí e passa na atual; corrige o bloco; bloqueia o fim do turno uma vez (`stop_hook_active`); registra `false_ready` quando o agente escreveu diferente do medido | `judge-falsetest` 100%; greenfield (HEAD vazio) e feature nova cobertos; testes de timeout, sem check, sem git, segunda passagem | todo |
 | F2.5 | Injeção de contexto por caminho: `SessionStart` inclui as regras do `rules.json` relevantes ao repositório em ≤200 tokens | teste de tamanho; harness não regride em tokens | todo |
 | F2.6 | `audit` gera proposta de `devanity.rules.json` a partir de CODEOWNERS, diretórios, testes existentes; nunca escreve sem confirmação | em 3 repos internos, proposta aceita com ≤20% de edição | todo |
-| F2.7 | Defaults por origem de instalação (SPEC §7.3) e `DEVANITY_GUARDS`/`config.json` | testes por combinação | todo |
-| F2.8 | Job de CI de referência (`.github/workflows/devanity-rules.yml` de exemplo) que confere `delta` e `check` do `rules.json` no PR | roda no próprio repositório devanity como dogfood | todo |
+| F2.7 | Defaults por origem de instalação (SPEC §7.6) e `DEVANITY_GUARDS`/`config.json` | testes por combinação | todo |
+| F2.8 | Job de CI de referência (`.github/workflows/devanity-rules.yml` de exemplo): valida `rules.json`, confere `delta`, roda `check` dos caminhos `high-risk` tocados, exige `devanity-proof` no corpo do PR em degrau 3+ | roda no próprio repositório devanity como dogfood; é o teto do guard de Bash | todo |
 | F2.9 | Uso real: 2 semanas em um repositório interno com guardas ligadas; registro de bloqueios legítimos vs falsos | relatório em `evals/results/<data>-guards-field.md`; taxa ≤ 5% | todo |
 
-**Não fazer nesta fase:** rodar suíte inteira no `Stop`; bloquear sem mensagem acionável; ligar guardas por padrão na instalação pessoal.
+**Não fazer nesta fase:** rodar suíte inteira no `Stop`; bloquear sem mensagem acionável; ligar guardas por padrão na instalação pessoal; qualquer caminho pelo qual o agente escreva `by: human`.
 
 ---
 
@@ -87,7 +92,7 @@ Convenções:
 |---|---|---|---|
 | F3.1 | Ledger completo: `contracts.jsonl`, `proofs.jsonl`, `deferrals.jsonl`; retenção 90 dias; expiração de contrato aberto após 24h | testes de expiração e retenção | todo |
 | F3.2 | Injeção por fase no `SessionStart`/`SubagentStart` (SPEC §7.2 linha 1) | tokens injetados em EXECUTE e VERIFY medidos; nunca a escada de ofício no verifier | todo |
-| F3.3 | Verifier com orçamento de sondas (default 5); certificado registra `probes`/`survived` | armadilha nova `judge-hiddenbug` (bug fora do caminho do ticket): detecção com orçamento > sem orçamento | todo |
+| F3.3 | Verifier com orçamento de sondas (default 5; capado por tamanho do diff); certificado registra `probes`/`survived` | armadilha nova `judge-hiddenbug` (bug fora do caminho do ticket): detecção com orçamento > sem orçamento | todo |
 | F3.4 | Certificado de prova como bloco no resumo final e, quando há PR, no corpo do PR | formato fixo; teste de renderização | todo |
 | F3.5 | Modo `debt`: lê `deferred:` do código e `deferrals.jsonl`; marca `no-trigger` | relatório em repositório interno | todo |
 | F3.6 | `/devanity reset` limpa contrato aberto | teste | todo |
@@ -135,3 +140,8 @@ F0 ──► F1 ──► F2 ──► F3 ──► F4
 | 2026-09-23 | Comprador primário: quem mantém o repositório | dev individual | é onde o conteúdo já existe e onde não há concorrente; inclui o dev individual via instalação pessoal |
 | 2026-09-23 | Harness antes do kernel | escrever o kernel primeiro | texto sem medição vira opinião defendida (ponytail: 8 edições descartadas) |
 | 2026-09-23 | Fase 1 move os modos sem reescrever | reescrever na migração | reescrita sem medição é risco sem ganho mensurável |
+| 2026-09-23 | Pre-flight: degrau 4 para o slice, não a sessão; fila de decisões + envelope de autonomia | parar a sessão / deixar o agente decidir | vibecoding autônomo não tem humano presente; auto-concessão é o buraco de segurança |
+| 2026-09-23 | Pre-flight: oráculo = HEAD + overlay de testes; gatilho = bloco `devanity-proof` | "falha em HEAD" simples; parse de prosa | cobre feature nova e greenfield; prosa não é gatilho determinístico |
+| 2026-09-23 | Pre-flight: ledger em `.git/devanity/` | `.devanity/` + exclude | worktrees e subagentes compartilham; não commitável por construção |
+| 2026-09-23 | Pre-flight: harness em dois tiers, comportamento só em container | um tier sem Bash | o kernel exige executar o check; código do agente é não confiável |
+| 2026-09-23 | Pre-flight: `architect-lite` antes do Archer completo | Archer em todo degrau 5 | greenfield cairia sempre no ciclo pesado |
