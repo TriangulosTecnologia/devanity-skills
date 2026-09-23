@@ -74,11 +74,33 @@ if (schema) {
   }
 }
 
+// A scenario may name the executable harness trap that measures it. The harness (Python) is the
+// source of numbers; read its task ids by regex over the TASKS dict source, never by importing it.
+// Accepted ids: TASKS keys (4-space-indented quoted key followed by `{`) and `"trap": "..."` values.
+const harnessTasksPath = 'evals/harness/tasks.py';
+const harnessTrapIds = new Set();
+if (!existsSync(join(root, harnessTasksPath))) fail(`missing harness task catalog: ${harnessTasksPath}`);
+else {
+  const source = read(harnessTasksPath);
+  const start = source.search(/^TASKS\s*=\s*\{/m);
+  if (start < 0) fail(`${harnessTasksPath} has no TASKS dict`);
+  const tasksSource = start < 0 ? '' : source.slice(start);
+  for (const match of tasksSource.matchAll(/^ {4}"([A-Za-z0-9_-]+)"\s*:\s*\{/gm)) harnessTrapIds.add(match[1]);
+  for (const match of tasksSource.matchAll(/"trap"\s*:\s*"([A-Za-z0-9_-]+)"/g)) harnessTrapIds.add(match[1]);
+  if (harnessTrapIds.size === 0) fail(`${harnessTasksPath} yielded no task ids; validator regex no longer matches its formatting`);
+}
+
 const catalog = parseJson('evals/scenarios.json');
+let trapLinked = 0;
 if (catalog) {
   if (!Array.isArray(catalog.scenarios) || catalog.scenarios.length < 10) fail('evals/scenarios.json must contain the core behavioral benchmark');
   const ids = new Set();
   for (const scenario of catalog.scenarios ?? []) {
+    if ('trap' in scenario) {
+      if (typeof scenario.trap !== 'string' || scenario.trap.trim() === '') fail(`scenario ${scenario.id ?? '<unknown>'} has a trap that is not a non-empty string`);
+      else if (!harnessTrapIds.has(scenario.trap)) fail(`scenario ${scenario.id ?? '<unknown>'} names trap ${scenario.trap}, which is not a task id or trap id in ${harnessTasksPath}`);
+      else trapLinked += 1;
+    }
     for (const key of ['id', 'layer', 'goal', 'expected_routes', 'forbidden_routes', 'success', 'forbidden_behavior']) {
       if (!(key in scenario)) fail(`scenario ${scenario.id ?? '<unknown>'} missing ${key}`);
     }
@@ -104,4 +126,4 @@ if (errors.length) {
   for (const error of errors) console.error(`  - ${error}`);
   process.exit(1);
 }
-console.log(`✓ Devanity Open architecture valid: ${expectedSkills.length} skills, ${expectedAgents.length} agents, ${catalog?.scenarios?.length ?? 0} eval scenarios`);
+console.log(`✓ Devanity Open architecture valid: ${expectedSkills.length} skills, ${expectedAgents.length} agents, ${catalog?.scenarios?.length ?? 0} eval scenarios (${trapLinked} trap-linked to ${harnessTasksPath})`);

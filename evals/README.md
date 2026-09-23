@@ -13,6 +13,10 @@ Do not grade prompt elegance. Compare behavior.
 
 `scenarios.json` is the versioned scenario catalog. It specifies observable expectations, not ideal chain-of-thought.
 
+### Executable traps
+
+A scenario may carry an optional `trap`: the id of a task or trap in `evals/harness/` (a `TASKS` key or `"trap"` value in `harness/tasks.py`) that measures it deterministically with a `good`/`bad` reference pair. The catalog is the source of intent — what the behavior should look like and what is forbidden; the harness is the source of numbers. A scenario without `trap` is still adjudicated by the rules below, only by hand. `scripts/validate-open.mjs` rejects a `trap` that names nothing in the harness, so the link cannot rot silently.
+
 ## What to record per run
 
 ```json
