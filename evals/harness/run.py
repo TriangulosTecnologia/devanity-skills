@@ -34,36 +34,57 @@ from collections import defaultdict
 from pathlib import Path
 
 from tasks import TASKS
+import fixture
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNS_DIR = Path(__file__).resolve().parent / "runs"
 
-# Arms (SPEC §9). Each arm is activated by loading exactly its plugins via --plugin-dir; nothing is
-# appended to the system prompt, so every arm gets the same prompt and only the plugin differs.
-# The plugin directories are resolved at use-site (F0.2 wires the defaults) -- a missing install
-# fails loudly for that arm instead of silently running a baseline under a skill's name.
+# Arms (SPEC §9). Each arm is activated by loading exactly its plugins via --plugin-dir; nothing
+# arm-specific is appended to the system prompt, so only the plugins differ between arms.
+# Exception, `prompt_prefix`: maestro and guardian are manual-invocation
+# (`disable-model-invocation: true`), so an always-on plugin load alone would never activate them
+# and the arm would silently measure a baseline under devanity's name. `devanity-current` therefore
+# prefixes the task prompt with the plugin-namespaced "/devanity-current:maestro " -- the plugin form of
+# how a user invokes it today (SPEC §9: "invoked
+# as today"). Every other arm has an empty prefix; a non-empty prefix anywhere else is contamination.
+# Plugin directories are resolved at use-site (_plugin_dir) -- a missing install fails loudly.
 ARMS = {
-    "baseline":                 [],
-    "ponytail":                 ["ponytail"],
-    "devanity-current":         ["devanity-current"],
-    "devanity-kernel":          ["devanity"],
-    "devanity-kernel+ponytail": ["devanity", "ponytail"],
+    "baseline":                 {"plugins": [],                       "prompt_prefix": ""},
+    "ponytail":                 {"plugins": ["ponytail"],             "prompt_prefix": ""},
+    "devanity-current":         {"plugins": ["devanity-current"],     "prompt_prefix": "/devanity-current:maestro "},
+    "devanity-kernel":          {"plugins": ["devanity"],             "prompt_prefix": ""},
+    "devanity-kernel+ponytail": {"plugins": ["devanity", "ponytail"], "prompt_prefix": ""},
 }
 MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-4-6", "opus": "claude-opus-4-8"}
 
 PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
+# Harness-local plugins (gitignored). devanity-current is GENERATED from the repo's skills/ + agents/
+# by build_plugins.py, so the arm measures the committed skills, never a stale install. devanity
+# (the kernel) lands here from phase 1.
+HARNESS_PLUGINS = Path(__file__).resolve().parent / "plugins"
+_LOCAL_PLUGINS = {
+    "devanity-current": "run `python3 evals/harness/build_plugins.py` to generate it from skills/ + agents/",
+    "devanity":         "the kernel plugin exists only from phase 1 (F1.1); until then this arm cannot run",
+}
+
+def _env_key(name): return "DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_", name.upper())
 
 def _plugin_dir(name):
     """Resolve a plugin directory portably. Order: DEVANITY_HARNESS_PLUGIN_<NAME> env override ->
-    latest version dir under ~/.claude/plugins/cache/<name>/<name> -> clear error (sys.exit).
+    harness-local plugins/<name> for the devanity components -> latest version dir under
+    ~/.claude/plugins/cache/<name>/<name> -> clear error (sys.exit).
     Never guess: passing a non-existent path to --plugin-dir would silently run the baseline."""
-    env = os.environ.get("DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_", name.upper()))
+    env = os.environ.get(_env_key(name))
     if env: return env
+    if name in _LOCAL_PLUGINS:
+        local = HARNESS_PLUGINS / name
+        if (local / ".claude-plugin" / "plugin.json").exists(): return str(local)
+        sys.exit(f"plugin dir for arm component '{name}' not found at {local}: {_LOCAL_PLUGINS[name]}; "
+                 f"or set {_env_key(name)}")
     base = PLUGIN_CACHE / name / name
     versions = sorted(p for p in base.glob("*") if p.is_dir()) if base.exists() else []
     if not versions:
-        sys.exit(f"plugin dir for arm component '{name}' not found under {base}; install it or set "
-                 f"DEVANITY_HARNESS_PLUGIN_{re.sub(r'[^A-Z0-9]', '_', name.upper())}")
+        sys.exit(f"plugin dir for arm component '{name}' not found under {base}; install it or set {_env_key(name)}")
     return str(versions[-1])
 
 # Behavior-tier cells let the agent run Bash and therefore execute code it wrote. They only run
@@ -202,15 +223,18 @@ def selftest():
         axis = task.get("axis", "safe")
         for kind in ("good", "bad"):
             with tempfile.TemporaryDirectory() as d:
-                for fn, content in task.get("seed", {}).items():   # seed siblings (a helper module
-                    (Path(d) / fn).write_text(content, encoding="utf-8")  # the ref imports) too
-                (Path(d) / task["file"]).write_text(task[kind], encoding="utf-8")  # entry = the ref
+                refs = task[kind]                                   # a str goes to `file`; a dict
+                if isinstance(refs, str): refs = {task["file"]: refs}   # is a multi-file ref
+                for fn, content in {**task.get("seed", {}), **refs}.items():  # seed siblings, then refs
+                    (Path(d) / fn).parent.mkdir(parents=True, exist_ok=True)
+                    (Path(d) / fn).write_text(content, encoding="utf-8")
                 r = task["score"](Path(d))
             ok = (r["correct"] == 1 and r["safe"] == 1) if kind == "good" else (r[axis] == 0)
             print(f"{'ok ' if ok else 'XX '} {tid:12} {kind:4} correct={r['correct']} "
                   f"safe={r['safe']} axis={axis}  {r['reason']}")
             failures += 0 if ok else 1
     failures += _selftest_plugin_dir()
+    failures += _selftest_isolation()
     failures += _selftest_tier_guard()
     failures += _selftest_kill()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
@@ -235,6 +259,46 @@ def _selftest_plugin_dir():
         ok_miss = True
     print(f"{'ok ' if ok_miss else 'XX '} plugin_dir   miss clear error (sys.exit)")
     return fails + (0 if ok_miss else 1)
+
+def _selftest_isolation():
+    """Contamination test (SPEC §9): the baseline must receive NO plugin, every other arm exactly
+    its plugins, and the prompt/system prompt must be identical across arms except for the one
+    documented prefix. Offline: build_cmd is pure, and the plugin dirs are sentinel env overrides,
+    so no plugin has to be installed to prove the wiring. A synthetic size-tier task keeps this
+    independent of tasks.py."""
+    fails = 0
+    task = {"prompt": "Add a function that returns the sum of a list.", "tier": "size"}
+    components = sorted({c for a in ARMS.values() for c in a["plugins"]})
+    saved = {c: os.environ.get(_env_key(c)) for c in components}
+    for c in components: os.environ[_env_key(c)] = f"/nonexistent/devanity-selftest/{c}"
+    try:
+        cmds = {arm: build_cmd(task, arm, "haiku") for arm in ARMS}
+    finally:
+        for c, v in saved.items():
+            if v is None: os.environ.pop(_env_key(c), None)
+            else: os.environ[_env_key(c)] = v
+    def _after(argv, flag): return [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == flag]
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} isolation    {label}")
+        fails += 0 if ok else 1
+    b = cmds["baseline"]
+    _check("--plugin-dir" not in b, "baseline gets no --plugin-dir")
+    _check(_after(b, "--setting-sources") == ["project,local"] and "--strict-mcp-config" in b,
+           "baseline excludes user plugins (--setting-sources project,local) and MCP (--strict-mcp-config)")
+    for arm, spec in ARMS.items():
+        if arm == "baseline": continue
+        _check(_after(cmds[arm], "--plugin-dir") == [f"/nonexistent/devanity-selftest/{c}" for c in spec["plugins"]],
+               f"{arm} loads exactly its {len(spec['plugins'])} plugin(s), in order")
+    for arm, spec in ARMS.items():
+        prompt = _after(cmds[arm], "-p")
+        want = ("/devanity-current:maestro " + task["prompt"]) if arm == "devanity-current" else task["prompt"]
+        _check(prompt == [want] and (arm == "devanity-current" or spec["prompt_prefix"] == ""),
+               f"{arm} prompt is {'the /maestro invocation' if arm == 'devanity-current' else 'the task prompt, unmodified'}")
+    sysp = {arm: _after(argv, "--append-system-prompt") for arm, argv in cmds.items()}
+    _check(all(v == [NO_RUN] for v in sysp.values()),
+           "--append-system-prompt is exactly NO_RUN, identical across arms")
+    return fails
 
 def _selftest_tier_guard():
     """A behavior-tier cell must refuse to run outside the container, whatever the arm."""
@@ -314,6 +378,42 @@ def score_workspace(task_id, arm, model, workdir: Path):
         sc = TASKS[task_id]["score"](workdir)
     return {"task": task_id, "arm": arm, "model": model, **sc, **stats, **meta}
 
+def build_cmd(task, arm, model, claude="claude"):
+    """The argv for one cell. Pure (no I/O beyond plugin-dir resolution), so the contamination
+    selftest can inspect exactly what each arm receives without spending on the API.
+    Skills are PLUGINS (SessionStart hook); appending SKILL text does NOT activate them. Exclude
+    the user's globally-enabled plugins for every arm (--setting-sources project,local), then load
+    exactly the plugins this arm names. --strict-mcp-config drops all MCP servers (no browser).
+    Tool flags depend on the tier (see _cell_cmd_flags). The prompt is the task prompt, with the
+    arm's prefix in front only for devanity-current (see ARMS)."""
+    spec = ARMS[arm]
+    cmd = [claude, "-p", spec["prompt_prefix"] + task["prompt"], "--model", MODELS[model],
+           "--permission-mode", "bypassPermissions", "--output-format", "json",
+           "--setting-sources", "project,local", "--strict-mcp-config"]
+    cmd += _cell_cmd_flags(task)
+    for component in spec["plugins"]:
+        cmd += ["--plugin-dir", _plugin_dir(component)]
+    if _tier(task) == "size":
+        cmd += ["--append-system-prompt", NO_RUN]      # identical for every arm
+    return cmd
+
+# Live smoke (--smoke <arm>): a manual check that the arm's plugins are actually visible to the
+# session, at the cost of one tiny API call. Not a gate -- the offline _selftest_isolation proves
+# the wiring; this only confirms the installed plugin dirs are real.
+SMOKE_PROMPT = ("Reply with only the words ACTIVE: followed by the names of any always-on coding-discipline "
+                "rulesets present in your context (ponytail, devanity), or NONE.")
+
+def smoke(arm, model):
+    claude = shutil.which("claude")
+    if not claude: sys.exit("claude CLI not found on PATH")
+    cmd = build_cmd({"prompt": SMOKE_PROMPT, "tier": "size"}, arm, model, claude)
+    with tempfile.TemporaryDirectory() as d:
+        print("argv:", " ".join(cmd), "\n", flush=True)
+        r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, timeout=CELL_TIMEOUT)
+    try: j = json.loads(r.stdout)
+    except Exception: sys.exit(f"claude returned no JSON (rc={r.returncode}):\n{r.stdout[:500]}\n{r.stderr[:500]}")
+    print(f"{arm} / {model}: {j.get('result', '').strip()}  (cost=${j.get('total_cost_usd')})")
+
 def run_cell(task_id, arm, model, workdir: Path):
     task = TASKS[task_id]
     if task.get("fixture"):                            # copy a real repo in; record what was seeded
@@ -331,22 +431,12 @@ def run_cell(task_id, arm, model, workdir: Path):
                           for p in workdir.rglob("*") if p.is_file())
         (workdir / "_fixture_files.json").write_text(json.dumps(manifest), encoding="utf-8")
     for fn, content in task.get("seed", {}).items():
+        (workdir / fn).parent.mkdir(parents=True, exist_ok=True)   # seeds may live in subdirs (docs/adr/)
         (workdir / fn).write_text(content, encoding="utf-8")
     if task.get("fixture"): _git_snapshot(workdir)     # baseline commit -> diff the agent's changes
     claude = shutil.which("claude")
     if not claude: sys.exit("claude CLI not found on PATH")
-    # Skills are PLUGINS (SessionStart hook); appending SKILL text does NOT activate them. Exclude
-    # the user's globally-enabled plugins for every arm (--setting-sources project,local), then load
-    # exactly the plugins this arm names. --strict-mcp-config drops all MCP servers (no browser).
-    # Tool flags depend on the tier (see _cell_cmd_flags).
-    cmd = [claude, "-p", task["prompt"], "--model", MODELS[model],
-           "--permission-mode", "bypassPermissions", "--output-format", "json",
-           "--setting-sources", "project,local", "--strict-mcp-config"]
-    cmd += _cell_cmd_flags(task)
-    for component in ARMS[arm]:
-        cmd += ["--plugin-dir", _plugin_dir(component)]
-    if _tier(task) == "size":
-        cmd += ["--append-system-prompt", NO_RUN]      # identical for every arm
+    cmd = build_cmd(task, arm, model, claude)
     out_path, err_path = workdir / "_claude.json", workdir / "_claude.stderr.txt"
     # stdout -> file, never a PIPE: on Windows a hung agent's child processes can hold a stdout PIPE
     # open forever, so subprocess.run(timeout=) never fires and the worker freezes. Writing to a file
@@ -439,18 +529,23 @@ def main():
     ap.add_argument("--models", default="haiku", help="comma list: haiku,sonnet,opus")
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--workers", type=int, default=4, help="cells to run concurrently (default 4; cells are fully isolated)")
+    ap.add_argument("--smoke", metavar="ARM", choices=list(ARMS),
+                    help="live one-prompt check that ARM's plugins are visible (tiny API spend; manual, not a gate)")
     args = ap.parse_args()
 
     if args.selftest:
         sys.exit(1 if selftest() else 0)
     if args.rescore:
         return rescore(args.rescore)
+    if args.smoke:
+        return smoke(args.smoke, (args.model or args.models).split(",")[0].strip())
     if selftest():
         sys.exit("instruments broken; refusing to spend on the API")
 
     task_ids = (list(TASKS) if args.all
                 else ([t.strip() for t in args.task.split(",")] if args.task else []))
     if not task_ids: sys.exit("give --task <id> (comma list ok), --all, or --rescore <dir>")
+    if any(TASKS[t].get("fixture") for t in task_ids): fixture.ensure()   # pinned clone or stop, before any API
     arms = [a.strip() for a in args.arms.split(",")]
     models = [m.strip() for m in (args.model or args.models).split(",")]
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
