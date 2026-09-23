@@ -55,6 +55,19 @@ for (const file of textFiles) {
   if (readFileSync(file, 'utf8').includes(legacyRepo)) fail(`${file.slice(root.length + 1)} still references ${legacyRepo}`);
 }
 
+// The harness instruments are ported from ponytail (MIT). Every ported file carries its attribution
+// header and the full notice ships next to them; a rewrite that drops either is a licence defect (F0.11).
+const portedHarnessFiles = ['run.py', 'tasks.py', 'judge.py', 'complete.py'];
+if (!existsSync(join(root, 'evals/harness/LICENSE-ponytail'))) fail('evals/harness/LICENSE-ponytail is missing');
+for (const name of portedHarnessFiles) {
+  const path = `evals/harness/${name}`;
+  if (!existsSync(join(root, path))) { fail(`missing ported harness file: ${path}`); continue; }
+  const head = read(path).split('\n').slice(0, 6).join('\n');
+  if (!/Ported from ponytail \(https:\/\/github\.com\/DietrichGebert\/ponytail\)/.test(head) || !/MIT License/.test(head)) {
+    fail(`${path} lacks the ponytail MIT attribution header in its first lines`);
+  }
+}
+
 const parseJson = (path) => {
   try { return JSON.parse(read(path)); }
   catch (error) { fail(`${path} is not valid JSON: ${error.message}`); return null; }
