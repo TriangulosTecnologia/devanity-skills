@@ -29,11 +29,11 @@ Two execution tiers (SPEC §9): "size" tasks run with Bash disallowed, for direc
 with ponytail's published numbers; "behavior" tasks allow Bash and therefore only run inside a
 disposable container (DEVANITY_HARNESS_CONTAINER=1), because the agent executes code it wrote.
 """
-import argparse, concurrent.futures, datetime, json, os, re, shutil, signal, statistics, subprocess, sys, tempfile
+import argparse, concurrent.futures, datetime, json, os, re, shutil, signal, statistics, subprocess, sys, tempfile, uuid
 from collections import defaultdict
 from pathlib import Path
 
-from tasks import TASKS
+from tasks import TASKS, TRAPS
 import fixture
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -236,6 +236,8 @@ def selftest():
     failures += _selftest_plugin_dir()
     failures += _selftest_isolation()
     failures += _selftest_tier_guard()
+    failures += _selftest_turns()
+    failures += _selftest_traps()
     failures += _selftest_kill()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
@@ -311,6 +313,71 @@ def _selftest_tier_guard():
     print(f"{'ok ' if ok else 'XX '} tier_guard   behavior tier refuses to run outside the container")
     return 0 if ok else 1
 
+def _selftest_turns():
+    """Multi-turn wiring (SPEC §9.1b long-*): turn 1 pins the session (`--session-id <uuid>`), every
+    later turn resumes it (`--resume <uuid>`) with the SAME plugin flags and tool flags, the
+    devanity-current prefix rides on every ticket prompt, and a compact turn is exactly the host
+    command "/compact" with no prefix on any arm. Per-task env reaches the cell's process, and
+    nothing else's. Offline: build_cmd is pure; sentinel plugin dirs."""
+    fails = 0
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} turns        {label}")
+        fails += 0 if ok else 1
+    def _after(argv, flag): return [argv[i + 1] for i, a in enumerate(argv[:-1]) if a == flag]
+    task = {"prompt": "ticket one", "turns": ["ticket one", "ticket two", {"compact": True}, "ticket three"],
+            "tier": "size", "env": {"DEVANITY_AUTONOMOUS": "1"}}
+    sid = "00000000-0000-4000-8000-000000000042"
+    components = sorted({c for a in ARMS.values() for c in a["plugins"]})
+    saved = {c: os.environ.get(_env_key(c)) for c in components}
+    for c in components: os.environ[_env_key(c)] = f"/nonexistent/devanity-selftest/{c}"
+    try:
+        per_arm = {arm: [build_cmd(task, arm, "haiku", prompt=_turn_prompt(t), session_id=sid, resume=i > 0)
+                         for i, t in enumerate(task["turns"])] for arm in ARMS}
+    finally:
+        for c, v in saved.items():
+            if v is None: os.environ.pop(_env_key(c), None)
+            else: os.environ[_env_key(c)] = v
+    for arm, cmds in per_arm.items():
+        t1, later = cmds[0], cmds[1:]
+        _check(_after(t1, "--session-id") == [sid] and "--resume" not in t1,
+               f"{arm} turn 1 pins --session-id, no --resume")
+        _check(all(_after(c, "--resume") == [sid] and "--session-id" not in c for c in later),
+               f"{arm} later turns --resume the same session, no --session-id")
+        strip = lambda c: [a for i, a in enumerate(c) if a not in ("-p", "--session-id", "--resume")
+                           and (i == 0 or c[i - 1] not in ("-p", "--session-id", "--resume"))]
+        _check(all(strip(c) == strip(t1) for c in later),
+               f"{arm} every turn carries the same plugin/tool/model flags")
+        prefix = ARMS[arm]["prompt_prefix"]
+        _check(_after(cmds[1], "-p") == [prefix + "ticket two"] and _after(cmds[3], "-p") == [prefix + "ticket three"],
+               f"{arm} ticket prompts are turns[N]{' with the /maestro prefix' if prefix else ', unmodified'}")
+        _check(_after(cmds[2], "-p") == ["/compact"], f"{arm} compact turn is exactly '/compact' (no prefix)")
+    plain = build_cmd({"prompt": "x", "tier": "size"}, "baseline", "haiku")
+    _check("--session-id" not in plain and "--resume" not in plain, "single-turn argv is unchanged (no session flags)")
+    env_a, env_b = cell_env(task), cell_env({"prompt": "x"})
+    _check(env_a.get("DEVANITY_AUTONOMOUS") == "1" and "DEVANITY_AUTONOMOUS" not in env_b
+           and all(env_b.get(k) == v for k, v in os.environ.items()),
+           "task env reaches only that task's cell, on top of the inherited environment")
+    for tid, t in TASKS.items():
+        if t.get("turns"):
+            _check(t["prompt"] == _turn_prompt(t["turns"][0]) and not _is_compact(t["turns"][0]),
+                   f"{tid}: prompt == turns[0] (build_cmd compatibility)")
+    return fails
+
+def _selftest_traps():
+    """TRAPS and the tasks' `trap` fields must agree both ways, so aggregation by trap never
+    silently drops a task or names one that does not exist."""
+    fails = 0
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} traps        {label}")
+        fails += 0 if ok else 1
+    unknown = [t for ids in TRAPS.values() for t in ids if t not in TASKS]
+    _check(not unknown, "every task id in TRAPS exists" + (f" (unknown: {unknown})" if unknown else ""))
+    unlisted = [tid for tid, t in TASKS.items() if t.get("trap") and tid not in TRAPS.get(t["trap"], [])]
+    _check(not unlisted, "every task with a trap field is listed under that trap" + (f" (missing: {unlisted})" if unlisted else ""))
+    return fails
+
 def _cell_cmd_flags(task, in_container=IN_CONTAINER):
     """Tool flags for one cell by tier. Size: no Bash (comparable to ponytail's numbers). Behavior:
     Bash allowed, container required -- the agent runs code it wrote (SPEC guardrail 15)."""
@@ -352,19 +419,36 @@ def chat_code_loc(text):
             if not s.startswith(("#", "//", "*", "/*", "*/")): code += 1
     return total, code
 
+def _turn_files(workdir: Path):
+    """The per-turn CLI outputs of a multi-turn cell, in turn order (empty for a single-turn cell)."""
+    return sorted((p for p in workdir.glob("_claude.turn*.json")),
+                  key=lambda p: int(re.sub(r"\D", "", p.name) or 0))
+
+def _cell_meta(workdir: Path):
+    """(meta, result_text) from the CLI JSON. A multi-turn cell sums cost/duration/turns/tokens over
+    its _claude.turn<N>.json files (the session paid for every turn); result_text is the LAST
+    turn's, which is also what _claude.json holds."""
+    files = _turn_files(workdir) or [workdir / "_claude.json"]
+    meta, result_text, seen = {}, "", False
+    keys = ("cost", "duration_ms", "turns", "denials", "out_tokens", "in_tokens", "cache_tokens")
+    for f in files:
+        if not f.exists(): continue
+        try: j = json.loads(f.read_text(encoding="utf-8"))
+        except Exception: continue
+        u = j.get("usage") or {}
+        one = {"cost": j.get("total_cost_usd"), "duration_ms": j.get("duration_ms"),
+               "turns": j.get("num_turns"), "denials": len(j.get("permission_denials") or []),
+               "out_tokens": u.get("output_tokens"), "in_tokens": u.get("input_tokens"),
+               "cache_tokens": (u.get("cache_read_input_tokens") or 0) + (u.get("cache_creation_input_tokens") or 0)}
+        if not seen: meta, seen = one, True
+        else:
+            for k in keys:
+                if one[k] is not None: meta[k] = (meta.get(k) or 0) + one[k]
+        result_text = j.get("result", "") or result_text
+    return meta, result_text
+
 def score_workspace(task_id, arm, model, workdir: Path):
-    meta, result_text = {}, ""
-    cj = workdir / "_claude.json"
-    if cj.exists():
-        try:
-            j = json.loads(cj.read_text(encoding="utf-8"))
-            u = j.get("usage") or {}
-            meta = {"cost": j.get("total_cost_usd"), "duration_ms": j.get("duration_ms"),
-                    "turns": j.get("num_turns"), "denials": len(j.get("permission_denials") or []),
-                    "out_tokens": u.get("output_tokens"), "in_tokens": u.get("input_tokens"),
-                    "cache_tokens": (u.get("cache_read_input_tokens") or 0) + (u.get("cache_creation_input_tokens") or 0)}
-            result_text = j.get("result", "")
-        except Exception: pass
+    meta, result_text = _cell_meta(workdir)
     surgical = not TASKS[task_id].get("open") and not TASKS[task_id].get("fixture")
     stats = git_diff_stats(workdir) if TASKS[task_id].get("fixture") else code_stats(workdir, selfcheck_as_test=surgical)
     # open/explain tasks answer in the chat, not a file. If no source file was written, count the
@@ -378,18 +462,34 @@ def score_workspace(task_id, arm, model, workdir: Path):
         sc = TASKS[task_id]["score"](workdir)
     return {"task": task_id, "arm": arm, "model": model, **sc, **stats, **meta}
 
-def build_cmd(task, arm, model, claude="claude"):
-    """The argv for one cell. Pure (no I/O beyond plugin-dir resolution), so the contamination
-    selftest can inspect exactly what each arm receives without spending on the API.
+def _is_compact(turn): return isinstance(turn, dict) and bool(turn.get("compact"))
+def _turn_prompt(turn): return "/compact" if _is_compact(turn) else turn
+
+def cell_env(task):
+    """Environment for the cell's claude process: the inherited environment plus the task's own
+    `env` (e.g. DEVANITY_AUTONOMOUS=1 for the autonomous-session task). Identical across arms."""
+    return {**os.environ, **{k: str(v) for k, v in (task.get("env") or {}).items()}}
+
+def build_cmd(task, arm, model, claude="claude", prompt=None, session_id=None, resume=False):
+    """The argv for one cell (or one TURN of a multi-turn cell). Pure (no I/O beyond plugin-dir
+    resolution), so the contamination selftest can inspect exactly what each arm receives without
+    spending on the API.
     Skills are PLUGINS (SessionStart hook); appending SKILL text does NOT activate them. Exclude
     the user's globally-enabled plugins for every arm (--setting-sources project,local), then load
     exactly the plugins this arm names. --strict-mcp-config drops all MCP servers (no browser).
-    Tool flags depend on the tier (see _cell_cmd_flags). The prompt is the task prompt, with the
-    arm's prefix in front only for devanity-current (see ARMS)."""
+    Tool flags depend on the tier (see _cell_cmd_flags). The prompt is `prompt` (default: the task
+    prompt), with the arm's prefix in front only for devanity-current (see ARMS); a host command
+    such as "/compact" is never prefixed. Multi-turn (SPEC §9.1b): `session_id` pins the session
+    on turn 1 (`--session-id`, verified with claude 2.1.281) and `resume=True` continues it on
+    later turns (`--resume <id>`); the plugin flags are repeated on every turn because they are
+    per-invocation. Single-turn cells pass neither, so their argv is unchanged."""
     spec = ARMS[arm]
-    cmd = [claude, "-p", spec["prompt_prefix"] + task["prompt"], "--model", MODELS[model],
+    prompt = task["prompt"] if prompt is None else prompt
+    prefix = "" if prompt.startswith("/") else spec["prompt_prefix"]
+    cmd = [claude, "-p", prefix + prompt, "--model", MODELS[model],
            "--permission-mode", "bypassPermissions", "--output-format", "json",
            "--setting-sources", "project,local", "--strict-mcp-config"]
+    if session_id: cmd += ["--resume" if resume else "--session-id", str(session_id)]
     cmd += _cell_cmd_flags(task)
     for component in spec["plugins"]:
         cmd += ["--plugin-dir", _plugin_dir(component)]
@@ -436,15 +536,35 @@ def run_cell(task_id, arm, model, workdir: Path):
     if task.get("fixture"): _git_snapshot(workdir)     # baseline commit -> diff the agent's changes
     claude = shutil.which("claude")
     if not claude: sys.exit("claude CLI not found on PATH")
-    cmd = build_cmd(task, arm, model, claude)
-    out_path, err_path = workdir / "_claude.json", workdir / "_claude.stderr.txt"
+    env = cell_env(task)
+    turns = task.get("turns")
+    if not turns:                                      # single turn: argv and file layout unchanged
+        _run_turn(build_cmd(task, arm, model, claude), workdir, env,
+                  workdir / "_claude.json", workdir / "_claude.stderr.txt")
+        return score_workspace(task_id, arm, model, workdir)
+    # Multi-turn (SPEC §9.1b): one claude session, one workdir, N sequential prompts. Turn 1 pins
+    # the session id (`--session-id`), later turns `--resume` it; each turn has its own CELL_TIMEOUT
+    # and its own _claude.turn<N>.json; the last turn is copied to _claude.json so every single-turn
+    # code path (score_workspace, rescore, judges) reads the session's final message as usual.
+    sid = str(uuid.uuid4())
+    for i, turn in enumerate(turns, 1):
+        cmd = build_cmd(task, arm, model, claude, prompt=_turn_prompt(turn), session_id=sid, resume=i > 1)
+        out_path, err_path = workdir / f"_claude.turn{i}.json", workdir / f"_claude.turn{i}.stderr.txt"
+        _run_turn(cmd, workdir, env, out_path, err_path)
+        if _is_compact(turn):
+            (workdir / "_compact.json").write_text(json.dumps(_compact_evidence(sid, i)), encoding="utf-8")
+    shutil.copy(out_path, workdir / "_claude.json")
+    shutil.copy(err_path, workdir / "_claude.stderr.txt")
+    return score_workspace(task_id, arm, model, workdir)
+
+def _run_turn(cmd, workdir, env, out_path, err_path):
     # stdout -> file, never a PIPE: on Windows a hung agent's child processes can hold a stdout PIPE
     # open forever, so subprocess.run(timeout=) never fires and the worker freezes. Writing to a file
     # lets proc.wait(timeout) return reliably; on timeout _tree_kill ends ONLY this cell's process
     # tree -- never a blanket kill, which would also take down this Claude Code session.
     try:
         with open(out_path, "wb") as so, open(err_path, "wb") as se:
-            proc = subprocess.Popen(cmd, cwd=str(workdir), stdout=so, stderr=se,
+            proc = subprocess.Popen(cmd, cwd=str(workdir), stdout=so, stderr=se, env=env,
                                     start_new_session=(os.name != "nt"))
             try:
                 proc.wait(timeout=CELL_TIMEOUT)
@@ -455,7 +575,27 @@ def run_cell(task_id, arm, model, workdir: Path):
                 se.write(f"\n[KILLED after {CELL_TIMEOUT}s timeout]".encode())
     except Exception as e:
         out_path.write_text(json.dumps({"error": str(e)[:300]}), encoding="utf-8")
-    return score_workspace(task_id, arm, model, workdir)
+
+def _compact_evidence(session_id, turn_no):
+    """Did the forced `/compact` turn really compact? Verified, not assumed: the CLI writes a
+    `system`/`compact_boundary` record ("Conversation compacted") into the session transcript
+    ~/.claude/projects/<cwd-slug>/<session_id>.jsonl (observed with claude 2.1.281: `claude -p
+    "/compact" --resume <id>` returns num_turns=0 and the transcript gains that record; the next
+    turn continues from the summary). The transcript is found by session id, so the cwd slug rule
+    never has to be reproduced. Missing transcript -> compacted=False with the reason."""
+    hits = list((Path.home() / ".claude" / "projects").glob(f"*/{session_id}.jsonl"))
+    if not hits: return {"compacted": False, "turn": turn_no, "reason": "no session transcript found"}
+    try:
+        compacted = any('"subtype":"compact_boundary"' in ln.replace(" ", "") for ln in
+                        hits[0].read_text(encoding="utf-8", errors="ignore").splitlines())
+    except Exception as e:
+        return {"compacted": False, "turn": turn_no, "reason": f"transcript unreadable: {e}"[:200]}
+    return {"compacted": compacted, "turn": turn_no, "transcript": str(hits[0])}
+
+# Extra per-cell 0/1 fields some scorers expose beyond correct/safe (SPEC §9.1b); aggregated as
+# `<field>_rate` when present. drift = judge-rootcause standalone safe_rate - long-* t3_rootcause_rate
+# and queue_correct feed the F0.6 metrics; TRAPS (tasks.py) says which tasks share a trap.
+EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "compacted")
 
 def aggregate(results):
     groups = defaultdict(list)
@@ -466,7 +606,9 @@ def aggregate(results):
         costs = [c["cost"] for c in cells if c.get("cost") is not None]
         loc_cells = [c for c in cells if c.get("total_loc", 0) > 0]   # LOC only where code was delivered
         nl = len(loc_cells)
-        rows.append({"task": t, "arm": a, "model": m, "n": n,
+        extras = {f"{k}_rate": round(sum(c[k] for c in cells if c.get(k) is not None) / n, 3)
+                  for k in EXTRA_FIELDS if any(c.get(k) is not None for c in cells)}
+        rows.append({"task": t, "arm": a, "model": m, "n": n, "trap": TASKS.get(t, {}).get("trap"), **extras,
                      "safe_rate": round(sum(c["safe"] for c in cells) / n, 3),
                      "correct_rate": round(sum(c["correct"] for c in cells) / n, 3),
                      "wrote_file_rate": round(nl / n, 3),
