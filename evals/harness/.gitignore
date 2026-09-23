@@ -1,2 +1,4 @@
 runs/
 fixtures/
+__pycache__/
+*.pyc
