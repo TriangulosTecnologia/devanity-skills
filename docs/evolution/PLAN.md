@@ -92,8 +92,8 @@ Convenções:
 |---|---|---|---|
 | F3.1 | Ledger completo: `contracts.jsonl`, `proofs.jsonl`, `deferrals.jsonl`; retenção 90 dias; expiração de contrato aberto após 24h | testes de expiração e retenção | todo |
 | F3.2 | Injeção por fase no `SessionStart`/`SubagentStart` (SPEC §7.2 linha 1) | tokens injetados em EXECUTE e VERIFY medidos; nunca a escada de ofício no verifier | todo |
-| F3.3 | Verifier com orçamento de sondas (default 5; capado por tamanho do diff); certificado registra `probes`/`survived` | armadilha nova `judge-hiddenbug` (bug fora do caminho do ticket): detecção com orçamento > sem orçamento | todo |
-| F3.4 | Certificado de prova como bloco no resumo final e, quando há PR, no corpo do PR | formato fixo; teste de renderização | todo |
+| F3.3 | Verifier com orçamento de sondas (default 5; capado por tamanho do diff); certificado registra `probes`/`survived` | armadilha nova `judge-hiddenbug` (bug fora do caminho do ticket): detecção com orçamento > sem orçamento | doing (seção "Probe budget" e linha `PROBES` no contrato do verifier: 3/5/7 sondas por tamanho do diff, eixos nomeados, nunca imaginadas; campo `probes` no bloco `devanity-proof`; a armadilha `judge-hiddenbug` e a medição ficam para a rodada) |
+| F3.4 | Certificado de prova como bloco no resumo final e, quando há PR, no corpo do PR | formato fixo; teste de renderização | done (o kernel fixa o bloco; o `plan`/Maestro o coloca como primeira coisa no corpo do PR ou no handoff; o CI de referência já exige o bloco em degrau 3+, o que é o teste de renderização mecânico) |
 | F3.5 | Modo `debt`: lê `deferred:` do código e `deferrals.jsonl`; marca `no-trigger` | relatório em repositório interno | todo |
 | F3.6 | `/devanity reset` limpa contrato aberto | teste | todo |
 | F3.7 | Números por repositório em `/devanity debt --stats`: decisões pedidas vs resolvidas, false-ready, bloqueios, adiamentos abertos | saída revisada por um mantenedor interno | todo |

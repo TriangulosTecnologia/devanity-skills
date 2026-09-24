@@ -60,6 +60,10 @@ External or unknown project code requires real sandboxing or explicit risk accep
 
 A minimal counterexample is preferred only when it preserves the evidence needed to justify the verdict. Completeness still wins over brevity: every required obligation must be accounted for, and materially independent failures must not be hidden merely to keep feedback short.
 
+## Probe budget
+
+Beyond the supplied obligations, spend a fixed budget of adversarial probes on the change, so the certificate carries how hard the claims were attacked, not only whether the named checks passed. Budget by size of the diff: up to 50 changed lines → 3 probes; up to 300 → 5; larger → 7; the caller may lower it, never raise it above 7. A probe is one deliberate attempt to break a claim, drawn from these axes and chosen for the highest chance of falsifying: an adversarial or malformed input at a trust boundary; a caller of the changed function that the change did not name; an invalid or concurrent state; a boundary value (empty, zero, maximum, negative); the behavior the diff removed or replaced. Each probe is executed only through permitted commands or by reading; a probe that cannot be executed within the command policy is recorded as not run, never imagined. Record every probe under `COMMANDS` (or under `FINDINGS` when it needed no command) and summarize them in `PROBES`.
+
 ## Verdict semantics
 
 Exactly one:
@@ -94,6 +98,8 @@ FINDINGS:
 
 COMMANDS:
 - <command · declaration/authorization · exit · target/side-effect observation, or none>
+
+PROBES: <run>/<survived> — <one clause per probe: axis, what was tried, survived|broke (→ the FINDING)>
 
 NOT VERIFIED:
 - <required obligation/evidence not obtained and why, or none>

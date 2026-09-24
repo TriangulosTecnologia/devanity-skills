@@ -54,6 +54,7 @@ devanity-proof:
   check: <command>
   failed_before: yes | no | n/a
   passed_after: yes | no
+  probes: <run>/<survived>   (the verifier's adversarial probes; 0/0 when none ran)
   status: VERIFIED | NOT_VERIFIED: <reason>
   pending: <n decisions>
 ```

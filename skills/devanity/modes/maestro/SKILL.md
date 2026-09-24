@@ -68,6 +68,8 @@ On `FAILED`, keep the strongest falsifier. Re-execute only if the contract still
 
 ### 6. ASSURE / HANDOFF
 
+The candidate's certificate travels with it: the `devanity-proof` block (check, failed_before, passed_after, probes from the verifier's `PROBES` line, status, pending) is the first thing in the PR body or the handoff text, so a reviewer reads the proof before the diff; the reference CI job (`scripts/devanity-rules-ci.mjs`) refuses a PR on a rung-3+ path without it.
+
 For material repository changes, Guardian owns repository assurance. If the host can invoke the installed capability, route the current diff to it. If Guardian is manual-only, emit the exact handoff (`/guardian review`) and mark assurance pending; do not claim the candidate fully ready while required assurance is unresolved.
 
 Repeated findings/decisions that appear reusable should be surfaced for durable promotion, but Maestro does not invent a new enforcement taxonomy: Guardian owns repository enforcement and ARCHER owns material architecture decisions.
