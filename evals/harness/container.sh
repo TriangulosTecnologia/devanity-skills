@@ -14,6 +14,8 @@
 #
 # Environment (all optional):
 #   DEVANITY_HARNESS_NETWORK        docker --network value. Default "bridge"; "none" for offline runs.
+#   DEVANITY_HARNESS_RUNS_DIR       host dir for kept workspaces (default evals/harness/runs); mounted
+#                                   read-write at /runs and re-exported, outside the read-only repo mount.
 #   DEVANITY_HARNESS_PLUGIN_<NAME>  host plugin dir for an arm component; mounted read-only and
 #                                   re-exported with the in-container path.
 #   DEVANITY_TMPL                   host path of full-stack-fastapi-template @ cd83fc1; mounted
@@ -76,10 +78,14 @@ run=("$DOCKER" run --rm --init
      -v "$REPO:/harness:ro")
 
 # runs/ is the one writable path: kept workspaces (runs/<stamp>/) must survive the container so
-# --rescore works offline on the host.
-mkdir -p "$HERE/runs"
-if [ "$(id -u)" -eq 0 ]; then chmod a+rwx "$HERE/runs"; fi
-run+=(-v "$HERE/runs:$IN_HARNESS/runs:rw")
+# --rescore works offline on the host. It is mounted at /runs, NOT inside /harness: Claude Code
+# loads CLAUDE.md/AGENTS.md from every ancestor of a session's cwd, so a cell under
+# /harness/evals/harness/runs would inherit the repository's AGENTS.md (the kernel) in every arm
+# (found live 2026-09-24; run.py's memory_guard now refuses that layout before any spend).
+RUNS_HOST="${DEVANITY_HARNESS_RUNS_DIR:-$HERE/runs}"
+mkdir -p "$RUNS_HOST"
+if [ "$(id -u)" -eq 0 ]; then chmod a+rwx "$RUNS_HOST"; fi
+run+=(-v "$(cd "$RUNS_HOST" && pwd):/runs:rw" -e DEVANITY_HARNESS_RUNS_DIR=/runs)
 
 # Plugin dirs: every DEVANITY_HARNESS_PLUGIN_* on the host is mounted read-only at
 # /plugins/<name> and the same variable is re-exported with that path, so run.py's resolution

@@ -37,7 +37,38 @@ from tasks import TASKS, TRAPS
 import fixture
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNS_DIR = Path(__file__).resolve().parent / "runs"
+# Where cells run and are kept. Claude Code loads CLAUDE.md / AGENTS.md from the cwd and EVERY
+# ancestor directory, so a cell whose workspace sits inside this repository inherits the repo's
+# own AGENTS.md (the devanity kernel) in every arm, baseline included. Found live on 2026-09-24:
+# a baseline cell under evals/harness/runs/ answered "ACTIVE: devanity (from AGENTS.md)". The
+# default stays runs/ for --rescore compatibility, but live runs refuse to start when any ancestor
+# of RUNS_DIR carries a memory file (memory_ancestors); point DEVANITY_HARNESS_RUNS_DIR outside
+# the repository (container.sh mounts runs/ at /runs and sets it).
+RUNS_DIR = Path(os.environ.get("DEVANITY_HARNESS_RUNS_DIR") or (Path(__file__).resolve().parent / "runs")).resolve()
+MEMORY_FILES = ("CLAUDE.md", "AGENTS.md", ".claude/CLAUDE.md", "CLAUDE.local.md")
+
+def memory_ancestors(path):
+    """Memory files Claude Code would load for a session whose cwd is `path`: the files named in
+    MEMORY_FILES in `path` and each of its ancestors (resolved, so a symlinked runs/ does not
+    hide the real parents). Empty list = a clean cwd for every arm."""
+    p = Path(path).resolve()
+    hits = []
+    for d in (p, *p.parents):
+        for name in MEMORY_FILES:
+            f = d / name
+            if f.is_file(): hits.append(str(f))
+    return hits
+
+def memory_guard(path):
+    """Refuse a live run whose cells would inherit a memory file: that is plugin-independent
+    contamination of every arm (SPEC guardrail: contamination test), invisible to the plugin-dir
+    isolation test and to a smoke run in a temp dir."""
+    hits = memory_ancestors(path)
+    if hits:
+        sys.exit(f"refusing to run live cells under {path}: every arm would inherit\n  "
+                 + "\n  ".join(hits)
+                 + "\nset DEVANITY_HARNESS_RUNS_DIR to a directory with no CLAUDE.md/AGENTS.md above it "
+                   "(container.sh mounts runs/ at /runs for this reason)")
 
 # Arms (SPEC §9): the field a maintainer would choose from, so a win means something and each
 # control isolates a cause. Every arm is activated by loading exactly its plugins via --plugin-dir;
@@ -261,9 +292,37 @@ def selftest():
     failures += _selftest_turns()
     failures += _selftest_traps()
     failures += _selftest_pytest_shim()
+    failures += _selftest_memory_guard()
     failures += _selftest_kill()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
+
+def _selftest_memory_guard():
+    """A cell cwd with a CLAUDE.md or AGENTS.md in any ancestor is contamination of every arm and
+    must be refused before spend; a clean tree passes. Also asserts the guard sees through a
+    symlinked runs/ (the real parents count, not the link's)."""
+    fails = 0
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} memory_guard {label}")
+        fails += 0 if ok else 1
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d); (root / "repo" / "runs" / "cell").mkdir(parents=True)
+        (root / "repo" / "AGENTS.md").write_text("# kernel\n", encoding="utf-8")
+        hits = memory_ancestors(root / "repo" / "runs" / "cell")
+        _check(hits == [str(root / "repo" / "AGENTS.md")], "AGENTS.md in an ancestor is found")
+        try: memory_guard(root / "repo" / "runs"); refused = False
+        except SystemExit: refused = True
+        _check(refused, "live run under a memory file is refused (sys.exit)")
+        (root / "clean").mkdir()
+        _check(memory_ancestors(root / "clean") == [], "a tree without memory files passes")
+        try: memory_guard(root / "clean"); passed = True
+        except SystemExit: passed = False
+        _check(passed, "guard lets a clean tree run")
+        if os.name != "nt":
+            link = root / "link"; link.symlink_to(root / "repo" / "runs")
+            _check(memory_ancestors(link / "cell") == [str(root / "repo" / "AGENTS.md")], "symlinked runs/ resolves to its real parents")
+    return fails
 
 def _selftest_pytest_shim():
     """judge-falsetest's stdlib runner must read pytest-style tests (import pytest, raises,
@@ -618,7 +677,8 @@ def smoke(arm, model):
     claude = shutil.which("claude")
     if not claude: sys.exit("claude CLI not found on PATH")
     cmd = build_cmd({"prompt": SMOKE_PROMPT, "tier": "size"}, arm, model, claude)
-    with tempfile.TemporaryDirectory() as d:
+    memory_guard(RUNS_DIR); RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=RUNS_DIR) as d:   # same cwd conditions as a real cell
         print("argv:", " ".join(cmd), "\n", flush=True)
         r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, timeout=CELL_TIMEOUT)
     try: j = json.loads(r.stdout)
@@ -861,6 +921,7 @@ def main():
     if any(TASKS[t].get("fixture") for t in task_ids): fixture.ensure()   # pinned clone or stop, before any API
     arms = [a.strip() for a in args.arms.split(",")]
     models = [m.strip() for m in (args.model or args.models).split(",")]
+    memory_guard(RUNS_DIR)                                                 # before any API spend
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out_dir = RUNS_DIR / stamp
     out_dir.mkdir(parents=True, exist_ok=True)

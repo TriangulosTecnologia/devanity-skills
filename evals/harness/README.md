@@ -105,12 +105,14 @@ python3 build_plugins.py   # writes plugins/devanity-released/ (.claude-plugin/p
 python3 run.py --smoke ponytail --model haiku   # one tiny prompt; prints whether the session sees the arm's rulesets
 ```
 
+**Memory files are the second contamination path.** Claude Code loads `CLAUDE.md` / `AGENTS.md` from a session's cwd and every ancestor directory, so a cell whose workspace sits inside this repository inherits the repository's own `AGENTS.md` (the kernel) in every arm, baseline included, with no `--plugin-dir` involved. Found live on 2026-09-24 (`evals/results/2026-09-24-stage-round.md`): a baseline cell under `evals/harness/runs/` answered `ACTIVE: devanity (from AGENTS.md)` while the smoke in a temp dir said `NONE`. Since then `memory_guard` refuses any live run (and any smoke) whose `RUNS_DIR` has a memory file above it, `--selftest` proves the guard, the smoke runs in a temp dir *under* `RUNS_DIR` so it shares the cells' cwd conditions, and `DEVANITY_HARNESS_RUNS_DIR` points the kept workspaces outside the repository (`container.sh` mounts them at `/runs`). On a host, set it to a directory with no `CLAUDE.md`/`AGENTS.md` in any parent, e.g. `export DEVANITY_HARNESS_RUNS_DIR=$HOME/devanity-runs`; `--rescore` accepts any path.
+
 ## Tiers
 
 - **size** (default): `--disallowedTools Bash`; the agent writes and stops. Comparable to ponytail.
 - **behavior** (`"tier": "behavior"` on the task): Bash allowed, so the agent runs code it wrote. Refuses to run unless `DEVANITY_HARNESS_CONTAINER=1`, which only the harness container sets (F0.9).
 
-`runs/` and `fixtures/` are gitignored; `runs/<stamp>/` keeps every workspace so any metric change is re-applied offline with `--rescore`.
+`runs/` and `fixtures/` are gitignored; `runs/<stamp>/` (or `$DEVANITY_HARNESS_RUNS_DIR/<stamp>/`, which a live run on a host needs so the cells' cwd has no `AGENTS.md` above it) keeps every workspace so any metric change is re-applied offline with `--rescore`.
 
 ## Container (behavior tier)
 
