@@ -549,7 +549,9 @@ def score_todo(workdir):
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:
         up = False
-        for _ in range(40):
+        # 15 s, not 4: a cold container (first node start, no page cache) can take longer than 4 s to
+        # bind, and a slow boot must not score a working server as broken.
+        for _ in range(150):
             if proc.poll() is not None: return _fail("server exited on startup")
             try:
                 req("GET", "/todos"); up = True; break
