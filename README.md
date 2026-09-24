@@ -49,7 +49,7 @@ for agent in worker verifier; do
 done
 ```
 
-Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific mechanics belong in bindings/reference surfaces, not in the core methods.
+Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific mechanics belong in bindings/reference surfaces, not in the core methods. Hosts that read an instruction file and run no hooks get the kernel from [`AGENTS.md`](AGENTS.md), generated from the kernel and checked for drift in CI (no modes, no persistence).
 
 ## Status
 

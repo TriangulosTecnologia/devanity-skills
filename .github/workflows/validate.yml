@@ -14,5 +14,7 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/validate-skills.mjs
-      - run: node --test scripts/validate-skills.test.mjs
       - run: node scripts/validate-open.mjs
+      - run: node scripts/kernel.mjs invariants
+      - run: node scripts/kernel.mjs check-agents
+      - run: node --test scripts/
