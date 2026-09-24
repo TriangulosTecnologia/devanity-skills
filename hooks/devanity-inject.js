@@ -9,16 +9,26 @@
 // agent_type -> the kernel. State `off` -> nothing. Any read error -> the
 // compact fallback kernel, never silence.
 //
+// After the kernel: the repository rules (F2.5) and, when the ledger holds an
+// open change, its phase summary (F3.2); the verifier's note then names the
+// change to falsify. Everything stays under the host's 10,000-char stdout cap.
+//
 // Fail-open scoping and the never-block stdin path follow ponytail's
 // hooks/ponytail-subagent.js (https://github.com/DietrichGebert/ponytail,
 // (c) 2026 DietrichGebert, MIT License), rewritten for this contract.
 
 const rt = require('./devanity-runtime');
 const rulesMod = require('./devanity-rules');
+const ledger = require('./devanity-ledger');
 
 // F2.5: the repository's own rules, compacted for the model (SPEC §7.1 "context per path").
 // Only when devanity.rules.json is present and valid; hard cap of ~200 tokens.
 const RULES_CONTEXT_MAX_CHARS = 800;
+// F3.2: the open change (ledger contract not DONE/ABANDONED, declared within 24 h), ~120 tokens.
+const CHANGE_CONTEXT_MAX_CHARS = 480;
+const CHANGE_FIELD_MAX_CHARS = 60;
+// The host caps plain SessionStart stdout at 10,000 chars; below this budget every section fits.
+const OUTPUT_BUDGET_CHARS = 9500;
 
 function rulesContext(cwd) {
   const loaded = rulesMod.loadRules(cwd);
@@ -33,16 +43,60 @@ function rulesContext(cwd) {
   return text.length > RULES_CONTEXT_MAX_CHARS ? text.slice(0, RULES_CONTEXT_MAX_CHARS - 1) + '…' : text;
 }
 
+// One ledger field on one line, clipped: a hand-edited ledger must not break the section shape.
+function clip(v, max = CHANGE_FIELD_MAX_CHARS) {
+  const s = String(v === undefined || v === null ? '' : v).replace(/\s+/g, ' ').trim();
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+}
+
+function phaseLine(c) {
+  if (c.phase === 'EXECUTE') return `EXECUTE: implement inside scope; the proof is ${clip(c.proof) || '<undeclared>'}; forbidden: ${clip(c.forbidden) || 'none declared'}.`;
+  if (c.phase === 'VERIFY') return `VERIFY: you are verifying, not writing: falsify the claims of ${c.id}.`;
+  return `${c.phase}: continue from ${c.phase}.`;
+}
+
+// The "Open change" section for SessionStart and non-verifier subagents, or '' without one.
+function changeContext(cwd) {
+  const c = ledger.openContract(cwd);
+  if (!c) return '';
+  const lines = [`## Open change ${clip(c.id)}`, `phase: ${c.phase} · pending: ${clip(c.pending) || '0'}`];
+  for (const k of ['intent', 'scope', 'forbidden', 'proof']) if (c[k]) lines.push(`${k}: ${clip(c[k])}`);
+  lines.push(phaseLine(c));
+  const text = lines.join('\n');
+  return text.length > CHANGE_CONTEXT_MAX_CHARS ? text.slice(0, CHANGE_CONTEXT_MAX_CHARS - 1) + '…' : text;
+}
+
+// The verifier's note, still one line, naming what to falsify when a change is open.
+function verifierNote(cwd) {
+  const c = ledger.openContract(cwd);
+  if (!c) return rt.VERIFIER_NOTE;
+  return `${rt.VERIFIER_NOTE} Open change ${clip(c.id)}: falsify its claims; its proof is ${clip(c.proof) || '<undeclared>'}.`;
+}
+
 function contextFor(payload) {
   if (rt.readState() === 'off') return '';
   const role = rt.agentRole(payload.agent_type);
   if (role === 'worker') return '';
-  if (role === 'verifier') return rt.VERIFIER_NOTE;
+  const cwd = typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : process.cwd();
+  if (role === 'verifier') {
+    try { return verifierNote(cwd); } catch (e) { return rt.VERIFIER_NOTE; }
+  }
   const kernel = rt.readKernel().text;
   let rules = '';
-  try { rules = rulesContext(typeof payload.cwd === 'string' && payload.cwd ? payload.cwd : process.cwd()); } catch (e) { rules = ''; }
-  const body = rules ? kernel + '\n\n' + rules : kernel;
-  return rt.isAutonomous() ? rt.AUTONOMOUS_LINE + '\n\n' + body : body;
+  try { rules = rulesContext(cwd); } catch (e) { rules = ''; }
+  let change = '';
+  try { change = changeContext(cwd); } catch (e) { change = ''; }
+  const head = rt.isAutonomous() ? rt.AUTONOMOUS_LINE + '\n\n' : '';
+  const assemble = (parts) => head + parts.filter(Boolean).join('\n\n');
+  // Never exceed the host's cap: drop the change section first, then the rules, and say so.
+  const dropped = [];
+  let out = assemble([kernel, rules, change]);
+  if (out.length > OUTPUT_BUDGET_CHARS && change) { dropped.push('change'); out = assemble([kernel, rules]); }
+  if (out.length > OUTPUT_BUDGET_CHARS && rules) { dropped.push('rules'); out = assemble([kernel]); }
+  if (dropped.length) {
+    try { ledger.append(cwd, 'events', { kind: 'inject_truncated', dropped, chars: out.length, event: payload.hook_event_name || null }, payload.session_id || null); } catch (e) { /* recorded best effort */ }
+  }
+  return out;
 }
 
 function main() {

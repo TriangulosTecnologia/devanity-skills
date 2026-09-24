@@ -5,7 +5,9 @@
 // Only a whole message switches state (SPEC §7.2): `/devanity off`,
 // `stop devanity`, `normal mode` -> off; `/devanity on` -> on (and the kernel is
 // re-injected, since a session that started while off never received it);
-// bare `/devanity` -> reports the state. Any other prompt -> no output.
+// bare `/devanity` -> reports the state; `/devanity status` adds the open change
+// and the pending queue; `/devanity reset` abandons the open change. Any other
+// prompt -> no output.
 // Matching is case-insensitive and ignores trailing punctuation; a prompt that
 // merely contains one of the phrases ("add a normal mode toggle") never fires.
 //
@@ -18,9 +20,12 @@ const ledger = require('./devanity-ledger');
 
 // Accepts the bare command and the plugin-scoped form Claude Code may show.
 const COMMAND = /^\/(?:devanity:)?devanity(?:\s+(\S+))?$/;
-// `decide` and `pending` keep their arguments' case; matched on the raw prompt, still whole-message.
+// `decide` keeps its arguments' case: matched on the raw prompt, still whole-message.
 const DECIDE = /^\/(?:devanity:)?devanity\s+decide(?:\s+(.*))?$/i;
-const PENDING = /^\/(?:devanity:)?devanity\s+pending$/i;
+// Argument-less verbs handled here, not by the skill. `pending`, `status` only read the ledger;
+// `reset` (F3.6) writes only contract records with phase ABANDONED (never a decision, never
+// by:'human' on a decision).
+const VERBS = new Set(['off', 'on', 'pending', 'reset', 'status']);
 const OFF_PHRASES = new Set(['stop devanity', 'normal mode']);
 
 function normalize(prompt) {
@@ -31,7 +36,7 @@ function normalize(prompt) {
     .replace(/\s+/g, ' ');
 }
 
-// Returns 'off' | 'on' | 'report' | null.
+// Returns one of VERBS | 'report' | null.
 function intentOf(prompt) {
   const text = normalize(prompt);
   if (!text) return null;
@@ -39,8 +44,7 @@ function intentOf(prompt) {
   const m = COMMAND.exec(text);
   if (!m) return null;
   const arg = m[1] || '';
-  if (arg === 'off') return 'off';
-  if (arg === 'on') return 'on';
+  if (VERBS.has(arg)) return arg;
   if (arg === '') return 'report';
   return null; // `/devanity plan ...` and other mode verbs belong to the skill
 }
@@ -103,6 +107,29 @@ function decide(args, cwd, sessionId) {
   return `DEVANITY DECISION RECORDED: ${id} = ${chosen}, path ${scope}, by human. Guarded edits under that path are now allowed.`;
 }
 
+// ---- open change (SPEC §7.2 risk table, F3.6) --------------------------------------------------
+
+// `/devanity reset`: every open contract (unclosed, declared within 24 h) is marked ABANDONED with
+// reason `reset` (only this handler writes that reason, and only a typed whole message reaches it).
+// Expired ones are already out of the way and stay counted as expired in `stats`.
+function reset(cwd, sessionId) {
+  if (!ledger.ledgerDir(cwd)) return 'DEVANITY RESET: no ledger here (not a git repository); nothing to reset.';
+  const open = ledger.openContracts(cwd);
+  let n = 0;
+  for (const c of open) if (ledger.append(cwd, 'contracts', { id: c.id, phase: 'ABANDONED', reason: 'reset' }, sessionId)) n++;
+  const ids = open.slice(0, n).map((c) => `${c.id} (${c.phase})`);
+  return `DEVANITY RESET: ${n} open change(s) marked abandoned${ids.length ? `: ${ids.join(', ')}` : ''}.`;
+}
+
+// `/devanity status`: read-only; state, the open change, the pending queue size.
+function status(cwd) {
+  const state = rt.readState();
+  if (!ledger.ledgerDir(cwd)) return `DEVANITY STATUS: state ${state}; no ledger here (not a git repository).`;
+  const c = ledger.openContract(cwd);
+  const change = c ? `${c.id} in ${c.phase}${c.intent ? ` (${String(c.intent).replace(/\s+/g, ' ').trim()})` : ''}` : 'none';
+  return `DEVANITY STATUS: state ${state}; open change: ${change}; pending decisions: ${ledger.pendingDecisions(cwd).length}.`;
+}
+
 function main() {
   rt.readStdinJson((payload) => {
     let out = '';
@@ -110,9 +137,12 @@ function main() {
       const raw = String(payload.prompt || '').trim();
       const cwd = payload.cwd && String(payload.cwd).trim() ? String(payload.cwd) : process.cwd();
       const d = DECIDE.exec(raw);
+      const intent = intentOf(raw);
       if (d) out = decide(d[1], cwd, payload.session_id);
-      else if (PENDING.test(raw)) out = pendingList(cwd);
-      else out = respond(intentOf(payload.prompt));
+      else if (intent === 'pending') out = pendingList(cwd);
+      else if (intent === 'reset') out = reset(cwd, payload.session_id);
+      else if (intent === 'status') out = status(cwd);
+      else out = respond(intent);
     } catch (e) { out = ''; }
     rt.emit('UserPromptSubmit', out);
   });

@@ -74,6 +74,21 @@ For material repository changes, Guardian owns repository assurance. If the host
 
 Repeated findings/decisions that appear reusable should be surfaced for durable promotion, but Maestro does not invent a new enforcement taxonomy: Guardian owns repository enforcement and ARCHER owns material architecture decisions.
 
+## Persisting the phase
+
+A message that enters or leaves a lifecycle phase ends with this block. With the plugin installed the `Stop` hook records it in the ledger (`contracts.jsonl`), the next session and every non-verifier subagent start from it, the verifier is told which change to falsify, and `/devanity status` / `/devanity reset` read and close it; without hooks it is still the phase's visible record. `DONE` or `ABANDONED` closes the change; an unclosed change is forgotten after 24 h.
+
+```
+devanity-contract:
+  id: <the Change id, e.g. C-2026-09-24-1>
+  phase: FRAME | INSPECT | PROVE | EXECUTE | VERIFY | ASSURE | DONE | ABANDONED
+  intent: <one line>
+  scope: <paths or globs>
+  forbidden: <paths or globs, or none>
+  proof: <the check the devanity-proof block will name>
+  pending: <n decisions>
+```
+
 ## Completion
 
 A candidate is ready only when:

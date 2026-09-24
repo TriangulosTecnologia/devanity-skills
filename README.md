@@ -30,6 +30,8 @@ The verbs are for the moments that need a procedure:
 | List deferred shortcuts and pending decisions | `/devanity debt` |
 | First install in a repository | `/devanity init` |
 
+With the plugin installed, a few whole-message commands talk to the hooks rather than to the model: `/devanity on|off`, `/devanity status` (state, open change, pending decisions), `/devanity pending`, `/devanity decide <id> <option> [--path <glob>]` (the only way a human decision reaches the guards), `/devanity reset` (abandons the open change), and `/devanity debt --stats` for the repository's numbers. What they enforce and record: [`docs/guards.md`](docs/guards.md), [`docs/oracle-and-ci.md`](docs/oracle-and-ci.md), [`docs/ledger.md`](docs/ledger.md).
+
 You normally **do not invoke Worker or Verifier yourself**: Worker collects evidence and does not decide; Verifier tries to falsify a completed change and does not edit. The modes use them when needed; missing roles degrade explicitly rather than becoming fabricated evidence.
 
 ## Install for Claude Code
@@ -94,7 +96,8 @@ skills/devanity/
 agents/
   worker.md              evidence collection
   verifier.md            independent proof
-docs/                    development model, evolution spec and plan
+hooks/                   kernel injection, guards, proof oracle, ledger (plugin install only)
+docs/                    development model, evolution spec and plan, guards, oracle, ledger
 evals/                   scenario catalog and executable harness
 scripts/                 validators
 ```

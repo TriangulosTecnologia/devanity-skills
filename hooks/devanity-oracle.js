@@ -12,6 +12,9 @@
 // What it never does: run when there is no block, police prose, block a claim it cannot measure
 // (outside git, no check, guards recording), re-run an honest NOT_VERIFIED, or hang the session.
 //
+// F3.1: the same pass persists a `devanity-contract:` block (the change's lifecycle phase) to
+// contracts.jsonl. It is recorded, never measured or blocked; docs/ledger.md has the grammar.
+//
 // Host contract confirmed against Claude Code 2.1.281: the payload carries last_assistant_message,
 // transcript_path, stop_hook_active, cwd, session_id; `{"decision":"block","reason":…}` on stdout
 // with exit 0 blocks the stop; the host's own guidance is "check stop_hook_active in the input and
@@ -28,6 +31,8 @@ const ledger = require('./devanity-ledger');
 
 const DEFAULT_TIMEOUT_MS = 120000;
 const BLOCK_KEYS = ['contract', 'check', 'baseline', 'failed_before', 'passed_after', 'probes', 'status', 'pending', 'pending_decisions'];
+// F3.1: the lifecycle block, a compact projection of the Change Contract; persisted, never enforced.
+const CONTRACT_KEYS = ['id', 'phase', 'intent', 'scope', 'forbidden', 'proof', 'pending'];
 const REASONS = {
   passedBefore: 'check passed before the fix (no oracle)',
   failsAfter: 'check fails after',
@@ -38,23 +43,50 @@ const REASONS = {
 
 // ---------------------------------------------------------------- the block
 
-// The FIRST `devanity-proof:` block in `text`: {fields, start, end} or null. Tolerates any
-// indentation, `key : value` spacing, CRLF, and a surrounding fence (the fence ends the block).
-function findProofBlock(text) {
+// The FIRST `<name>:` block in `text` whose keys are `keys`: {fields, start, end} or null.
+// Tolerates any indentation, `key : value` spacing, CRLF, and a surrounding fence (the fence ends
+// the block).
+function findBlock(text, name, keys) {
   const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
-  const start = lines.findIndex((l) => /^\s*devanity-proof\s*:\s*$/.test(l));
+  const startRe = new RegExp(`^\\s*${name}\\s*:\\s*$`);
+  const start = lines.findIndex((l) => startRe.test(l));
   if (start < 0) return null;
   const fields = {};
   let end = start;
-  const keyRe = new RegExp(`^\\s*(${BLOCK_KEYS.join('|')})\\s*:\\s*(.*?)\\s*$`);
+  const keyRe = new RegExp(`^\\s*(${keys.join('|')})\\s*:\\s*(.*?)\\s*$`);
   for (let i = start + 1; i < lines.length; i++) {
     const m = keyRe.exec(lines[i]);
     if (!m) break;
     if (!(m[1] in fields)) fields[m[1]] = m[2];
     end = i;
   }
-  if (fields.pending === undefined && fields.pending_decisions !== undefined) fields.pending = fields.pending_decisions;
   return { fields, start, end };
+}
+
+function findProofBlock(text) {
+  const b = findBlock(text, 'devanity-proof', BLOCK_KEYS);
+  if (b && b.fields.pending === undefined && b.fields.pending_decisions !== undefined) b.fields.pending = b.fields.pending_decisions;
+  return b;
+}
+
+// The `devanity-contract:` block, with `phase` upper-cased. A block without an id or with a phase
+// outside the lifecycle is not a contract and is ignored (null).
+function findContractBlock(text) {
+  const b = findBlock(text, 'devanity-contract', CONTRACT_KEYS);
+  if (!b) return null;
+  const id = String(b.fields.id || '').trim();
+  const phase = String(b.fields.phase || '').trim().toUpperCase();
+  if (!id || !ledger.CONTRACT_PHASES.includes(phase)) return null;
+  b.fields.id = id;
+  b.fields.phase = phase;
+  return b;
+}
+
+// Appends the contract record: the block's seven fields, latest per id wins (see ledger.contracts).
+function persistContract(root, fields, sid) {
+  const rec = { id: fields.id, phase: fields.phase };
+  for (const k of ['intent', 'scope', 'forbidden', 'proof', 'pending']) if (fields[k] !== undefined && fields[k] !== '') rec[k] = fields[k];
+  return ledger.append(root, 'contracts', rec, sid);
 }
 
 // The last assistant message of a Claude Code transcript (JSONL), used only when the payload
@@ -239,16 +271,23 @@ function decide(payload, env = process.env) {
     ? payload.last_assistant_message
     : (payload.transcript_path ? lastAssistantFromTranscript(payload.transcript_path) : '');
   const found = findProofBlock(message);
-  if (!found) return { action: 'exit' };
-  const agent = found.fields;
-  const agentStatus = String(agent.status || '').trim();
+  const contract = findContractBlock(message);
+  if (!found && !contract) return { action: 'exit' };
   const sid = payload.session_id || null;
   const info = repoInfo(cwd);
   const root = info ? info.root : cwd;
+  // The lifecycle block is persisted first and independently of the proof: a message that only
+  // declares a phase records it and lets the turn end.
+  if (contract) persistContract(root, contract.fields, sid);
+  if (!found) return { action: 'exit' };
+  const agent = found.fields;
+  const agentStatus = String(agent.status || '').trim();
   const loaded = rulesMod.loadRules(root);
   const enforce = rt.guardsEnforcing(loaded, env);
   const pending = agent.pending !== undefined ? agent.pending : String(ledger.pendingDecisions(root).length);
-  const base = { kind: 'proof', contract: agent.contract || 'adhoc', check: agent.check || null, head: info ? info.head : null, agent_status: agentStatus, pending, enforce };
+  // A proof without a `contract` field links to the contract declared in the same message.
+  const contractId = agent.contract || (contract ? contract.fields.id : null) || 'adhoc';
+  const base = { kind: 'proof', contract: contractId, check: agent.check || null, head: info ? info.head : null, agent_status: agentStatus, pending, enforce };
 
   // An honest NOT_VERIFIED, or a status that claims nothing, needs no re-run.
   if (!/^VERIFIED\b/i.test(agentStatus)) {
@@ -302,7 +341,7 @@ function main() {
   });
 }
 
-module.exports = { DEFAULT_TIMEOUT_MS, REASONS, decide, findProofBlock, lastAssistantFromTranscript, renderProofBlock, ruleCheckFor };
+module.exports = { CONTRACT_KEYS, DEFAULT_TIMEOUT_MS, REASONS, decide, findBlock, findContractBlock, findProofBlock, lastAssistantFromTranscript, renderProofBlock, ruleCheckFor };
 
 if (require.main === module) {
   try { main(); } catch (e) { rt.exitSoon(0); }

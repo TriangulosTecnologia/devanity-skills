@@ -19,4 +19,8 @@ A `deferred:` comment that names no trigger gets a `no-trigger` tag: those are t
 
 End with `<N> deferrals, <M> without a trigger, <K> decisions pending.` Nothing found: `No deferred debt. Clean ledger.`
 
+## Stats
+
+`debt --stats` (or any request for the repository's numbers): run `node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-ledger.js" stats` (read-only; `--json` for the raw shape, `--cwd <path>` for another checkout) and render its output verbatim as the closing numbers, after the rows above. It reports, over the 90-day window: decisions (pending / decided by human / decided by agent-default), proofs (VERIFIED / NOT_VERIFIED / false_ready), contracts (open / done / abandoned / expired), deferrals, and guard events (blocked / would_block). No ledger (not a git repository) is a valid answer; say so and stop. Nothing here writes; `prune` exists on the same CLI and runs only when the user asks.
+
 Want an owner per row? `git blame -L<line>,<line>`. Want it persisted? Ask; it writes `DEVANITY-DEBT.md` only on request.
