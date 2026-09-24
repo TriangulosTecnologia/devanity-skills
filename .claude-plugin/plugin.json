@@ -1,0 +1,14 @@
+{
+  "name": "devanity",
+  "version": "1.0.0-candidate",
+  "description": "Always-on engineering judgment for coding agents: the smallest change that holds, a check that fails before the fix, and no authority spent that was not given.",
+  "author": {
+    "name": "Ennio Lopes",
+    "email": "enniolopes@gmail.com",
+    "url": "https://github.com/TriangulosTecnologia"
+  },
+  "repository": "https://github.com/TriangulosTecnologia/devanity-skills",
+  "license": "CC-BY-NC-4.0",
+  "keywords": ["engineering", "code-review", "planning", "architecture", "verification"],
+  "hooks": "./hooks/hooks.json"
+}

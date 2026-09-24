@@ -16,3 +16,4 @@ jobs:
       - run: node scripts/validate-skills.mjs
       - run: node --test scripts/validate-skills.test.mjs
       - run: node scripts/validate-open.mjs
+      - run: node --test tests/*.test.mjs

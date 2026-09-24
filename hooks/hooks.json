@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/devanity-inject.js\" SessionStart",
+            "timeout": 5,
+            "statusMessage": "Loading devanity..."
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/devanity-inject.js\" SubagentStart",
+            "timeout": 5,
+            "statusMessage": "Loading devanity for the subagent..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/devanity-mode.js\"",
+            "timeout": 5,
+            "statusMessage": "Checking devanity state..."
+          }
+        ]
+      }
+    ]
+  }
+}
