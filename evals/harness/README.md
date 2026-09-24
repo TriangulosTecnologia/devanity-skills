@@ -6,27 +6,27 @@ Status: **phase 0 instruments complete** (F0.1–F0.11; see [PLAN.md](../../docs
 
 ## Reproduce from zero
 
-Requirements: Python 3.11+, Node 22, git, Docker (behavior tier only), the `claude` CLI authenticated (an `ANTHROPIC_API_KEY` is the recommended form for reference rounds), and the ponytail plugin for its arm (`/plugin marketplace add DietrichGebert/ponytail` then `/plugin install ponytail@ponytail`, or `DEVANITY_HARNESS_PLUGIN_PONYTAIL=/path/to/a/clone`).
+Requirements: Python 3.11+, Node 22, git, Docker (behavior tier only), the `claude` CLI authenticated (an `ANTHROPIC_API_KEY` is the recommended form for reference rounds), and the competitor plugins for their arms: ponytail (`/plugin marketplace add DietrichGebert/ponytail`, `/plugin install ponytail@ponytail`), superpowers, feature-dev and security-guidance (`/plugin install <name>@claude-plugins-official`), caveman (its own marketplace or `npx skills add JuliusBrussee/caveman`). Any of them can instead be pointed at a checkout with `DEVANITY_HARNESS_PLUGIN_<NAME>=/path`. An arm whose plugin is missing exits loudly; run the arms you have.
 
 ```bash
 cd evals/harness
 python3 run.py --selftest                      # 1. instruments, no API, must be green before anything else
 python3 complete.py --selftest-offline         # 2. completeness gate logic, no API
-python3 build_plugins.py                       # 3. package the current skills as the devanity-current arm
+python3 build_plugins.py                       # 3. package the released skills as the devanity-released arm
 python3 fixture.py --clone                     # 4. real-repo fixture at cd83fc1 (once)
 ./container.sh                                 # 5. build the container and prove the instruments inside it
 # size tier (comparable to ponytail; agent writes and stops; no Bash) — host or container:
 python3 run.py --task tmpl-fe-datepicker,tmpl-fe-colorpicker,tmpl-fe-command,tmpl-fe-dropzone,tmpl-fe-wizard,tmpl-fe-rating,tmpl-be-duplicate,tmpl-be-search,tmpl-be-count,tmpl-be-archive,tmpl-be-bulkdelete,tmpl-be-csv \
-  --arms baseline,ponytail,devanity-current --models sonnet --runs 4 --workers 6
+  --arms baseline,ponytail,superpowers,caveman,feature-dev,security-guidance,senior-oneliner,devanity-released --models sonnet --runs 4 --workers 6
 # behavior tier (safety, judgment, vibe, long-horizon; Bash allowed) — container only:
 ./container.sh python3 run.py --task safe-path,critic-email,rate-limit,sql-user,auth-token,csv-sum,cache,todo-null,reuse-slug,reuse-money,trace-transfer,trace-amount,judge-nochange,judge-askable,judge-humanowned,judge-falsetest,vibe-app-cli,vibe-app-web,vibe-autonomous-billing,long-3-tickets,long-compact \
-  --arms baseline,ponytail,devanity-current --models sonnet --runs 4 --workers 4
+  --arms baseline,ponytail,superpowers,caveman,feature-dev,security-guidance,senior-oneliner,devanity-released --models sonnet --runs 4 --workers 4
 python3 run.py --rescore runs/<stamp>          # 6. recompute metrics offline; writes summary.json + traps.json
 python3 judge.py --selftest && python3 judge.py --run runs/<stamp>          # 7. over-engineering judge (small spend)
 python3 complete.py --selftest && python3 complete.py --run runs/<stamp>    # 8. completeness judge (small spend)
 ```
 
-`devanity-kernel` and `devanity-kernel+ponytail` exit loudly until phase 1 ships the kernel; that is correct. Budget: one full round (5 arms × ~27 tasks × n=4, Sonnet) is in the US$100–150 range and 3–5 h with 6 workers; iterate the kernel on the affected traps plus the safety tasks, never on the full round per edit. Every run's workspaces are kept under `runs/<stamp>/`, so no measurement change ever costs API twice.
+`devanity` (the candidate) exits loudly until phase 1 ships the kernel; that is correct. Budget: one full round (9 arms × ~27 tasks × n=4, Sonnet) is in the US$200–300 range and 3–5 h with 6 workers; iterate the kernel on the affected traps plus the safety tasks, never on the full round per edit. Every run's workspaces are kept under `runs/<stamp>/`, so no measurement change ever costs API twice.
 
 ## Judgment tier and metrics
 
@@ -76,23 +76,29 @@ Location: `DEVANITY_TMPL` if set (the same override `tasks.py` reads), else `fix
 
 ## Arms
 
-| arm | plugins loaded (`--plugin-dir`) | prompt |
+The field a maintainer would choose from (the way ponytail measures against caveman and two bare prompts, not against itself): each arm is one real plugin, one control, or one version of ours.
+
+| arm | plugins loaded (`--plugin-dir`) | why it is in the field |
 |---|---|---|
-| `baseline` | none | task prompt |
-| `ponytail` | ponytail | task prompt |
-| `devanity-current` | the three current skills + agents, packaged as a plugin | `/devanity-current:maestro ` + task prompt |
-| `devanity-kernel` | the new capability (does not exist until F1; the arm exits loudly until then) | task prompt |
-| `devanity-kernel+ponytail` | both | task prompt |
+| `baseline` | none | the floor: Claude Code as shipped |
+| `ponytail` | ponytail | the craft/minimalism competitor; the 12 size tasks are its published benchmark |
+| `superpowers` | superpowers | the most-installed discipline plugin: TDD, root-cause debugging, verify before done. The direct competitor on the judgment tier |
+| `caveman` | caveman | terse prose, normal code: is any effect just brevity? |
+| `feature-dev` | feature-dev (official) | structured multi-phase workflow: the counterpart of our process modes |
+| `security-guidance` | security-guidance (official) | always-on security hook: the counterpart of our guards |
+| `senior-oneliner` | none; one sentence via `--append-system-prompt` | the control that matters most for us: if a sentence does what the kernel does, the kernel is not worth its tokens |
+| `devanity-released` | the released skills + agents, packaged as a plugin | regression reference (released vs candidate, `evals/README.md`); never in the public writeup |
+| `devanity` | the candidate capability (does not exist until F1; exits loudly until then) | ours |
 
-Only `--plugin-dir` differs between arms: `--setting-sources project,local` keeps the user's own plugins out of every cell, `--strict-mcp-config` drops MCP servers, and the size-tier `--append-system-prompt` is the same `NO_RUN` text for all. **One documented exception:** maestro and guardian are manual-invocation (`disable-model-invocation: true`), so loading them as a plugin activates nothing by itself; `devanity-current` prefixes the prompt with `/devanity-current:maestro ` (Claude Code namespaces plugin skills as `/<plugin>:<skill>`) because `/maestro <goal>` is how a user invokes it today (SPEC §9: "invoked as today"). No other arm has a prefix. Whether the namespaced invocation resolves in headless mode is confirmed by the first live cell (`_claude.json` must show a Change Contract), not by the offline selftest.
+Only `--plugin-dir` differs between plugin arms: `--setting-sources project,local` keeps the user's own plugins out of every cell, `--strict-mcp-config` drops MCP servers, and the size-tier `--append-system-prompt` is the same `NO_RUN` text for all. Two documented exceptions, both asserted by `--selftest`: `senior-oneliner` appends exactly its sentence before `NO_RUN`; and `devanity-released` prefixes the prompt with `/devanity-released:maestro ` (Claude Code namespaces plugin skills as `/<plugin>:<skill>`) because maestro and guardian are manual-invocation (`disable-model-invocation: true`) and `/maestro <goal>` is how a user invokes them today. Whether the namespaced invocation resolves in headless mode is confirmed by the first live cell (`_claude.json` must show a Change Contract), not by the offline selftest.
 
-Plugin directories resolve in this order: `DEVANITY_HARNESS_PLUGIN_<COMPONENT>` env override (`PONYTAIL`, `DEVANITY_CURRENT`, `DEVANITY`) → harness-local `plugins/<component>/` for the devanity components → latest version under `~/.claude/plugins/cache/<name>/<name>/` (ponytail) → loud `sys.exit`. `plugins/` is gitignored; `devanity-current` is generated from the committed `skills/` and `agents/`:
+Plugin directories resolve in this order: `DEVANITY_HARNESS_PLUGIN_<COMPONENT>` env override → harness-local `plugins/<component>/` for the devanity components → latest version under `~/.claude/plugins/cache/<marketplace>/<name>/` (any marketplace) → loud `sys.exit`. `plugins/` is gitignored; `devanity-released` is generated from the committed `skills/` and `agents/`:
 
 ```bash
-python3 build_plugins.py   # writes plugins/devanity-current/ (.claude-plugin/plugin.json, skills/, agents/)
+python3 build_plugins.py   # writes plugins/devanity-released/ (.claude-plugin/plugin.json, skills/, agents/)
 ```
 
-`--selftest` includes the contamination test: `build_cmd` is pure, so it asserts offline (with sentinel plugin paths) that the baseline argv has no `--plugin-dir`, that each other arm has exactly its plugins, and that prompt and system prompt are identical across arms except the `/maestro ` prefix. A live counterpart exists for manual use, not as a gate:
+`--selftest` includes the contamination test: `build_cmd` is pure, so it asserts offline (with sentinel plugin paths) that the baseline argv has no `--plugin-dir`, that each other arm has exactly its plugins, and that prompt and system prompt are identical across plugin arms except the `/maestro ` prefix, and that only the one-sentence control appends anything. A live counterpart exists for manual use, not as a gate:
 
 ```bash
 python3 run.py --smoke ponytail --model haiku   # one tiny prompt; prints whether the session sees the arm's rulesets
@@ -142,7 +148,7 @@ SPEC §9.1b, F0.10. Five behavior-tier tasks measure what the surgical tasks can
 
 Ceilings, stated so the writeup does not overclaim: the CLI smoke scores a REPL-only or exotic-verb app `correct=0`; the web scorer is regex-only and cannot prove the guard is on the path a request takes; the billing scorer detects "decided" as a refund def that returns or computes an amount, so a formula under another name is missed; a long session that never reached ticket 3 (timeout) scores `t3=0` like a wrong fix would — the per-turn files tell them apart.
 
-**Multi-turn cells.** A task with `turns` runs one Claude Code session in one workdir: turn 1 is `claude -p <turn> --session-id <uuid4> …`, every later turn is `claude -p <turn> --resume <uuid4> …` with the same plugin, tool and model flags (plugins are per-invocation, so they are repeated); `prompt` mirrors `turns[0]` so every single-turn code path still works. Each turn has its own `CELL_TIMEOUT` and writes `_claude.turn<N>.json`; the last turn is copied to `_claude.json`, and `score_workspace` sums cost, duration, turns and tokens over the turn files. The devanity-current `/devanity-current:maestro ` prefix rides on every ticket prompt (a user invokes it per ticket) and never on a host command. `--selftest` asserts all of this offline (`_selftest_turns`), and the flags were verified live with claude 2.1.281: a word written in turn 1 was recalled by a `--resume` turn.
+**Multi-turn cells.** A task with `turns` runs one Claude Code session in one workdir: turn 1 is `claude -p <turn> --session-id <uuid4> …`, every later turn is `claude -p <turn> --resume <uuid4> …` with the same plugin, tool and model flags (plugins are per-invocation, so they are repeated); `prompt` mirrors `turns[0]` so every single-turn code path still works. Each turn has its own `CELL_TIMEOUT` and writes `_claude.turn<N>.json`; the last turn is copied to `_claude.json`, and `score_workspace` sums cost, duration, turns and tokens over the turn files. The devanity-released `/devanity-released:maestro ` prefix rides on every ticket prompt (a user invokes it per ticket) and never on a host command. `--selftest` asserts all of this offline (`_selftest_turns`), and the flags were verified live with claude 2.1.281: a word written in turn 1 was recalled by a `--resume` turn.
 
 **Forced compaction.** A turn of `{"compact": True}` sends the prompt `/compact` on the resumed session. Verified live (claude 2.1.281): `claude -p "/compact" --resume <id>` returns `num_turns: 0`, spends one summarisation call, and writes a `system`/`compact_boundary` ("Conversation compacted") record into `~/.claude/projects/<cwd-slug>/<id>.jsonl`; the next `--resume` turn continues from the summary. `run_cell` looks that transcript up by session id after the compact turn and writes `_compact.json` (`compacted`, `transcript`); the scorer surfaces it as `compacted` and in `reason`, so a `long-compact` row whose `compacted_rate` is below 1 is not a persistence measurement. In `--selftest` no session runs, so `compacted` is simply absent.
 

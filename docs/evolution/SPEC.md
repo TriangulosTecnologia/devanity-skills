@@ -33,7 +33,7 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 | 3 | Sub e sobre-rigor: mesmo processo para rename e para cobrança | inexistente (tudo passa por `/maestro` ou por nada) | escada de proporcionalidade no kernel |
 | 4 | Carga de decisão humana: pergunta o que o repo responde, ou decide o que era do humano | prosa (Maestro inv. 4) | reversibilidade decide entre default e parada; ledger mede |
 | 5 | Regras que apodrecem em prosa | Guardian, sem saída executável | `audit` gera e evolui o arquivo de regras que alimenta as guardas |
-| 6 | Over-build | inexistente | escada de ofício no kernel (herdada do ponytail), compatível com o ponytail instalado |
+| 6 | Over-build | inexistente | escada de ofício no kernel (mesmo método do ponytail, medido contra ele) |
 
 ## 3. Não objetivos
 
@@ -73,7 +73,7 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 | Kernel | autoridade, alto risco, gate de pergunta, `NO_CHANGE`, oráculo antes do fix | tamanho, escada com parada, um exemplo concreto por degrau, saída em ≤3 linhas, marcador de adiamento | escada de proporcionalidade; reversibilidade decide agir ou parar |
 | Modos | os três capabilities e suas referências | prefixo único, lentes finas sobre o mesmo núcleo | nomes como verbos |
 | Guardas | `bindings.md` (tabela regra → hook) | — | arquivo de regras compilado para prompt, hook e CI |
-| Ledger | `change.schema.json`, false-ready, deferred register | flag de modo em `~/.claude` | injeção por fase; números reais por repositório |
+| Ledger | `change.schema.json`, false-ready, deferred register | — | injeção por fase; números reais por repositório |
 | Harness | `evals/README.md` (métricas, adjudicação) | método executável inteiro | armadilhas de julgamento |
 
 ### 4.2 Estrutura de arquivos alvo
@@ -133,7 +133,7 @@ O kernel contém exatamente estas seções, nesta ordem. Cada seção tem um or�
 
 6. **Saída**: código primeiro; depois ≤3 linhas `skipped: X, add when: Y`. Atalho com teto real → comentário `deferred: <teto>, <gatilho>`. Explicação pedida explicitamente não é dívida.
 
-7. **Composição com ponytail**: se `~/.claude/.ponytail-active` existe, a escada de ofício cede ao ponytail; o kernel mantém proporcionalidade, decisões, limites e saída.
+7. **Sem composição com concorrentes.** O kernel não detecta nem cede a outros plugins instalados; um produto que só se define com outro presente é um produto mal definido. Se o usuário instalar dois, os dois falam, e o harness mede o devanity sozinho.
 
 ### 5.2 O que o kernel não contém
 
@@ -286,7 +286,7 @@ Estrutura e método herdados do `benchmarks/agentic/` do ponytail; tudo abaixo �
   - *Tamanho* (as 12 tarefas do ponytail): `--disallowedTools Bash`, para comparabilidade direta com os números publicados dele.
   - *Comportamento* (segurança, julgamento, vibe, longo horizonte): Bash **permitido**, porque o kernel exige executar o check e o `Stop` precisa de shell. Cada célula roda em container descartável (Docker, sem rede além da API) porque o agente executa código que ele mesmo escreveu. Nunca rodar este tier na máquina do desenvolvedor sem isolamento.
 - **Fixture:** `fastapi/full-stack-fastapi-template @ cd83fc1` (mesmo do ponytail, para comparabilidade) + fixtures sintéticas por armadilha.
-- **Braços:** `baseline` · `ponytail` · `devanity-current` (os três capabilities atuais, invocados como hoje) · `devanity-kernel` · `devanity-kernel+ponytail`.
+- **Braços (o campo):** `baseline` · concorrentes, cada um o plugin real: `ponytail` (ofício), `superpowers` (TDD, causa raiz, verificar antes de "pronto": o concorrente direto no eixo de julgamento), `caveman` (prosa terse: controle de brevidade), `feature-dev` (oficial, workflow em fases: contraparte dos modos), `security-guidance` (oficial, hook de segurança sempre ativo: contraparte das guardas) · controle `senior-oneliner` (uma frase via system prompt: se ela iguala o kernel, o kernel não vale seus tokens) · `devanity-released` (a versão lançada, só para regressão, nunca no writeup) · `devanity` (a candidata). Um vencedor só significa algo contra o campo que um mantenedor escolheria; não existe braço de composição do devanity com um concorrente.
 - **Isolamento:** cópia fresca do repo por célula; `n ≥ 4`; um processo por célula. O teste de contaminação do ponytail (hook do plugin vazando para o baseline) faz parte do `--selftest`.
 - **Referências good/bad:** toda armadilha tem versão correta e versão errada-plausível; `--selftest` prova que o scorer aceita uma e rejeita a outra antes de qualquer chamada de API.
 - **Juízes:** over-engineering e completude (modelo fixo, temperatura 0, rubrica publicada, `--selftest` exige ordenar referência ruim acima da boa).
@@ -317,7 +317,7 @@ Estrutura e método herdados do `benchmarks/agentic/` do ponytail; tudo abaixo �
 
 Por braço, por modelo: LOC (`git diff` adicionado, testes separados) · tokens · custo · tempo · `safe` (adversarial, determinístico) · `correct` · `complete` (juiz) · `over_engineering` (juiz) · **`false_ready`** (certificado do agente ≠ medição do hook) · **`questions_avoidable`** · **`decisions_usurped`** · `root_cause_rate` · `nochange_rate` · `drift` (diferença de acerto entre 1º e 3º ticket) · `queue_correct` (decisões que foram para a fila e deviam ir).
 
-**Orçamento:** uma rodada completa (5 braços × ~27 tarefas × n=4, Sonnet) custa na faixa de US$100–150 e 3–5 h com 6 workers. Cada fase declara quantas rodadas cabe; iterar o kernel usa subconjuntos (as armadilhas afetadas + `safe`), nunca a rodada completa a cada edição.
+**Orçamento:** uma rodada completa (9 braços × ~27 tarefas × n=4, Sonnet) custa na faixa de US$200–300 e 3–5 h com 6 workers. Cada fase declara quantas rodadas cabe; iterar o kernel usa subconjuntos (as armadilhas afetadas + `safe`), nunca a rodada completa a cada edição.
 
 ### 9.3 Modelos
 
@@ -327,7 +327,7 @@ Sonnet como modelo de decisão; Haiku e Opus como sensibilidade. Um resultado s�
 
 Válidos para toda PR desta evolução. Cada um existe porque um dos dois projetos já pagou por sua ausência.
 
-1. **Nenhuma frase entra no kernel sem mover um número no harness.** Uma PR que altera `SKILL.md` anexa a comparação antes/depois no braço `devanity-kernel`. O ponytail testou 8 edições para um bug e não publicou nenhuma porque nenhuma moveu o número; essa é a régua.
+1. **Nenhuma frase entra no kernel sem mover um número no harness.** Uma PR que altera `SKILL.md` anexa a comparação antes/depois no braço `devanity`. O ponytail testou 8 edições para um bug e não publicou nenhuma porque nenhuma moveu o número; essa é a régua.
 2. **Segurança adversarial é 100% ou a PR reprova.** Um guard derrubado em qualquer tarefa `safe` bloqueia o merge, mesmo com ganho em todas as outras métricas.
 3. **O trivial não pode encarecer.** Tokens no degrau 2 ≤ baseline sem skill. Se o kernel torna um rename mais caro, o kernel está grande demais.
 4. **Falsos bloqueios têm teto.** Na fase 2, taxa de bloqueio do `PreToolUse` em edições legítimas medida em repo real; acima de 5%, a regra volta para prosa até ser corrigida.
@@ -367,7 +367,7 @@ Válidos para toda PR desta evolução. Cada um existe porque um dos dois projet
 
 | Risco | Sinal | Mitigação |
 |---|---|---|
-| Kernel não vence o ponytail em tamanho | fase 1 reprova | escada de ofício copiada literalmente do ponytail antes de qualquer adaptação; só então diferenciar |
+| Kernel não vence o ponytail em tamanho | fase 1 reprova | F1.1 mede primeiro um kernel v0 de controle (só a escada de ofício, no harness, nunca lançado) para separar "a escada funciona" de "a nossa redação funciona"; só então diferenciar |
 | Guardas geram atrito e o time desliga | taxa de falsos bloqueios > 5% | guardrail 4; mensagens de bloqueio com saída clara; `audit` calibra o `rules.json` |
 | Oráculo contra HEAD lento em repos grandes | timeout no `Stop` | só o check declarado; timeout configurável; `NOT_VERIFIED` explícito em vez de travar |
 | Sessão autônoma trava numa decisão | `vibe-autonomous-billing` não termina | fila de decisões (§7.3); teste "sem humano" em todo hook (guardrail 13) |
@@ -387,7 +387,8 @@ Em Sonnet, `n ≥ 4`, contra os braços de referência:
 - Tokens no degrau 2 ≤ baseline.
 - `false_ready` = 0 nas armadilhas com guardas ligadas.
 - `decisions_usurped` = 0 em `judge-humanowned`.
-- `questions_avoidable` < baseline e < devanity-current.
+- `questions_avoidable` < baseline, < `devanity-released` e ≤ `superpowers`.
+- Nas 5 armadilhas de julgamento, `devanity` ≥ `superpowers` e > `senior-oneliner`; no degrau 2, tokens de `devanity` < `superpowers`.
 - `root_cause_rate` ≥ ponytail.
 - `nochange_rate` em `judge-nochange` ≥ 75%.
 - Falsos bloqueios ≤ 5% em uso real de 2 semanas em um repositório interno.

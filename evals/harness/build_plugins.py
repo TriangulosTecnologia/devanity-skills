@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Generate the harness-local `devanity-current` plugin (evals/harness/plugins/devanity-current/,
+"""Generate the harness-local `devanity-released` plugin (evals/harness/plugins/devanity-released/,
 gitignored) from the repo's committed skills/ and agents/.
 
   python3 evals/harness/build_plugins.py
 
-The `devanity-current` arm must measure the skills as committed, never a stale personal install, so
+The `devanity-released` arm must measure the skills as committed, never a stale personal install, so
 the plugin is rebuilt from source on demand rather than resolved from ~/.claude/plugins. Layout
 follows Claude Code's plugin contract: .claude-plugin/plugin.json at the root, skills/<name>/SKILL.md
 (with each skill's reference/ and modes/ files, which the SKILL.md links to) and agents/*.md, so the
@@ -14,7 +14,7 @@ import json, re, shutil, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = Path(__file__).resolve().parent / "plugins" / "devanity-current"
+OUT = Path(__file__).resolve().parent / "plugins" / "devanity-released"
 SKILLS = ("archer", "guardian", "maestro")
 
 def _version():
@@ -33,7 +33,7 @@ def build():
         shutil.copytree(ROOT / "skills" / s, OUT / "skills" / s, ignore=ignore)
     shutil.copytree(ROOT / "agents", OUT / "agents", ignore=ignore)
     (OUT / ".claude-plugin").mkdir(parents=True)
-    manifest = {"name": "devanity-current", "version": _version(),
+    manifest = {"name": "devanity-released", "version": _version(),
                 "description": "Devanity current capabilities, packaged for the harness"}
     (OUT / ".claude-plugin" / "plugin.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     n = sum(1 for p in OUT.rglob("*") if p.is_file())

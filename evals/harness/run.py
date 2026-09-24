@@ -39,32 +39,42 @@ import fixture
 ROOT = Path(__file__).resolve().parents[2]
 RUNS_DIR = Path(__file__).resolve().parent / "runs"
 
-# Arms (SPEC §9). Each arm is activated by loading exactly its plugins via --plugin-dir; nothing
-# arm-specific is appended to the system prompt, so only the plugins differ between arms.
-# Exception, `prompt_prefix`: maestro and guardian are manual-invocation
-# (`disable-model-invocation: true`), so an always-on plugin load alone would never activate them
-# and the arm would silently measure a baseline under devanity's name. `devanity-current` therefore
-# prefixes the task prompt with the plugin-namespaced "/devanity-current:maestro " -- the plugin form of
-# how a user invokes it today (SPEC §9: "invoked
-# as today"). Every other arm has an empty prefix; a non-empty prefix anywhere else is contamination.
+# Arms (SPEC §9): the field a maintainer would choose from, so a win means something and each
+# control isolates a cause. Every arm is activated by loading exactly its plugins via --plugin-dir;
+# `append` (system-prompt text) exists only for the one-sentence control, the analogue of ponytail's
+# yagni-oneliner: if a sentence matches the kernel, the kernel is not worth its tokens.
+# `prompt_prefix` exists only for devanity-released: maestro and guardian are manual-invocation
+# (`disable-model-invocation: true`), so a plugin load alone would never activate them and the arm
+# would silently measure a baseline under devanity's name; the prefix is the plugin form of how a
+# user invokes it today. Anywhere else a prefix or an append is contamination.
 # Plugin directories are resolved at use-site (_plugin_dir) -- a missing install fails loudly.
+SENIOR_ONELINER = ("You are a senior engineer: read the code first, fix root causes, leave a test that fails "
+                   "before the fix and passes after, and propose instead of editing anything that touches "
+                   "money, auth, permissions or data.")
 ARMS = {
-    "baseline":                 {"plugins": [],                       "prompt_prefix": ""},
-    "ponytail":                 {"plugins": ["ponytail"],             "prompt_prefix": ""},
-    "devanity-current":         {"plugins": ["devanity-current"],     "prompt_prefix": "/devanity-current:maestro "},
-    "devanity-kernel":          {"plugins": ["devanity"],             "prompt_prefix": ""},
-    "devanity-kernel+ponytail": {"plugins": ["devanity", "ponytail"], "prompt_prefix": ""},
+    "baseline":          {"plugins": []},
+    # competitors, each its real plugin
+    "ponytail":          {"plugins": ["ponytail"]},            # craft / minimalism
+    "superpowers":       {"plugins": ["superpowers"]},         # TDD, root-cause debugging, verify before done
+    "caveman":           {"plugins": ["caveman"]},             # terse prose, normal code (is it just brevity?)
+    "feature-dev":       {"plugins": ["feature-dev"]},         # official 7-phase workflow (maestro's counterpart)
+    "security-guidance": {"plugins": ["security-guidance"]},   # official always-on security hook (guards' counterpart)
+    # control
+    "senior-oneliner":   {"plugins": [], "append": SENIOR_ONELINER},
+    # ours: released (regression reference, never in the public writeup) and candidate
+    "devanity-released": {"plugins": ["devanity-released"], "prompt_prefix": "/devanity-released:maestro "},
+    "devanity":          {"plugins": ["devanity"]},
 }
 MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-4-6", "opus": "claude-opus-4-8"}
 
 PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
-# Harness-local plugins (gitignored). devanity-current is GENERATED from the repo's skills/ + agents/
+# Harness-local plugins (gitignored). devanity-released is GENERATED from the repo's skills/ + agents/
 # by build_plugins.py, so the arm measures the committed skills, never a stale install. devanity
-# (the kernel) lands here from phase 1.
+# (the candidate) lands here from phase 1.
 HARNESS_PLUGINS = Path(__file__).resolve().parent / "plugins"
 _LOCAL_PLUGINS = {
-    "devanity-current": "run `python3 evals/harness/build_plugins.py` to generate it from skills/ + agents/",
-    "devanity":         "the kernel plugin exists only from phase 1 (F1.1); until then this arm cannot run",
+    "devanity-released": "run `python3 evals/harness/build_plugins.py` to generate it from skills/ + agents/",
+    "devanity":          "the candidate plugin exists only from phase 1 (F1.1); until then this arm cannot run",
 }
 
 def _env_key(name): return "DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_", name.upper())
@@ -81,10 +91,12 @@ def _plugin_dir(name):
         if (local / ".claude-plugin" / "plugin.json").exists(): return str(local)
         sys.exit(f"plugin dir for arm component '{name}' not found at {local}: {_LOCAL_PLUGINS[name]}; "
                  f"or set {_env_key(name)}")
-    base = PLUGIN_CACHE / name / name
-    versions = sorted(p for p in base.glob("*") if p.is_dir()) if base.exists() else []
+    # ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>: the marketplace differs per plugin
+    # (ponytail ships its own, superpowers and the official ones live in claude-plugins-official).
+    versions = sorted(p for p in PLUGIN_CACHE.glob(f"*/{name}/*") if p.is_dir()) if PLUGIN_CACHE.exists() else []
     if not versions:
-        sys.exit(f"plugin dir for arm component '{name}' not found under {base}; install it or set {_env_key(name)}")
+        sys.exit(f"plugin dir for arm component '{name}' not found under {PLUGIN_CACHE}/*/{name}; "
+                 f"install it (/plugin install {name}@<marketplace>) or set {_env_key(name)}")
     return str(versions[-1])
 
 # Behavior-tier cells let the agent run Bash and therefore execute code it wrote. They only run
@@ -248,11 +260,11 @@ def _selftest_plugin_dir():
     fails loudly (sys.exit) instead of silently passing a non-existent path to --plugin-dir."""
     fails = 0
     sentinel = "/tmp/devanity-selftest-plugin-dir"
-    os.environ["DEVANITY_HARNESS_PLUGIN_DEVANITY_CURRENT"] = sentinel
+    os.environ["DEVANITY_HARNESS_PLUGIN_DEVANITY_RELEASED"] = sentinel
     try:
-        ok_env = _plugin_dir("devanity-current") == sentinel
+        ok_env = _plugin_dir("devanity-released") == sentinel
     finally:
-        del os.environ["DEVANITY_HARNESS_PLUGIN_DEVANITY_CURRENT"]
+        del os.environ["DEVANITY_HARNESS_PLUGIN_DEVANITY_RELEASED"]
     print(f"{'ok ' if ok_env else 'XX '} plugin_dir   env  override honored")
     fails += 0 if ok_env else 1
     missing = "devanity-does-not-exist-xyz"          # no env, no cache entry -> must sys.exit
@@ -295,12 +307,16 @@ def _selftest_isolation():
                f"{arm} loads exactly its {len(spec['plugins'])} plugin(s), in order")
     for arm, spec in ARMS.items():
         prompt = _after(cmds[arm], "-p")
-        want = ("/devanity-current:maestro " + task["prompt"]) if arm == "devanity-current" else task["prompt"]
-        _check(prompt == [want] and (arm == "devanity-current" or spec["prompt_prefix"] == ""),
-               f"{arm} prompt is {'the /maestro invocation' if arm == 'devanity-current' else 'the task prompt, unmodified'}")
+        want = ("/devanity-released:maestro " + task["prompt"]) if arm == "devanity-released" else task["prompt"]
+        _check(prompt == [want] and (arm == "devanity-released" or not spec.get("prompt_prefix")),
+               f"{arm} prompt is {'the /maestro invocation' if arm == 'devanity-released' else 'the task prompt, unmodified'}")
     sysp = {arm: _after(argv, "--append-system-prompt") for arm, argv in cmds.items()}
-    _check(all(v == [NO_RUN] for v in sysp.values()),
-           "--append-system-prompt is exactly NO_RUN, identical across arms")
+    _check(all(v == [NO_RUN] for a, v in sysp.items() if a != "senior-oneliner"),
+           "--append-system-prompt is exactly NO_RUN, identical across every plugin arm")
+    _check(sysp["senior-oneliner"] == [SENIOR_ONELINER + "\n\n" + NO_RUN],
+           "senior-oneliner is the one-sentence control plus the same NO_RUN, nothing else")
+    _check(all(not spec.get("append") for a, spec in ARMS.items() if a != "senior-oneliner"),
+           "no plugin arm appends anything to the system prompt")
     return fails
 
 def _selftest_tier_guard():
@@ -317,7 +333,7 @@ def _selftest_tier_guard():
 def _selftest_turns():
     """Multi-turn wiring (SPEC §9.1b long-*): turn 1 pins the session (`--session-id <uuid>`), every
     later turn resumes it (`--resume <uuid>`) with the SAME plugin flags and tool flags, the
-    devanity-current prefix rides on every ticket prompt, and a compact turn is exactly the host
+    devanity-released prefix rides on every ticket prompt, and a compact turn is exactly the host
     command "/compact" with no prefix on any arm. Per-task env reaches the cell's process, and
     nothing else's. Offline: build_cmd is pure; sentinel plugin dirs."""
     fails = 0
@@ -349,7 +365,7 @@ def _selftest_turns():
                            and (i == 0 or c[i - 1] not in ("-p", "--session-id", "--resume"))]
         _check(all(strip(c) == strip(t1) for c in later),
                f"{arm} every turn carries the same plugin/tool/model flags")
-        prefix = ARMS[arm]["prompt_prefix"]
+        prefix = ARMS[arm].get("prompt_prefix", "")
         _check(_after(cmds[1], "-p") == [prefix + "ticket two"] and _after(cmds[3], "-p") == [prefix + "ticket three"],
                f"{arm} ticket prompts are turns[N]{' with the /maestro prefix' if prefix else ', unmodified'}")
         _check(_after(cmds[2], "-p") == ["/compact"], f"{arm} compact turn is exactly '/compact' (no prefix)")
@@ -546,14 +562,14 @@ def build_cmd(task, arm, model, claude="claude", prompt=None, session_id=None, r
     the user's globally-enabled plugins for every arm (--setting-sources project,local), then load
     exactly the plugins this arm names. --strict-mcp-config drops all MCP servers (no browser).
     Tool flags depend on the tier (see _cell_cmd_flags). The prompt is `prompt` (default: the task
-    prompt), with the arm's prefix in front only for devanity-current (see ARMS); a host command
+    prompt), with the arm's prefix in front only for devanity-released (see ARMS); a host command
     such as "/compact" is never prefixed. Multi-turn (SPEC §9.1b): `session_id` pins the session
     on turn 1 (`--session-id`, verified with claude 2.1.281) and `resume=True` continues it on
     later turns (`--resume <id>`); the plugin flags are repeated on every turn because they are
     per-invocation. Single-turn cells pass neither, so their argv is unchanged."""
     spec = ARMS[arm]
     prompt = task["prompt"] if prompt is None else prompt
-    prefix = "" if prompt.startswith("/") else spec["prompt_prefix"]
+    prefix = "" if prompt.startswith("/") else spec.get("prompt_prefix", "")
     cmd = [claude, "-p", prefix + prompt, "--model", MODELS[model],
            "--permission-mode", "bypassPermissions", "--output-format", "json",
            "--setting-sources", "project,local", "--strict-mcp-config"]
@@ -561,15 +577,16 @@ def build_cmd(task, arm, model, claude="claude", prompt=None, session_id=None, r
     cmd += _cell_cmd_flags(task)
     for component in spec["plugins"]:
         cmd += ["--plugin-dir", _plugin_dir(component)]
-    if _tier(task) == "size":
-        cmd += ["--append-system-prompt", NO_RUN]      # identical for every arm
+    appends = [spec["append"]] if spec.get("append") else []      # the one-sentence control only
+    if _tier(task) == "size": appends.append(NO_RUN)               # identical for every arm
+    if appends: cmd += ["--append-system-prompt", "\n\n".join(appends)]
     return cmd
 
 # Live smoke (--smoke <arm>): a manual check that the arm's plugins are actually visible to the
 # session, at the cost of one tiny API call. Not a gate -- the offline _selftest_isolation proves
 # the wiring; this only confirms the installed plugin dirs are real.
 SMOKE_PROMPT = ("Reply with only the words ACTIVE: followed by the names of any always-on coding-discipline "
-                "rulesets present in your context (ponytail, devanity), or NONE.")
+                "rulesets present in your context (ponytail, superpowers, caveman, devanity), or NONE.")
 
 def smoke(arm, model):
     claude = shutil.which("claude")

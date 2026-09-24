@@ -19,7 +19,8 @@ Convenções:
 | id | Tarefa | Critério de aceite | Status |
 |---|---|---|---|
 | F0.1 | Portar `run.py`, `tasks.py`, `judge.py`, `complete.py` do ponytail (MIT, atribuição no cabeçalho) para `evals/harness/`; remover o que é específico do ponytail | `--selftest` verde; `--rescore` funciona num run preservado | done (PR pendente; selftest 28/28, rescore verificado em run sintético; arms declarados, tier switch com guarda de container) |
-| F0.2 | Braços: `baseline`, `ponytail` (plugin real via `--plugin-dir`), `devanity-current` (três skills atuais como plugin), `devanity-kernel` (placeholder vazio até F1), `devanity-kernel+ponytail` | teste de contaminação prova que o baseline não recebe hook de nenhum plugin | done (`build_cmd` puro + 12 asserções offline de isolamento; `build_plugins.py` gera `plugins/devanity-current` validado por `claude plugin validate`; `devanity-current` usa o prefixo `/devanity-current:maestro`, a confirmar na 1ª célula viva) |
+| F0.2 | Braços: `baseline`, `ponytail` (plugin real via `--plugin-dir`), `devanity-released` (skills lançadas como plugin), `devanity` (candidata, vazia até F1) | teste de contaminação prova que o baseline não recebe hook de nenhum plugin | done (`build_cmd` puro + asserções offline de isolamento; `build_plugins.py` gera `plugins/devanity-released` validado por `claude plugin validate`; prefixo `/devanity-released:maestro`, a confirmar na 1ª célula viva) |
+| F0.2b | O campo de comparação (SPEC §9): concorrentes reais `superpowers`, `caveman`, `feature-dev`, `security-guidance` e o controle `senior-oneliner`; remoção do braço de composição e da cláusula de composição do kernel | selftest prova que só o controle acrescenta system prompt e que nenhum braço de plugin acrescenta nada; resolução de plugin em qualquer marketplace | done |
 | F0.3 | Fixture: script que clona `full-stack-fastapi-template @ cd83fc1` para `evals/harness/fixtures/` (gitignored) ou lê `DEVANITY_TMPL` | `--selftest` falha alto se a fixture não existe | done (`fixture.py`; `run.py` chama `fixture.ensure()` antes de qualquer célula com fixture; o selftest offline não exige a fixture, por decisão: instrumentos e clone são pré-requisitos distintos) |
 | F0.4 | As 12 tarefas de tamanho e as 7 de segurança do ponytail, inalteradas | scorers passam `good`, reprovam `bad` | todo |
 | F0.5 | Armadilhas de julgamento `judge-nochange`, `judge-askable`, `judge-humanowned`, `judge-falsetest`, `judge-rootcause` com seed, `good`, `bad` e scorer determinístico (SPEC §9.1) | cada uma passa `--selftest`; `judge-humanowned` detecta edição em caminho proibido por diff, não por prosa | done (4 tarefas novas em `tasks.py`, `judge-rootcause` = `trace-transfer`/`trace-amount` etiquetadas com `trap`; scorers por igualdade byte a byte com o seed, ADR determinístico, runner de testes stdlib que reexecuta os testes contra o seed) |
@@ -38,12 +39,12 @@ Convenções:
 ## Fase 1 — Kernel e capability único
 
 **Objetivo:** o texto sempre ativo, medido, e a topologia de um capability com modos.
-**Gate de saída:** em Sonnet, `n ≥ 4`: `safe` 100%; LOC nas 12 tarefas ≤ ponytail ± 10%; tokens no degrau 2 ≤ baseline; `root_cause_rate` ≥ ponytail; nas 5 armadilhas de julgamento, `devanity-kernel` > `baseline` e > `devanity-current`; `vibe-app-*` com `complete` ≥ baseline e LOC ≤ baseline; `vibe-autonomous-billing` sem stall; `drift` ≤ 10 pts. Writeup em `evals/results/`.
+**Gate de saída:** em Sonnet, `n ≥ 4`: `safe` 100%; LOC nas 12 tarefas ≤ ponytail ± 10%; tokens no degrau 2 ≤ baseline e < `superpowers`; `root_cause_rate` ≥ ponytail; nas 5 armadilhas de julgamento, `devanity` > `baseline`, > `devanity-released`, > `senior-oneliner` e ≥ `superpowers`; `vibe-app-*` com `complete` ≥ baseline e LOC ≤ baseline; `vibe-autonomous-billing` sem stall; `drift` ≤ 10 pts. Writeup em `evals/results/`.
 
 | id | Tarefa | Critério de aceite | Status |
 |---|---|---|---|
-| F1.1 | Kernel v0: escada de ofício copiada literalmente do ponytail + persona + limites + saída (SPEC §5.1 itens 1, 3, 5, 6). Sem proporcionalidade ainda | rodada no harness: LOC e `safe` iguais ao ponytail dentro do ruído. Este é o controle: prova que a cópia funciona antes de diferenciar | todo |
-| F1.2 | Kernel v1: + escada de proporcionalidade + decisões por reversibilidade e fila (SPEC §5.1 itens 2, 4, 4b) + `architect-lite` + bloco `devanity-proof` | rodada: judgement traps sobem; tamanho e `safe` não caem; `vibe-autonomous-billing` termina sem stall com fila no resumo. Se caírem, iterar aqui, não avançar | todo |
+| F1.1 | Kernel v0 de controle: só a escada de ofício + persona + limites + saída (SPEC §5.1 itens 1, 3, 5, 6), em `plugins/devanity-v0/` do harness; **nunca lançado**, existe para separar "a escada funciona" de "a nossa redação funciona" | rodada no harness: LOC e `safe` iguais ao ponytail dentro do ruído. Se não, o problema é a redação, não a proporcionalidade; iterar aqui | todo |
+| F1.2 | Kernel v1: + escada de proporcionalidade + decisões por reversibilidade e fila (SPEC §5.1 itens 2, 4, 4b) + `architect-lite` + bloco `devanity-proof`; sem detecção de outros plugins (SPEC §5.1 item 7) | rodada: judgement traps sobem; tamanho e `safe` não caem; `vibe-autonomous-billing` termina sem stall com fila no resumo. Se caírem, iterar aqui, não avançar | todo |
 | F1.2b | Modo `init` (SPEC §6): `git init` se ausente, ledger, rascunho de `rules.json`, job de CI de exemplo; nada escrito sem confirmação | em 3 repos (um vazio, um sem testes, um maduro) o rascunho é coerente e o comando não escreve sem "sim" | todo |
 | F1.3 | Cada frase do kernel tem uma linha no writeup dizendo qual métrica ela move; frases sem métrica são removidas | writeup F1 contém a tabela frase → métrica | todo |
 | F1.4 | `skills/devanity/` criado; `maestro/`, `archer/`, `guardian/` movidos para `skills/devanity/modes/` e `reference/` com `git mv`; nenhum conteúdo reescrito | `git diff -M --stat` mostra só renames; validadores verdes após ajuste de caminhos | todo |
@@ -53,7 +54,6 @@ Convenções:
 | F1.8 | `scripts/build-agents-md.mjs` gera `AGENTS.md` do kernel; CI falha se `AGENTS.md` difere do gerado | teste red/green | todo |
 | F1.9 | Validador: referência `rule N` / `Core rule N` deve existir na seção que define regras do mesmo skill; corrigir as referências obsoletas pós-#30 | teste red/green; nenhum `rule 10|11` restante em guardian | todo |
 | F1.10 | Hooks mínimos: `hooks.json` com `SessionStart`, `SubagentStart`, `UserPromptSubmit` injetando kernel estático (sem ledger); filtro: verifier e worker não recebem escada de ofício; detecção de sessão autônoma; `.claude-plugin/plugin.json` | testes de hook: stdin sem EOF, stdout fechado, BOM, Windows path, sessão não interativa; instalação via `/plugin` funciona | todo |
-| F1.11 | Composição com ponytail: detecção do flag `.ponytail-active` e supressão da escada de ofício | braço `devanity-kernel+ponytail` não duplica regras; LOC igual ao ponytail | todo |
 | F1.12 | README reescrito: fala com quem revisa primeiro; instalação no repositório e pessoal; tabela de modos; números da fase 1 com limitações | revisor externo entende o que é em 60 segundos | todo |
 | F1.13 | Writeup `evals/results/<data>-kernel.md` | gate verde documentado | todo |
 
@@ -128,7 +128,6 @@ Convenções:
 F0 ──► F1 ──► F2 ──► F3 ──► F4
        │      │
        │      └─ F2.6 (audit gera rules) depende de F1.4 (modos movidos)
-       └─ F1.11 (composição com ponytail) depende de F0.2 (braço ponytail)
 ```
 
 ## Decisões registradas
@@ -145,3 +144,4 @@ F0 ──► F1 ──► F2 ──► F3 ──► F4
 | 2026-09-23 | Pre-flight: ledger em `.git/devanity/` | `.devanity/` + exclude | worktrees e subagentes compartilham; não commitável por construção |
 | 2026-09-23 | Pre-flight: harness em dois tiers, comportamento só em container | um tier sem Bash | o kernel exige executar o check; código do agente é não confiável |
 | 2026-09-23 | Pre-flight: `architect-lite` antes do Archer completo | Archer em todo degrau 5 | greenfield cairia sempre no ciclo pesado |
+| 2026-09-24 | Campo de comparação: concorrentes reais + controle de uma frase; um só produto `devanity` (released vs candidate); sem braço nem cláusula de composição com o ponytail | cinco braços centrados em nós e no ponytail, incluindo um braço de composição | o ponytail é concorrente, não parte do produto; um vencedor só significa algo contra o campo que um mantenedor escolheria (como o ponytail fez com caveman e yagni-oneliner); o superpowers já cobre por prompt parte do eixo de julgamento e precisa ser batido, não ignorado |
