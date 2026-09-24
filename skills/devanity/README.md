@@ -4,17 +4,17 @@ One capability, always on, for the engineer who answers for the repository: rigo
 
 ## Install
 
-```bash
-npx skills add TriangulosTecnologia/devanity-skills --skill devanity --agent claude-code
+As a plugin (recommended; hooks inject the kernel on every session, compaction and subagent):
+
+```
+/plugin marketplace add TriangulosTecnologia/devanity-skills
+/plugin install devanity@devanity
 ```
 
-Companion agents (evidence collection, fresh-context verification):
+As a skill only (no hooks):
 
 ```bash
-mkdir -p .claude/agents
-for agent in worker verifier; do
-  curl -fsSL "https://raw.githubusercontent.com/TriangulosTecnologia/devanity-skills/main/agents/${agent}.md" -o ".claude/agents/${agent}.md"
-done
+npx skills add TriangulosTecnologia/devanity-skills --skill devanity --agent claude-code
 ```
 
 ## Use

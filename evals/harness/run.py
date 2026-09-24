@@ -61,8 +61,11 @@ ARMS = {
     "security-guidance": {"plugins": ["security-guidance"]},   # official always-on security hook (guards' counterpart)
     # control
     "senior-oneliner":   {"plugins": [], "append": SENIOR_ONELINER},
-    # ours: released (regression reference, never in the public writeup) and candidate
+    # ours: released (regression reference, never in the public writeup), the v0 control (F1.1: the
+    # craft ladder alone, harness-only, never released; separates "the ladder works" from "our
+    # wording works") and the candidate
     "devanity-released": {"plugins": ["devanity-released"], "prompt_prefix": "/devanity-released:maestro "},
+    "devanity-v0":       {"plugins": ["devanity-v0"]},
     "devanity":          {"plugins": ["devanity"]},
 }
 MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-4-6", "opus": "claude-opus-4-8"}
@@ -73,8 +76,9 @@ PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
 # (the candidate) lands here from phase 1.
 HARNESS_PLUGINS = Path(__file__).resolve().parent / "plugins"
 _LOCAL_PLUGINS = {
-    "devanity-released": "run `python3 evals/harness/build_plugins.py` to generate it from skills/ + agents/",
-    "devanity":          "the candidate plugin exists only from phase 1 (F1.1); until then this arm cannot run",
+    "devanity-released": "run `python3 evals/harness/build_plugins.py` (exports the released ref)",
+    "devanity-v0":       "run `python3 evals/harness/build_plugins.py` (packages arms/devanity-v0)",
+    "devanity":          "run `python3 evals/harness/build_plugins.py` (packages the working tree's skills/devanity)",
 }
 
 def _env_key(name): return "DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_", name.upper())

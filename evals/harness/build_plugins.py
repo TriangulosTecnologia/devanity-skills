@@ -65,10 +65,23 @@ def build_candidate():
         _manifest(out, "devanity", _frontmatter_version(src / "SKILL.md"), "Devanity candidate (working tree), packaged for the harness")
     return out, ["devanity"]
 
+def build_control():
+    """devanity-v0 (PLAN F1.1): the harness-only control kernel in arms/devanity-v0, packaged as a
+    plugin with the same agents, so the only difference from the candidate is the kernel text."""
+    src = Path(__file__).resolve().parent / "arms" / "devanity-v0"
+    out = PLUGINS / "devanity-v0"
+    if out.exists(): shutil.rmtree(out)
+    shutil.copytree(src, out / "skills" / "devanity-v0", ignore=IGNORE)
+    shutil.copytree(ROOT / "agents", out / "agents", ignore=IGNORE)
+    _manifest(out, "devanity-v0", "0.0.0", "Devanity v0 control arm (craft ladder only), harness-only, never released")
+    return out
+
 def main():
     ref = os.environ.get("DEVANITY_RELEASED_REF", "main")
     out, skills = build_released(ref)
     print(f"built {out} from {ref} ({sum(1 for p in out.rglob('*') if p.is_file())} files: skills {', '.join(skills)})")
+    out = build_control()
+    print(f"built {out} from arms/devanity-v0 ({sum(1 for p in out.rglob('*') if p.is_file())} files)")
     out, skills = build_candidate()
     if out: print(f"built {out} from the working tree ({sum(1 for p in out.rglob('*') if p.is_file())} files)")
     else: print("candidate: skills/devanity/SKILL.md not present, nothing built")

@@ -78,33 +78,40 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 
 ### 4.2 Estrutura de arquivos alvo
 
+Como implementada em F1.4 (decisão: mover as skills como subárvores inteiras, sem reescrever uma linha, para que todo link relativo e todo contrato validado continuem valendo; os nomes de verbo vivem na tabela de roteamento do kernel e os nomes internos ficam até a reescrita medida da fase 4).
+
 ```
 skills/devanity/
   SKILL.md                      kernel (≤130 linhas, ≤1,8k tokens; cap do validador)
+  README.md
   modes/
-    plan.md                     ex-Maestro (FRAME…HANDOFF)
-    architect.md                ex-Archer
-    review.md  audit.md  improve.md  docs.md   ex-Guardian
-    debt.md                     ledger de adiamentos
-  reference/                    os reference/ atuais, movidos sem reescrita na fase 1
+    maestro/                    plan — SKILL.md + reference/{protocol,runtime}.md, change.schema.json
+    archer/                     architect — SKILL.md + reference/method.md
+    guardian/                   review · audit · improve · docs — SKILL.md + modes/ + reference/
+    debt.md                     adiamentos e decisões pendentes
+    init.md                     primeira instalação num repositório
 agents/
   worker.md  verifier.md        mantidos; verifier ganha orçamento de sondas (fase 3)
 hooks/
-  hooks.json                    SessionStart · SubagentStart · UserPromptSubmit · PreToolUse · Stop
-  devanity-inject.js            lê ledger + rules, emite kernel ou contrato da fase
-  devanity-guard.js             PreToolUse
-  devanity-oracle.js            Stop
-  devanity-rules.js             carrega/valida devanity.rules.json
-AGENTS.md                       kernel compacto, gerado de SKILL.md
-.claude-plugin/plugin.json      manifest
+  hooks.json                    SessionStart · SubagentStart · UserPromptSubmit (fase 1) · PreToolUse · Stop (fase 2)
+  devanity-runtime.js           caminhos, estado, saída por evento, detecção de sessão autônoma
+  devanity-inject.js            SessionStart + SubagentStart: kernel (ou contrato do verifier; nada para o worker)
+  devanity-mode.js              UserPromptSubmit: /devanity on|off, "stop devanity", "normal mode"
+  devanity-guard.js             PreToolUse (fase 2)
+  devanity-oracle.js            Stop (fase 2)
+  devanity-rules.js             carrega/valida devanity.rules.json (fase 2)
+AGENTS.md                       kernel sem frontmatter e sem as seções de host, gerado de SKILL.md
+.claude-plugin/plugin.json      manifest do plugin
+.claude-plugin/marketplace.json marketplace de um plugin, para `/plugin marketplace add`
+tests/hooks.test.mjs            testes dos hooks
 evals/
-  harness/                      run.py · tasks.py · judge.py · complete.py · README.md
+  harness/                      run.py · tasks.py · judge.py · complete.py · fixture.py · build_plugins.py · container/
   results/                      writeups datados, commitados
-  scenarios.json                mantido; ganha campo `trap` ligando ao harness
+  scenarios.json                campo `trap` liga cenário a tarefa do harness
 scripts/
-  validate-skills.mjs  validate-open.mjs  (atualizados)
-  build-agents-md.mjs            gera AGENTS.md
-  check-kernel-invariants.mjs    frases que nunca podem sumir
+  validate-skills.mjs           unidades aninhadas, tabela de roteamento ≡ argument-hint ≡ arquivos, caps, orçamento
+  validate-open.mjs             conjunto deliberado de capability e modos, protocolo, catálogo, atribuição do harness
+  kernel.mjs                    invariants · build-agents · check-agents
 ```
 
 ## 5. O kernel

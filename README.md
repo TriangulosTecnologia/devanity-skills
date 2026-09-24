@@ -34,11 +34,20 @@ You normally **do not invoke Worker or Verifier yourself**: Worker collects evid
 
 ## Install for Claude Code
 
+As a plugin (recommended: the kernel is then injected on every session, compaction and subagent, and the verbs become available):
+
+```
+/plugin marketplace add TriangulosTecnologia/devanity-skills
+/plugin install devanity@devanity
+```
+
+Or as a skill only (the kernel loads when the skill is invoked or matched; no hooks, no persistence across compaction):
+
 ```bash
 npx skills add TriangulosTecnologia/devanity-skills --skill devanity --agent claude-code
 ```
 
-Optional companion agents:
+Optional companion agents (the plugin ships them; the skill-only install needs this step):
 
 ```bash
 mkdir -p .claude/agents

@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[2]
 RUNS_DIR = Path(__file__).resolve().parent / "runs"
 JUDGE_MODEL = "claude-sonnet-4-6"
 ARMS_ORDER = ["baseline", "ponytail", "superpowers", "caveman", "feature-dev", "security-guidance",
-              "senior-oneliner", "devanity-released", "devanity"]
+              "senior-oneliner", "devanity-released", "devanity-v0", "devanity"]
 
 RUBRIC = (
     "You are a senior engineer reviewing a code submission for OVER-ENGINEERING ONLY. "
