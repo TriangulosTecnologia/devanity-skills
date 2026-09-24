@@ -109,6 +109,11 @@ IN_CONTAINER = os.environ.get("DEVANITY_HARNESS_CONTAINER") == "1"
 
 CELL_TIMEOUT = 300  # seconds per cell; a hung agent is force-killed (process tree) so the pool can't freeze
 
+# Claude Code refuses bypassPermissions for a root user (the harness container runs as `bench`, so
+# it is unaffected); a root host can run the size tier with acceptEdits, which auto-approves
+# file edits and still needs no prompt because Bash is disallowed there.
+PERMISSION_MODE = os.environ.get("DEVANITY_HARNESS_PERMISSION_MODE", "bypassPermissions")
+
 # Size-tier system-prompt suffix, identical for every arm. We measure code PRODUCTION, not
 # execution: agents write the implementation and stop (a browser or dev server would inflate
 # tokens with flailing instead of code). Writing tests stays allowed, so a "leave a runnable
@@ -575,7 +580,7 @@ def build_cmd(task, arm, model, claude="claude", prompt=None, session_id=None, r
     prompt = task["prompt"] if prompt is None else prompt
     prefix = "" if prompt.startswith("/") else spec.get("prompt_prefix", "")
     cmd = [claude, "-p", prefix + prompt, "--model", MODELS[model],
-           "--permission-mode", "bypassPermissions", "--output-format", "json",
+           "--permission-mode", PERMISSION_MODE, "--output-format", "json",
            "--setting-sources", "project,local", "--strict-mcp-config"]
     if session_id: cmd += ["--resume" if resume else "--session-id", str(session_id)]
     cmd += _cell_cmd_flags(task)
