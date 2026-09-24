@@ -584,3 +584,26 @@ test('a top-level unit over the kernel token cap fails; the same body nested pas
     assert.deepEqual(validate(dir), []);
   });
 });
+
+test('a rule cited by number must exist in SKILL.md\'s `- **Rule N — …**` list; fences and inline code are ignored', () => {
+  const rules = `${fm('foo')}\n## Core rules\n\n- **Rule 1 — Evidence over confidence.**\n- **Rule 2 — Enforcement over prose.**\n`;
+  // Green: in-range citations in SKILL.md, a mode and a reference; a stale number inside a fence or inline code is not a citation.
+  withSkill('foo', `${rules}\nSee rule 2 (Core rule 1).\n\n\`\`\`\nrule 9 is only an example\n\`\`\`\n\nGrammar: \`rule 11\`.\n`, (dir) => {
+    mkdirSync(join(dir, 'foo', 'modes'), { recursive: true });
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'modes', 'go.md'), '# go\n\nStops per Core rule 2.\n');
+    writeFileSync(join(dir, 'foo', 'reference', 'notes.md'), '# notes\n\nRule 1 applies.\n');
+    assert.deepEqual(validate(dir), []);
+  });
+  // Red: a stale number in a mode file, and one in SKILL.md prose, each named with file:line.
+  withSkill('foo', `${rules}\nAccounting is session-local (Core rule 10).\n`, (dir) => {
+    mkdirSync(join(dir, 'foo', 'modes'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'modes', 'go.md'), '# go\n\nHigh-risk guard: rule 7.\n');
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('SKILL.md:13 cites "Core rule 10"')), errors.join('; '));
+    assert.ok(errors.some((e) => e.includes('modes/go.md:3 cites "rule 7"')), errors.join('; '));
+    assert.equal(errors.filter((e) => e.includes('cites')).length, 2, errors.join('; '));
+  });
+  // Skip: a unit that defines no numbered rules has nothing to resolve against.
+  withSkill('foo', `${fm('foo')}\nSee rule 42.\n`, (dir) => assert.deepEqual(validate(dir), []));
+});
