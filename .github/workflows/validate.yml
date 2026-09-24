@@ -18,3 +18,4 @@ jobs:
       - run: node scripts/kernel.mjs invariants
       - run: node scripts/kernel.mjs check-agents
       - run: node --test scripts/validate-skills.test.mjs scripts/kernel.test.mjs tests/*.test.mjs
+      - run: node scripts/devanity-rules-ci.mjs --self-check
