@@ -315,13 +315,16 @@ describe('autonomous session', () => {
 describe('manifests', () => {
   test('hooks.json wires the events to existing scripts with a timeout and status message', () => {
     const cfg = JSON.parse(readFileSync(join(hooksDir, 'hooks.json'), 'utf8')).hooks;
-    assert.deepEqual(Object.keys(cfg).sort(), ['PreToolUse', 'SessionStart', 'SubagentStart', 'UserPromptSubmit']);
+    assert.deepEqual(Object.keys(cfg).sort(), ['PreToolUse', 'SessionStart', 'Stop', 'SubagentStart', 'UserPromptSubmit']);
     assert.equal(cfg.PreToolUse[0].matcher, 'Edit|Write|MultiEdit|NotebookEdit|Bash');
     for (const s of ['startup', 'resume', 'clear', 'compact']) assert.ok(cfg.SessionStart[0].matcher.split('|').includes(s), `SessionStart matcher lacks ${s}`);
     for (const [event, groups] of Object.entries(cfg)) {
       for (const group of groups) for (const h of group.hooks) {
         assert.equal(h.type, 'command', event);
-        assert.equal(h.timeout, 5, event);
+        // Injection hooks answer in milliseconds; the Stop oracle runs the declared check twice
+        // within its own 120 s budget (DEVANITY_ORACLE_TIMEOUT_MS), so its host timeout must exceed it.
+        if (event === 'Stop') assert.ok(h.timeout > 120, 'Stop timeout must exceed the oracle budget');
+        else assert.equal(h.timeout, 5, event);
         assert.ok(h.statusMessage, `${event} lacks statusMessage`);
         const m = /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/hooks\/([a-z-]+\.js)"/.exec(h.command);
         assert.ok(m, `${event} command is not node "\${CLAUDE_PLUGIN_ROOT}/hooks/<script>.js": ${h.command}`);

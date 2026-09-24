@@ -51,19 +51,6 @@ function gitToplevel(cwd) {
   } catch (e) { return null; }
 }
 
-// 'on' | 'off' | null (no override). Env wins over the config file.
-function guardsOverride(env) {
-  const v = String(env.DEVANITY_GUARDS || '').trim().toLowerCase();
-  if (['off', '0', 'false', 'no'].includes(v)) return 'off';
-  if (['on', '1', 'true', 'yes'].includes(v)) return 'on';
-  try {
-    const cfg = JSON.parse(rt.stripBom(fs.readFileSync(path.join(rt.configDir(), 'devanity', 'config.json'), 'utf8')));
-    if (cfg && cfg.guards === false) return 'off';
-    if (cfg && cfg.guards === true) return 'on';
-  } catch (e) { /* absent or unreadable: no override */ }
-  return null;
-}
-
 // The authority this session holds. An autonomous session never exceeds `commit`, whatever the
 // env says (SPEC §7.3: merge/deploy are never grantable unattended).
 function sessionAuthority(loaded, env) {
@@ -183,8 +170,7 @@ function evaluate(payload, env) {
     return { allow: true, reason: 'rules invalid' };
   }
 
-  const override = guardsOverride(env);
-  const enforce = override === 'on' || (override !== 'off' && loaded.present);
+  const enforce = rt.guardsEnforcing(loaded, env);   // one decision for guard, oracle and rules context
   const auth = sessionAuthority(loaded, env);
   const findings = [];
 
@@ -253,4 +239,4 @@ if (require.main === module) {
   try { main(); } catch (e) { rt.exitSoon(0); }
 }
 
-module.exports = { evaluate, guardsOverride, sessionAuthority, suggestId, writtenPaths };
+module.exports = { evaluate, sessionAuthority, suggestId, writtenPaths };

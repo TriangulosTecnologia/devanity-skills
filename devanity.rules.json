@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "defaults": { "tier": "normal", "authority": "commit" },
+  "paths": {
+    "hooks/**": { "tier": "high-risk", "check": "node --test tests/*.test.mjs" },
+    "scripts/validate-*.mjs": { "tier": "high-risk", "check": "node scripts/validate-skills.mjs && node scripts/validate-open.mjs" },
+    "scripts/kernel.mjs": { "tier": "high-risk", "check": "node scripts/validate-skills.mjs && node scripts/validate-open.mjs" },
+    ".claude-plugin/**": { "tier": "high-risk" },
+    "docs/**": { "tier": "trivial" },
+    "**/*.md": { "tier": "trivial" },
+    "skills/devanity/SKILL.md": { "tier": "normal", "check": "node scripts/kernel.mjs invariants" }
+  },
+  "autonomy": { "authority": "commit", "high-risk": "queue", "irreversible": "queue" }
+}

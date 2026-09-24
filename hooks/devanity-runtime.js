@@ -125,6 +125,36 @@ function isAutonomous(env = process.env) {
   return false;
 }
 
+// <config dir>/devanity/config.json, the per-user knobs ({"guards": true|false}); {} when absent.
+function readDevanityConfig() {
+  try {
+    const cfg = JSON.parse(stripBom(fs.readFileSync(path.join(configDir(), 'devanity', 'config.json'), 'utf8')));
+    return cfg && typeof cfg === 'object' ? cfg : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+// Whether the guards BLOCK or only RECORD (SPEC §7.6), decided in one place for the PreToolUse
+// guard, the Stop oracle and the rules context alike: DEVANITY_GUARDS on/off wins, then
+// config.json {"guards": …}, else "rules present and valid". Returns 'on' | 'off' | null for the
+// override alone (guardsOverride) and the final boolean given the loaded rules (guardsEnforcing).
+function guardsOverride(env = process.env) {
+  const v = String(env.DEVANITY_GUARDS || '').trim().toLowerCase();
+  if (['on', '1', 'true', 'yes'].includes(v)) return 'on';
+  if (['off', '0', 'false', 'no'].includes(v)) return 'off';
+  const cfg = readDevanityConfig();
+  if (cfg.guards === true) return 'on';
+  if (cfg.guards === false) return 'off';
+  return null;
+}
+
+function guardsEnforcing(loaded, env = process.env) {
+  const o = guardsOverride(env);
+  if (o) return o === 'on';
+  return Boolean(loaded && loaded.present && loaded.errors.length === 0);
+}
+
 // Agent scoping. Plugin-shipped agents report as `<plugin>:<name>`; strip the
 // scope and compare the bare name, case-insensitively.
 function agentRole(agentType) {
@@ -199,9 +229,12 @@ module.exports = {
   configDir,
   emit,
   exitSoon,
+  guardsEnforcing,
+  guardsOverride,
   isAutonomous,
   kernelPath,
   pluginRoot,
+  readDevanityConfig,
   readKernel,
   readState,
   readStdinJson,
