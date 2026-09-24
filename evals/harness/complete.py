@@ -20,7 +20,7 @@ completeness also drops is doing less, not less-bloated -- and now the bench sho
   python complete.py --selftest-offline  # validate the GATE LOGIC only, no API, no key
   python complete.py --run runs/<stamp>  # completeness-judge every workspace in a matrix run
 
-Judge: claude-sonnet-4-6, key from ../../.env (shared with judge.py). ~$0.003/cell.
+Judge: claude-sonnet-4-6, key from ../../.env (shared with judge.py), or `claude -p` without a key. ~$0.003/cell.
 
 Reuses judge.py's HTTP/key/source plumbing; one rubric param is the only delta between the
 two passes.
@@ -30,7 +30,8 @@ from collections import defaultdict
 from pathlib import Path
 
 from tasks import TASKS
-from judge import load_key, source_text, judge_call, parse_score, RUNS_DIR, JUDGE_MODEL, ARMS_ORDER
+from judge import load_key, source_text, judge_call, parse_score, judge_backend_label, RUNS_DIR, JUDGE_MODEL, ARMS_ORDER
+import judge as _judge
 
 SCORE_KEY = "completeness"
 FLAG_AT = 1                 # cells scoring <= this are under-delivery (stub/partial) and get listed
@@ -111,7 +112,7 @@ def run(run_dir, key):
         parts = ws.name.split("__")
         if len(parts) != 4 or parts[0] not in TASKS: continue
         cells.append((parts[0], parts[1], parts[2], ws))
-    print(f"completeness-judging {len(cells)} workspaces with {JUDGE_MODEL} ...")
+    print(f"completeness-judging {len(cells)} workspaces with {judge_backend_label()} ...")
     scored = []
     for i, (tid, arm, model, ws) in enumerate(cells, 1):
         s = parse_complete(judge_call(TASKS[tid]["prompt"], source_text(ws), key, system=RUBRIC)) \
@@ -120,7 +121,7 @@ def run(run_dir, key):
                        "why": s.get("why", ""), "missing": s.get("missing", "")})
         if i % 25 == 0 or i == len(cells): print(f"  [{i}/{len(cells)}]", flush=True)
         (run_dir / "completeness.json").write_text(
-            json.dumps({"judge": JUDGE_MODEL, "rubric": RUBRIC, "scores": scored}, indent=2), encoding="utf-8")
+            json.dumps({"judge": JUDGE_MODEL, "backend": _judge.JUDGE_BACKEND, "rubric": RUBRIC, "scores": scored}, indent=2), encoding="utf-8")
     by_arm = defaultdict(list)
     for r in scored:
         if isinstance(r[SCORE_KEY], int): by_arm[r["arm"]].append(r[SCORE_KEY])
@@ -145,7 +146,7 @@ def main():
     if args.selftest_offline:
         sys.exit(selftest_offline())
     key = load_key()
-    if not key: sys.exit("no ANTHROPIC_API_KEY (.env or env)")
+    print(f"judge backend: {judge_backend_label()}")
     if args.selftest: sys.exit(selftest(key))
     if args.run:
         if selftest(key): sys.exit("judge not trustworthy; refusing to judge the matrix")

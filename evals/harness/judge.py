@@ -13,20 +13,29 @@ minimal one for the same task, or we do not trust it on real submissions.
   python judge.py --selftest                 # validate the judge on reference pairs (small spend)
   python judge.py --run runs/<stamp>          # judge every workspace's source in a matrix run
 
-Judge: claude-sonnet-4-6 via the Anthropic Messages API (key from ../../.env). Scores the SOURCE
+Judge: claude-sonnet-4-6 via the Anthropic Messages API (key from ../../.env), or, without a key,
+via `claude -p` (subscription; no temperature control, see JUDGE_BACKEND). Scores the SOURCE
 files only (tests excluded -- a test is not over-engineering). Cost is ~$0.003/cell.
 
 stdlib urllib for the API call, no requests dependency.
 """
-import argparse, json, os, re, sys, time, urllib.request
+import argparse, json, os, re, shutil, subprocess, sys, tempfile, time, urllib.request
 from collections import defaultdict
 from pathlib import Path
 
 from tasks import TASKS
+import run as _run                      # RUNS_DIR (DEVANITY_HARNESS_RUNS_DIR) and memory_guard
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNS_DIR = Path(__file__).resolve().parent / "runs"
+RUNS_DIR = _run.RUNS_DIR
 JUDGE_MODEL = "claude-sonnet-4-6"
+# Backend "cli": when no ANTHROPIC_API_KEY exists (a subscription-only maintainer), the judge call
+# goes through `claude -p` with the same rubric as system prompt, the same user message and the
+# same JSON parse. Two declared losses vs the Messages API: the CLI exposes no temperature (so
+# "temperature 0" is not guaranteed; the run records which backend judged), and the judge model is
+# whatever the CLI resolves JUDGE_MODEL to. Every tool is disabled, one turn, cwd under RUNS_DIR
+# (memory_guard: no CLAUDE.md/AGENTS.md above it, so the judge never inherits the kernel).
+JUDGE_BACKEND = "api"   # set by load_key(): "api" with a key, "cli" without one
 ARMS_ORDER = ["baseline", "ponytail", "superpowers", "caveman", "feature-dev", "security-guidance",
               "senior-oneliner", "devanity-released", "devanity-v0", "devanity"]
 
@@ -44,13 +53,40 @@ RUBRIC = (
 )
 
 def load_key():
+    """The API key from ../../.env or the environment; None means the `claude -p` backend."""
+    global JUDGE_BACKEND
+    key = None
     try:
         for line in (ROOT / ".env").read_text(encoding="utf-8").splitlines():
             if line.startswith("ANTHROPIC_API_KEY=") and len(line) > 18:
-                return line.split("=", 1)[1].strip()
+                key = line.split("=", 1)[1].strip()
     except Exception:
         pass
-    return os.environ.get("ANTHROPIC_API_KEY")
+    key = key or os.environ.get("ANTHROPIC_API_KEY")
+    JUDGE_BACKEND = "api" if key else "cli"
+    return key
+
+def judge_backend_label():
+    return f"{JUDGE_MODEL} via {'Messages API, temperature 0' if JUDGE_BACKEND == 'api' else 'claude -p (no temperature control)'}"
+
+def _judge_call_cli(user, system, retries=3):
+    claude = shutil.which("claude")
+    if not claude: return '{"error": "claude CLI not found on PATH"}'
+    _run.memory_guard(RUNS_DIR); RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    cmd = [claude, "-p", user, "--model", JUDGE_MODEL, "--output-format", "json",
+           "--append-system-prompt", system, "--setting-sources", "project,local", "--strict-mcp-config",
+           "--tools", "", "--max-turns", "1", "--no-session-persistence",
+           "--permission-mode", _run.PERMISSION_MODE]
+    for attempt in range(retries):
+        try:
+            with tempfile.TemporaryDirectory(dir=RUNS_DIR) as d:
+                r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, timeout=180)
+            j = json.loads(r.stdout)
+            if j.get("is_error"): raise RuntimeError(str(j.get("result"))[:120])
+            return j.get("result", "")
+        except Exception as e:
+            if attempt == retries - 1: return f'{{"error": "{str(e)[:120]}"}}'
+            time.sleep(2 * (attempt + 1))
 
 def _is_test(name):
     n = name.lower()
@@ -68,6 +104,7 @@ def source_text(workdir: Path):
 
 def judge_call(task_prompt, files, key, retries=3, system=RUBRIC):
     user = f"TASK GIVEN TO THE AUTHOR:\n{task_prompt}\n\nFILES THEY WROTE:\n{files}"
+    if not key: return _judge_call_cli(user, system, retries)
     body = json.dumps({"model": JUDGE_MODEL, "max_tokens": 300, "temperature": 0,
                        "system": system, "messages": [{"role": "user", "content": user}]}).encode()
     for attempt in range(retries):
@@ -149,14 +186,14 @@ def run(run_dir, key):
         parts = ws.name.split("__")
         if len(parts) != 4 or parts[0] not in TASKS: continue
         cells.append((parts[0], parts[1], parts[2], ws))
-    print(f"judging {len(cells)} workspaces with {JUDGE_MODEL} ...")
+    print(f"judging {len(cells)} workspaces with {judge_backend_label()} ...")
     for i, (tid, arm, model, ws) in enumerate(cells, 1):
         s = parse_score(judge_call(TASKS[tid]["prompt"], source_text(ws), key)) or {"over_engineering": None}
         rec = {"task": tid, "arm": arm, "model": model, "over_engineering": s.get("over_engineering"),
                "why": s.get("why", ""), "cite": s.get("cite", "")}
         scored.append(rec)
         if i % 25 == 0 or i == len(cells): print(f"  [{i}/{len(cells)}]", flush=True)
-        (run_dir / "judge.json").write_text(json.dumps({"judge": JUDGE_MODEL, "rubric": RUBRIC, "scores": scored}, indent=2), encoding="utf-8")
+        (run_dir / "judge.json").write_text(json.dumps({"judge": JUDGE_MODEL, "backend": JUDGE_BACKEND, "rubric": RUBRIC, "scores": scored}, indent=2), encoding="utf-8")
     # aggregate
     by_arm = defaultdict(list)
     for r in scored:
@@ -179,7 +216,7 @@ def main():
     ap.add_argument("--run", help="run dir to judge")
     args = ap.parse_args()
     key = load_key()
-    if not key: sys.exit("no ANTHROPIC_API_KEY (.env or env)")
+    print(f"judge backend: {judge_backend_label()}")
     if args.selftest: sys.exit(selftest(key))
     if args.run:
         if selftest(key): sys.exit("judge not trustworthy; refusing to judge the matrix")
