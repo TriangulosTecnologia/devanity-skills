@@ -9,13 +9,17 @@ const fail = (message) => errors.push(message);
 const read = (path) => readFileSync(join(root, path), 'utf8');
 
 const requiredFiles = [
-  'skills/maestro/SKILL.md',
-  'skills/maestro/reference/protocol.md',
-  'skills/maestro/reference/runtime.md',
-  'skills/maestro/reference/change.schema.json',
-  'skills/archer/SKILL.md',
-  'skills/archer/reference/method.md',
-  'skills/guardian/SKILL.md',
+  'skills/devanity/SKILL.md',
+  'skills/devanity/README.md',
+  'skills/devanity/modes/debt.md',
+  'skills/devanity/modes/init.md',
+  'skills/devanity/modes/maestro/SKILL.md',
+  'skills/devanity/modes/maestro/reference/protocol.md',
+  'skills/devanity/modes/maestro/reference/runtime.md',
+  'skills/devanity/modes/maestro/reference/change.schema.json',
+  'skills/devanity/modes/archer/SKILL.md',
+  'skills/devanity/modes/archer/reference/method.md',
+  'skills/devanity/modes/guardian/SKILL.md',
   'agents/worker.md',
   'agents/verifier.md',
   'docs/OPEN_DEVELOPMENT_MODEL.md',
@@ -24,11 +28,17 @@ const requiredFiles = [
 ];
 for (const path of requiredFiles) if (!existsSync(join(root, path))) fail(`missing required artifact: ${path}`);
 
-// New top-level capabilities are architectural decisions, not free directories.
-const expectedSkills = ['archer', 'guardian', 'maestro'];
+// One capability with modes (docs/evolution/PLAN.md, decision 2026-09-23): a new top-level
+// capability or a new mode is an architectural decision, not a free directory.
+const expectedSkills = ['devanity'];
 const skillDirs = readdirSync(join(root, 'skills')).filter((name) => statSync(join(root, 'skills', name)).isDirectory()).sort();
 if (skillDirs.join(',') !== expectedSkills.join(',')) {
   fail(`skills/ must be the deliberate capability set (${expectedSkills.join(', ')}); found: ${skillDirs.join(', ')}`);
+}
+const expectedModes = ['archer', 'debt.md', 'guardian', 'init.md', 'maestro'];
+const modeEntries = existsSync(join(root, 'skills/devanity/modes')) ? readdirSync(join(root, 'skills/devanity/modes')).sort() : [];
+if (modeEntries.join(',') !== expectedModes.join(',')) {
+  fail(`skills/devanity/modes must be the deliberate mode set (${expectedModes.join(', ')}); found: ${modeEntries.join(', ')}`);
 }
 
 const expectedAgents = ['verifier.md', 'worker.md'];
@@ -73,7 +83,7 @@ const parseJson = (path) => {
   catch (error) { fail(`${path} is not valid JSON: ${error.message}`); return null; }
 };
 
-const schema = parseJson('skills/maestro/reference/change.schema.json');
+const schema = parseJson('skills/devanity/modes/maestro/reference/change.schema.json');
 if (schema) {
   if (schema.title !== 'Devanity Open Change') fail('change.schema.json has unexpected title');
   const required = new Set(schema.required ?? []);
@@ -139,4 +149,4 @@ if (errors.length) {
   for (const error of errors) console.error(`  - ${error}`);
   process.exit(1);
 }
-console.log(`✓ Devanity Open architecture valid: ${expectedSkills.length} skills, ${expectedAgents.length} agents, ${catalog?.scenarios?.length ?? 0} eval scenarios (${trapLinked} trap-linked to ${harnessTasksPath})`);
+console.log(`✓ Devanity Open architecture valid: ${expectedSkills.length} capability, ${expectedModes.length} modes, ${expectedAgents.length} agents, ${catalog?.scenarios?.length ?? 0} eval scenarios (${trapLinked} trap-linked to ${harnessTasksPath})`);

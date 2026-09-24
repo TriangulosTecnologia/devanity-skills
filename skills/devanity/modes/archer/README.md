@@ -5,7 +5,7 @@ ARCHER is Devanity Open's architecture capability. It designs or revises archite
 ## Install
 
 ```bash
-npx skills add TriangulosTecnologia/devanity-skills --skill archer --agent claude-code
+npx skills add TriangulosTecnologia/devanity-skills --skill devanity --agent claude-code
 ```
 
 ## Use

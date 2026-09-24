@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/TriangulosTecnologia/devanity-skills/blob/main/skills/maestro/reference/change.schema.json",
+  "$id": "https://github.com/TriangulosTecnologia/devanity-skills/blob/main/skills/devanity/modes/maestro/reference/change.schema.json",
   "title": "Devanity Open Change",
   "type": "object",
   "required": ["id", "state", "intent", "scope", "requirements", "decisions", "impact", "authority", "verification", "execution", "evidence", "findings", "residual_risk", "completion"],

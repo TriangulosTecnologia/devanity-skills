@@ -5,7 +5,7 @@ Maestro is Devanity Open's default entrypoint for an end-to-end software change.
 ## Install
 
 ```bash
-npx skills add TriangulosTecnologia/devanity-skills --skill maestro --agent claude-code
+npx skills add TriangulosTecnologia/devanity-skills --skill devanity --agent claude-code
 ```
 
 ## Use

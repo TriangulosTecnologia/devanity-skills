@@ -1,63 +1,44 @@
 # Devanity Open
 
-Devanity Open is a small set of reusable capabilities for AI-assisted software development: design the change before material coding, make architecture explicit when it matters, verify independently, and keep the repository easy to evolve.
+Devanity is one always-on capability for AI-assisted software development, written for the person who answers for the repository: rigor proportional to what is at stake, every change carries its proof, and the agent never spends authority it was not given.
 
 ## How to use
 
-If you use Claude Code to develop a repository, start with one rule:
-
-> **For a real software change, use `/maestro <goal>`.**
-
-Maestro investigates the repository, compiles the smallest sufficient Change Contract, passes preflight, executes bounded work, and routes to other capabilities only when their responsibility is needed.
-
-| What you need | Use | Why |
-| --- | --- | --- |
-| Implement, fix, refactor, migrate, or change software behavior | `/maestro <goal>` | Owns the software-change lifecycle |
-| Make or revise a material architecture decision | `/archer <question>` | Owns semantics, state, boundaries, contracts, dependencies, and topology |
-| Review whether a change leaves the repository in good shape | `/guardian review` | Owns repository quality, drift, and durable enforcement |
-| Inspect or improve repository quality more broadly | `/guardian audit <scope>` / `/guardian improve <finding>` | Diagnoses or fixes structural quality findings |
-
-You normally **do not invoke Worker or Verifier yourself**:
-
-- **Worker** collects and compresses evidence; it does not decide.
-- **Verifier** independently tries to falsify a completed change; it does not edit or sequence work.
-- Maestro uses these roles when needed. Missing roles degrade explicitly rather than becoming fabricated evidence.
-
-Typical path:
+Install it once; the kernel applies to every coding turn without being invoked. Before touching anything, the agent stops at the first rung that holds:
 
 ```text
-/maestro add cancellation support for appointments
-        ↓
-inspect → specify → preflight → execute → verify
-                  │
-                  └─ material architecture decision? → ARCHER
-        ↓
-verified candidate
-        ↓
-/guardian review
+1. Does it need to change?        → no: say why, NO_CHANGE
+2. Trivial and reversible?        → do it, shortest form, no ceremony
+3. Changes behavior?              → a check that fails first, then the fix
+4. Touches the high-risk class?   → propose and stop; authorization comes from outside
+5. Moves a boundary or state?     → shape before code; architect when the shape is not enough
+6. Can't tell?                    → read until you can; then ask ONE thing
 ```
 
-For questions, exploration, explanations, or obviously trivial edits, normal Claude Code conversation is enough.
+Below rung 3 it writes the minimum that works (what exists here → stdlib → platform → installed dependency → one line). Decisions a reviewer can flip in one line are taken with a stated default; irreversible or human-owned ones become a `[DECIDE]` and stop the dependent slice, not the session. "Verified" exists only inside a `devanity-proof` block filled with what was actually run.
 
-If you remember only this:
+The verbs are for the moments that need a procedure:
 
-```text
-change the software       → /maestro
-design the architecture   → /archer
-guard the repository      → /guardian
-```
+| What you need | Use |
+| --- | --- |
+| Run a change end to end: contract, preflight, bounded slices, independent verification, assurance | `/devanity plan <goal>` |
+| Make or revise a material architecture decision | `/devanity architect <drivers>` |
+| Review the current diff before it lands | `/devanity review [path]` |
+| Audit a scope of the repository; draft `devanity.rules.json` | `/devanity audit <scope>` |
+| Apply one approved finding | `/devanity improve <finding>` |
+| Review or improve instruction surfaces | `/devanity docs [review\|improve] [surface]` |
+| List deferred shortcuts and pending decisions | `/devanity debt` |
+| First install in a repository | `/devanity init` |
+
+You normally **do not invoke Worker or Verifier yourself**: Worker collects evidence and does not decide; Verifier tries to falsify a completed change and does not edit. The modes use them when needed; missing roles degrade explicitly rather than becoming fabricated evidence.
 
 ## Install for Claude Code
 
-Install the skills you need:
-
 ```bash
-npx skills add TriangulosTecnologia/devanity-skills --skill maestro --agent claude-code
-npx skills add TriangulosTecnologia/devanity-skills --skill archer --agent claude-code
-npx skills add TriangulosTecnologia/devanity-skills --skill guardian --agent claude-code
+npx skills add TriangulosTecnologia/devanity-skills --skill devanity --agent claude-code
 ```
 
-Install the optional companion agents for evidence collection and fresh-context verification:
+Optional companion agents:
 
 ```bash
 mkdir -p .claude/agents
@@ -70,45 +51,46 @@ done
 
 Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific mechanics belong in bindings/reference surfaces, not in the core methods.
 
+## Status
+
+The kernel is a **candidate** (`1.0.0-candidate`): its text is measured by the executable harness in [`evals/harness/`](evals/harness/) against the field a maintainer would choose from (ponytail, superpowers, caveman, the official feature-dev and security-guidance plugins, a one-sentence control, and the previously released devanity) before it is released. Specification and plan: [`docs/evolution/SPEC.md`](docs/evolution/SPEC.md), [`docs/evolution/PLAN.md`](docs/evolution/PLAN.md).
+
 ## Development model
 
-The default thesis is **specification before material coding**: resolve every material uncertainty that is economically discoverable before implementation, then falsify the resulting candidate aggressively and preserve recurring lessons as durable enforcement.
-
-The target is not zero iteration. It is **zero avoidable material rework**.
-
-Read [`docs/OPEN_DEVELOPMENT_MODEL.md`](docs/OPEN_DEVELOPMENT_MODEL.md) for the complete model.
+The default thesis is **specification before material coding**: resolve every material uncertainty that is economically discoverable before implementation, then falsify the resulting candidate aggressively and preserve recurring lessons as durable enforcement. The target is not zero iteration; it is **zero avoidable material rework**. Read [`docs/OPEN_DEVELOPMENT_MODEL.md`](docs/OPEN_DEVELOPMENT_MODEL.md) for the complete model.
 
 ## Shared Change protocol
 
-Maestro owns the open software-change protocol:
+The `plan` mode owns the open software-change protocol:
 
-- [`skills/maestro/reference/protocol.md`](skills/maestro/reference/protocol.md) — Change Contract, Evidence, Decision, Finding, authority, lifecycle, and projection semantics;
-- [`skills/maestro/reference/change.schema.json`](skills/maestro/reference/change.schema.json) — machine-readable interchange schema.
-
-The protocol is a reusable capability contract, not the entire semantic model of managed Devanity.
+- [`skills/devanity/modes/maestro/reference/protocol.md`](skills/devanity/modes/maestro/reference/protocol.md) — Change Contract, Evidence, Decision, Finding, authority, lifecycle, and projection semantics;
+- [`skills/devanity/modes/maestro/reference/change.schema.json`](skills/devanity/modes/maestro/reference/change.schema.json) — machine-readable interchange schema.
 
 ## Evaluation
 
-Behavioral revisions are evaluated against [`evals/scenarios.json`](evals/scenarios.json) using [`evals/README.md`](evals/README.md): regression, adversarial, holdout, and field evidence; released-vs-candidate comparison; outcome, error guardrails, and cost rather than a vanity score.
+Intent lives in [`evals/scenarios.json`](evals/scenarios.json) (method in [`evals/README.md`](evals/README.md)); numbers come from [`evals/harness/`](evals/harness/): real headless Claude Code sessions on seeded repositories, scored on the files they leave behind, with deterministic safety checks, judgment traps, vibe and long-horizon tasks, and auditable LLM judges. Nothing in the kernel changes without a number from there.
 
-Repository CI validates skill structure, Guardian's internal contracts, canonical repository identity, the deliberate capability set, protocol JSON, and the eval catalog.
+Repository CI validates the capability's structure (kernel caps, mode routing, nested mode contracts), the deliberate capability and mode set, canonical repository identity, protocol JSON, the eval catalog and its links to the harness, and the attribution of ported harness code.
 
 ## Repository layout
 
 ```text
-skills/
-  maestro/     software-change lifecycle
-  archer/      architecture
-  guardian/    repository quality
+skills/devanity/
+  SKILL.md               kernel (always loaded)
+  modes/
+    maestro/             plan — software-change lifecycle
+    archer/              architect — architecture
+    guardian/            review · audit · improve · docs — repository quality
+    debt.md  init.md
 agents/
-  worker.md    evidence collection
-  verifier.md  independent proof
-docs/
-evals/
-scripts/
+  worker.md              evidence collection
+  verifier.md            independent proof
+docs/                    development model, evolution spec and plan
+evals/                   scenario catalog and executable harness
+scripts/                 validators
 ```
 
-New top-level skills or agents are architecture changes. Add one only when it owns an irreducible responsibility with a stable contract, independent use, and measurable outcome.
+A new capability or a new mode is an architecture change. Add one only when it owns an irreducible responsibility with a stable contract, independent use, and measurable outcome.
 
 ## Boundary with managed Devanity
 
@@ -118,7 +100,7 @@ Devanity Open owns reusable know-how and works standalone. Managed Devanity may 
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-orange.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
-This repository contains instructions and routines licensed under the **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**.
+This repository contains instructions and routines licensed under the **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**. The benchmark instruments under `evals/harness/` ported from ponytail keep their MIT notice (`evals/harness/LICENSE-ponytail`).
 
 * **Allowed:** Use the instructions in your personal or professional workflow, study, adapt, and apply them in your projects.
 * **Prohibited:** Sell, repackage, or monetize this set of instructions (or derivative works) in paid products, e-books, or courses without authorization.

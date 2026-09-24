@@ -62,7 +62,7 @@ One concern has one owner. New skills/agents are justified only by an irreducibl
 
 ## Shared Change state
 
-One evolving **Change** is the lifecycle source of truth. `skills/maestro/reference/protocol.md` defines the semantics; `skills/maestro/reference/change.schema.json` defines the interchange shape.
+One evolving **Change** is the lifecycle source of truth. `skills/devanity/modes/maestro/reference/protocol.md` defines the semantics; `skills/maestro/reference/change.schema.json` defines the interchange shape.
 
 The core development objects remain:
 
@@ -205,8 +205,8 @@ A graph edge means `this capability owns the next required information`, not `on
 
 Three modes:
 
-1. **Orchestrated** — `/maestro <goal>`.
-2. **Direct** — `/archer ...`, `/guardian ...` or another capability directly.
+1. **Orchestrated** — `/devanity plan <goal>`.
+2. **Direct** — `/devanity architect ...`, `/devanity review ...` or another mode directly.
 3. **Pipeline** — CI, IDE, plugin, managed Devanity, or another host composes contracts.
 
 Unavailable capabilities degrade explicitly to a handoff/reduced-assurance state; they are never simulated.

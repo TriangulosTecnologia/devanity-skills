@@ -7,13 +7,13 @@ Cross-agent — built on the [Agent Skills](https://agentskills.io) standard. `r
 ## Install
 
 ```bash
-npx skills add TriangulosTecnologia/devanity-skills --skill guardian
+npx skills add TriangulosTecnologia/devanity-skills --skill devanity
 ```
 
 Scope the agent to avoid duplication. Without `--agent`, the CLI mirrors the skill into every supported agent's directory (e.g. both `.claude/skills/` and `.agents/skills/`). For Claude Code only:
 
 ```bash
-npx skills add TriangulosTecnologia/devanity-skills --skill guardian --agent claude-code
+npx skills add TriangulosTecnologia/devanity-skills --skill devanity --agent claude-code
 ```
 
 Only install unscoped if the target repo also runs another agent (Copilot/Cursor/etc.) that should read the skill from its own directory.

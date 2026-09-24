@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validate, checkRelativeLinks, checkSkillTotal } from './validate-skills.mjs';
+import { validate, checkRelativeLinks, checkSkillTotal, findUnits, KERNEL_TOKEN_CAP } from './validate-skills.mjs';
 
 const fm = (name) => `---\nname: ${name}\ndescription: test skill\n---\n\n# ${name}\n`;
 
@@ -522,4 +522,65 @@ test('a link inside a fenced block is not a link (no false positive)', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- nested units and routing tables (skills/devanity/modes/<former skill>/) ---
+
+test('a nested unit (modes/<name>/SKILL.md) is discovered and validated with its own root', () => {
+  withSkill('kern', fm('kern'), (dir) => {
+    mkdirSync(join(dir, 'kern', 'modes', 'inner'), { recursive: true });
+    writeFileSync(join(dir, 'kern', 'modes', 'inner', 'SKILL.md'), fm('wrongname'));
+    const units = findUnits(dir).map(([n, , d]) => `${n}@${d}`);
+    assert.deepEqual(units.sort(), ['inner@2', 'kern@0'].sort());
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.startsWith('inner:') && e.includes('name')), errors.join('; '));
+  });
+});
+
+test('routing-table verbs satisfy argument-hint; a route to a missing path fails', () => {
+  const kernel = (rows) => `---\nname: kern\ndescription: t\nargument-hint: '[plan|debt] [args]'\n---\n\n# kern\n\n| Mode | Read |\n|---|---|\n${rows}`;
+  withSkill('kern', kernel('| `plan` | `modes/inner/SKILL.md` |\n'), (dir) => {
+    mkdirSync(join(dir, 'kern', 'modes', 'inner'), { recursive: true });
+    writeFileSync(join(dir, 'kern', 'modes', 'inner', 'SKILL.md'), fm('inner'));
+    writeFileSync(join(dir, 'kern', 'modes', 'debt.md'), '# debt\n');
+    assert.deepEqual(validate(dir), []);
+  });
+  withSkill('kern', kernel('| `plan` | `modes/ghost/SKILL.md` |\n'), (dir) => {
+    mkdirSync(join(dir, 'kern', 'modes'), { recursive: true });
+    writeFileSync(join(dir, 'kern', 'modes', 'debt.md'), '# debt\n');
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('routes "plan" to missing modes/ghost/SKILL.md')), errors.join('; '));
+  });
+  withSkill('kern', kernel(''), (dir) => {          // hint promises plan, nothing provides it
+    mkdirSync(join(dir, 'kern', 'modes'), { recursive: true });
+    writeFileSync(join(dir, 'kern', 'modes', 'debt.md'), '# debt\n');
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('!= argument-hint')), errors.join('; '));
+  });
+});
+
+test('README may reference a routed verb; an unrouted verb fails', () => {
+  const kernel = `---\nname: kern\ndescription: t\nargument-hint: '[plan] [args]'\n---\n\n# kern\n\n| Mode | Read |\n|---|---|\n| \`plan\` | \`modes/inner/SKILL.md\` |\n`;
+  withSkill('kern', kernel, (dir) => {
+    mkdirSync(join(dir, 'kern', 'modes', 'inner'), { recursive: true });
+    writeFileSync(join(dir, 'kern', 'modes', 'inner', 'SKILL.md'), fm('inner'));
+    writeFileSync(join(dir, 'kern', 'README.md'), 'Run `/kern plan x`.\n');
+    assert.deepEqual(validate(dir), []);
+    writeFileSync(join(dir, 'kern', 'README.md'), 'Run `/kern fly x`.\n');
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('/kern fly')), errors.join('; '));
+  });
+});
+
+test('a top-level unit over the kernel token cap fails; the same body nested passes', () => {
+  const big = fm('kern') + 'x'.repeat((KERNEL_TOKEN_CAP + 200) * 4) + '\n';
+  withSkill('kern', big, (dir) => {
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('kernel max')), errors.join('; '));
+  });
+  withSkill('kern', fm('kern'), (dir) => {
+    mkdirSync(join(dir, 'kern', 'modes', 'inner'), { recursive: true });
+    writeFileSync(join(dir, 'kern', 'modes', 'inner', 'SKILL.md'), fm('inner') + 'x'.repeat((KERNEL_TOKEN_CAP + 200) * 4) + '\n');
+    assert.deepEqual(validate(dir), []);
+  });
 });
