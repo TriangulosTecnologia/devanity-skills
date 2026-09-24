@@ -329,6 +329,33 @@ describe('manifests', () => {
     }
   });
 
+  test('hook commands are shell-neutral: node + one double-quoted path, no bash-only syntax (PowerShell runs them too)', () => {
+    // ponytail broke under PowerShell on `exec` and on shell metacharacters in hook commands
+    // (their #527/#569); the only portable form is `node "<path>" [args]`. Verified by
+    // construction here — this suite has not run on Windows.
+    const cfg = JSON.parse(readFileSync(join(hooksDir, 'hooks.json'), 'utf8')).hooks;
+    for (const groups of Object.values(cfg)) for (const group of groups) for (const h of group.hooks) {
+      assert.match(h.command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/hooks\/[a-z-]+\.js"( [A-Za-z]+)?$/, h.command);
+      assert.doesNotMatch(h.command, /exec|&&|\|\||;|\$\(|`|'|>|</, `shell-only syntax in: ${h.command}`);
+    }
+  });
+
+  test('CRLF line endings in the kernel file and the state file are handled', async () => {
+    const cfg = freshConfigDir();
+    const crlf = join(temp, 'crlf-plugin');
+    cpSync(hooksDir, join(crlf, 'hooks'), { recursive: true });
+    mkdirSync(join(crlf, 'skills', 'devanity'), { recursive: true });
+    const kernel = readFileSync(join(root, 'skills', 'devanity', 'SKILL.md'), 'utf8').replace(/\r?\n/g, '\r\n');
+    writeFileSync(join(crlf, 'skills', 'devanity', 'SKILL.md'), kernel);
+    let r = await runHook(join(crlf, 'hooks', 'devanity-inject.js'), { input: sessionStart(), env: baseEnv(cfg), args: ['SessionStart'] });
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(r.stdout.startsWith('# Devanity'), 'CRLF frontmatter must be stripped');
+    assert.ok(!r.stdout.includes('fallback'), 'a CRLF kernel is a valid kernel, not a fallback case');
+    writeFileSync(join(cfg, '.devanity-state'), 'off\r\n');
+    r = await runHook(join(crlf, 'hooks', 'devanity-inject.js'), { input: sessionStart(), env: baseEnv(cfg), args: ['SessionStart'] });
+    assert.equal(r.stdout, '', 'a CRLF-terminated "off" is still off');
+  });
+
   test('plugin.json names devanity, carries the kernel version and points at hooks.json', () => {
     const manifest = JSON.parse(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8'));
     const kernel = readFileSync(join(root, 'skills', 'devanity', 'SKILL.md'), 'utf8');
