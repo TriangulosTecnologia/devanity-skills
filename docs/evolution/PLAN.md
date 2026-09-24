@@ -14,7 +14,7 @@ Convenções:
 ## Fase 0 — Harness
 
 **Objetivo:** poder reprovar qualquer texto antes de escrevê-lo.
-**Gate de saída:** `python evals/harness/run.py --selftest` verde sem API; uma rodada completa dos 5 braços em Sonnet com `n=2` produz um writeup em `evals/results/` com tabela por tarefa. Nenhum número precisa ser bom; precisa ser reproduzível.
+**Gate de saída:** `python evals/harness/run.py --selftest` verde sem API, no host e no container; validadores verdes. **Fechado em 2026-09-24.** A rodada viva de referência acontece no gate da fase 1, junto com o `devanity` (F1.13).
 
 | id | Tarefa | Critério de aceite | Status |
 |---|---|---|---|
@@ -30,7 +30,7 @@ Convenções:
 | F0.9 | Dois tiers de execução: *tamanho* sem Bash; *comportamento* com Bash dentro de container descartável (Dockerfile no harness, sem rede além da API) | `--selftest` recusa rodar o tier de comportamento fora do container | done (`container/Dockerfile`, `entrypoint.sh`, `container.sh`; imagem construída e selftest 48/48 dentro dela, também com `DEVANITY_HARNESS_NETWORK=none`; lacuna aberta: egress só para api.anthropic.com não é restringível só com Docker, documentado; OAuth dentro da imagem não testado sem credencial) |
 | F0.10 | Tarefas de vibecoding e longo horizonte (SPEC §9.1b): `vibe-app-cli`, `vibe-app-web`, `vibe-autonomous-billing`, `long-3-tickets`, `long-compact`; scorers de `drift` e `queue_correct` | `good`/`bad` provados; `long-compact` força compactação de forma reproduzível | done (5 tarefas tier `behavior` com refs good/bad; células multi-turno via `--session-id`/`--resume`; `/compact` verificado ao vivo pelo `compact_boundary` no transcript; `env` por tarefa; `TRAPS` bidirecional; `drift` e `drift-compact` agregados em `traps.json`; selftest 98/98 local e no container; teto de cada scorer documentado no README) |
 | F0.11 | Cabeçalho de atribuição MIT em todo arquivo portado do ponytail | grep no CI | done (`validate-open.mjs` exige `LICENSE-ponytail` e o cabeçalho nas 6 primeiras linhas dos 4 arquivos portados; provado red/green removendo o cabeçalho de `judge.py`) |
-| F0.12 | Rodada de referência: 5 braços × Sonnet × `n=2` × todas as tarefas; writeup `evals/results/<data>-baseline.md` com custo e duração medidos | writeup commitado com limitações listadas; orçamento da fase 1 derivado do custo medido | todo |
+| F0.12 | Rodada de referência dos concorrentes | — | **movida**: funde-se com F1.13. Uma única rodada viva, com todos os braços e o `devanity` no campo, no gate da fase 1. Rodar os concorrentes antes não desbloqueia nenhuma tarefa de construção e trava a fase 0 atrás de credencial, plugins e orçamento (decisão 2026-09-24) |
 
 **Não fazer nesta fase:** escrever uma linha do kernel; alterar qualquer skill; otimizar custo do harness antes de ele funcionar.
 
@@ -55,7 +55,7 @@ Convenções:
 | F1.9 | Validador: referência `rule N` / `Core rule N` deve existir na seção que define regras do mesmo skill; corrigir as referências obsoletas pós-#30 | teste red/green; nenhum `rule 10|11` restante em guardian | todo |
 | F1.10 | Hooks mínimos: `hooks.json` com `SessionStart`, `SubagentStart`, `UserPromptSubmit` injetando kernel estático (sem ledger); filtro: verifier e worker não recebem escada de ofício; detecção de sessão autônoma; `.claude-plugin/plugin.json` | testes de hook: stdin sem EOF, stdout fechado, BOM, Windows path, sessão não interativa; instalação via `/plugin` funciona | todo |
 | F1.12 | README reescrito: fala com quem revisa primeiro; instalação no repositório e pessoal; tabela de modos; números da fase 1 com limitações | revisor externo entende o que é em 60 segundos | todo |
-| F1.13 | Writeup `evals/results/<data>-kernel.md` | gate verde documentado | todo |
+| F1.13 | Rodada viva única: todos os braços (concorrentes, controle, `devanity-released`, `devanity`), Sonnet, `n ≥ 4`, todas as tarefas; pontos cegos dos scorers revelados por agentes reais corrigidos e reaplicados com `--rescore`; tarefas congeladas depois; writeup `evals/results/<data>-kernel.md` | gate verde documentado; exige `ANTHROPIC_API_KEY` no container e os plugins concorrentes instalados | todo |
 
 **Não fazer nesta fase:** reescrever qualquer modo; adicionar guardas que bloqueiam; portar hosts; compressão do Guardian.
 
@@ -144,4 +144,5 @@ F0 ──► F1 ──► F2 ──► F3 ──► F4
 | 2026-09-23 | Pre-flight: ledger em `.git/devanity/` | `.devanity/` + exclude | worktrees e subagentes compartilham; não commitável por construção |
 | 2026-09-23 | Pre-flight: harness em dois tiers, comportamento só em container | um tier sem Bash | o kernel exige executar o check; código do agente é não confiável |
 | 2026-09-23 | Pre-flight: `architect-lite` antes do Archer completo | Archer em todo degrau 5 | greenfield cairia sempre no ciclo pesado |
+| 2026-09-24 | Rodada de referência só no gate da fase 1, junto com o `devanity`; fase 1 começa sem ela | rodar os concorrentes antes do kernel | nenhuma tarefa de construção depende dos números; os concorrentes custam o mesmo em qualquer momento; travar a fase 0 atrás de credencial e orçamento atrasa o produto sem ganho |
 | 2026-09-24 | Campo de comparação: concorrentes reais + controle de uma frase; um só produto `devanity` (released vs candidate); sem braço nem cláusula de composição com o ponytail | cinco braços centrados em nós e no ponytail, incluindo um braço de composição | o ponytail é concorrente, não parte do produto; um vencedor só significa algo contra o campo que um mantenedor escolheria (como o ponytail fez com caveman e yagni-oneliner); o superpowers já cobre por prompt parte do eixo de julgamento e precisa ser batido, não ignorado |
