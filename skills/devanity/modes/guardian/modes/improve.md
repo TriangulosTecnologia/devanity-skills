@@ -26,9 +26,9 @@ An erroring or crashing run is none of the three: it decides nothing about the o
 
 For a `verification-loop:missing-test` finding the red run is also the strongest available form of step 3: the violation is re-verified by the oracle failing on it, not by inspection.
 
-**Classification order when the unit carries an oracle.** The class gates the ACT stop and the oracle's outcome can change it, so: classify **provisionally before any write**; a provisional *trade* stops there, before the oracle exists. A provisional *dominant* writes the oracle and runs it — the oracle is the instrument the decision needs, not the patch the stop is about — and a `NOT FALSIFIED` outcome makes the class *trade*, which stops before the correction. The stop always precedes the correction, and only the **trade-classification** and **green-where-red-expected** stops may come after the oracle — every other stop (high-risk class, new dependency, hook/CI change; Core rule 7, Action axis) precedes **every** write, the oracle included.
+**Classification order when the unit carries an oracle.** The class gates the ACT stop and the oracle's outcome can change it, so: classify **provisionally before any write**; a provisional *trade* stops there, before the oracle exists. A provisional *dominant* writes the oracle and runs it — the oracle is the instrument the decision needs, not the patch the stop is about — and a `NOT FALSIFIED` outcome makes the class *trade*, which stops before the correction. The stop always precedes the correction, and only the **trade-classification** and **green-where-red-expected** stops may come after the oracle — every other stop (high-risk class, new dependency, hook/CI change; Core rule 6, Action axis) precedes **every** write, the oracle included.
 
-Rules: one finding only; small patch; add/update verification if behavior changes; never mix feature work with repo-health cleanup; high-risk guard: Core rule 7; classify the fix before writing, per the order above (`SKILL.md` Fix classification) — a trade stops per the Action axis and renders its confirmation as a `[DECIDE][blocking][G-###][trade]` block (SKILL Decisions), the proposed patch beneath it. A structural change (many files or redrawn boundaries) is not one `improve`: run `plan`, then execute it as an ordered sequence of contained, verified `improve` steps.
+Rules: one finding only; small patch; add/update verification if behavior changes; never mix feature work with repo-health cleanup; high-risk guard: Core rule 6; classify the fix before writing, per the order above (`SKILL.md` Fix classification) — a trade stops per the Action axis and renders its confirmation as a `[DECIDE][blocking][G-###][trade]` block (SKILL Decisions), the proposed patch beneath it. A structural change (many files or redrawn boundaries) is not one `improve`: run `plan`, then execute it as an ordered sequence of contained, verified `improve` steps.
 
 **Verification side effects** — the verification command executes project code, and in ACT an unexpected write is not noise: it silently expands the approved unit. Follow the ACT projection of the target fingerprint (`reference/baseline.md`): name the expected file set before verifying, capture around it, and declare `Finding fixed` only once every delta is dispositioned and any changed expected file has been re-read.
 
@@ -52,7 +52,7 @@ Rules: one finding only; small patch; add/update verification if behavior change
 
 ## Example
 
-Fixing `G-001` from the audit example. It alters what a billing path returns, so it is in the high-risk class: the invocation proposes and stops (Core rule 7), and only the confirmation authorizes the write.
+Fixing `G-001` from the audit example. It alters what a billing path returns, so it is in the high-risk class: the invocation proposes and stops (Core rule 6), and only the confirmation authorizes the write.
 
 ```md
 - **[DECIDE][blocking][G-005][acceptance] Authorize the cents fix to `sumLineItems`?**

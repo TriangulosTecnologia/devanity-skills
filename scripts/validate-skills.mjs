@@ -183,6 +183,30 @@ export function validate(skillsDir) {
       }
     }
 
+    // 2b. Numbered-rule integrity: a `rule N` / `Core rule N` citation anywhere in the unit must name
+    //     a rule its own SKILL.md defines as `- **Rule N — …**`. Renumbering the list (PR #30 dropped
+    //     two rules) left every cross-reference pointing one or two rules off, and each still read as
+    //     current — the same failure a broken path has, minus the 404. Fences and inline code are
+    //     ignored: an example or a quoted grammar is not a citation. Units that define no numbered
+    //     rules are skipped; there is nothing to resolve against.
+    const definedRules = new Set([...stripFences(raw).matchAll(/^- \*\*Rule (\d+) — /gm)].map((m) => Number(m[1])));
+    if (definedRules.size) {
+      const ruleRe = /\b(?:Core rule|Rule|rule) (\d+)\b/g;
+      for (const file of scanFiles) {
+        const rel = file.slice(root.length + 1);
+        let inFence = false;
+        readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+          if (line.trimStart().startsWith('```')) { inFence = !inFence; return; }
+          if (inFence) return;
+          for (const m of line.replace(/`[^`]*`/g, '').matchAll(ruleRe)) {
+            if (!definedRules.has(Number(m[1]))) {
+              err(skill, `${rel}:${i + 1} cites "${m[0]}" but SKILL.md defines rules ${Math.min(...definedRules)}–${Math.max(...definedRules)} — point at the rule that now holds the content, or at the section it moved to`);
+            }
+          }
+        });
+      }
+    }
+
     // 3. Contract agreement: the exposed mode set (modes/*.md ∪ routing-table verbs, see modeSet)
     //    === modes declared in argument-hint. A verb the hint promises must have a file or a route;
     //    a file or route the hint hides is dead.

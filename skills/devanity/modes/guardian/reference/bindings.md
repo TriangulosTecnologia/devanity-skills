@@ -37,10 +37,10 @@ The table lists every rule whose violation a deterministic gate **could** detect
 
 | Rule | What holds it today | The mechanism that would hold it |
 | --- | --- | --- |
-| Core rule 7 — no high-risk autonomy | the model following the rule | `PreToolUse` on the guarded paths (exit 2) |
+| Core rule 6 — no high-risk autonomy | the model following the rule | `PreToolUse` on the guarded paths (exit 2) |
 | Action axis — DIAGNOSE writes nothing outside the conversation | the model following the rule | `PreToolUse` denying writes for the run |
 | Action axis — ACT writes one approved unit | the model following the rule | `PreToolUse` scoped to the unit's expected file set |
-| Core rule 10 — no check result without a run this session | the model following the rule | `Stop` requiring the focused check |
+| Core rule 8 — no check result without a run this session | the model following the rule | `Stop` requiring the focused check |
 
 Two consequences. **For the run:** a rule in this table is still a rule — the entry records what would fail silently if the model is outvoted, not permission to skip it. **For the repo:** where the host offers the mechanism, that is where the rule belongs, and the prose shrinks to a pointer at it (`reference/enforcement.md` — promotion is a move, not a copy). A repo that has installed such a gate is the one case where these rules hold structurally; the Reconciliation row on governing declarations (`reference/baseline.md`) is how a run recognizes one.
 

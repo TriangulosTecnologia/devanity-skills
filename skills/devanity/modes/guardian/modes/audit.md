@@ -88,7 +88,7 @@ none in examined dimensions
 
 ### Decisions
 - **[DECIDE][blocking][G-003][acceptance] Authorize a write to the money path to fix G-001?**
-  - decision: whether Guardian may alter what the billing sum returns — an authorization it does not hold on its own (Core rule 7), not a technical choice.
+  - decision: whether Guardian may alter what the billing sum returns — an authorization it does not hold on its own (Core rule 6), not a technical choice.
   - context: anchors G-001 — `sumLineItems` is a billing path, so any change to its arithmetic is in the high-risk class; the fix is proposed, never applied by the `improve` invocation alone.
   - options: authorize → `/guardian improve G-001` proposes the patch and stops for this confirmation, then writes · decline → G-001 stays open and the float math keeps shipping · test only → add the failing case as a test, leave the arithmetic, and re-decide with the failure recorded.
   - recommendation: authorize — the defect is arithmetic with a known failing case, and the fix is smaller than the exposure it removes.
