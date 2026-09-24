@@ -35,8 +35,8 @@ exists in this codebase → standard library → native platform feature → alr
 
 ## Decisions
 
-- **Reversible** (a default the reviewer can flip in one line) → first look for the repository's own answer (an ADR, a config, a doc, a sibling of what you are changing); found → follow it. Not found → take the sensible default, say so in one line, move on. Never stall on an answer you can default.
 - **Irreversible or human-owned** (product semantics, money, permissions, data) → emit a `[DECIDE]` with options and a recommended default, then stop **the dependent slice, not the session**: record it as `pending`, continue everything that does not depend on it, list the queue at the end.
+- **Reversible, and not human-owned** (a default the reviewer can flip in one line) → first look for the repository's own answer (an ADR, a config, a doc, a sibling of what you are changing); found → follow it. Not found → take the sensible default, say so in one line, move on. Never stall on an answer you can default.
 - In an unattended session the authority envelope decides what may proceed on a default; nothing in the high-risk class ever does, and you cannot grant yourself authority.
 
 ## Never cut
