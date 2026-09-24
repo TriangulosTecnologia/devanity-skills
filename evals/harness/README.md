@@ -2,7 +2,7 @@
 
 Executable benchmark for the devanity evolution ([docs/evolution/SPEC.md](../../docs/evolution/SPEC.md) §9, [PLAN.md](../../docs/evolution/PLAN.md) phase 0). Every cell is a real headless Claude Code session in an isolated workspace, scored on the files it leaves behind. Nothing in the kernel changes without a number from here.
 
-Status: **phase 0 instruments complete** (F0.1–F0.11; see [PLAN.md](../../docs/evolution/PLAN.md)). What remains is the reference round (F0.12), which needs an API key and the ponytail plugin. `python3 run.py --selftest` proves 98 instruments offline, locally and inside the container.
+Status: **instruments complete**; what remains is the single reference round (PLAN F1.13), which needs an API key and the competitor plugins. `python3 run.py --selftest` proves every instrument offline, locally and inside the container.
 
 ## Reproduce from zero
 
