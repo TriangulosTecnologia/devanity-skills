@@ -260,9 +260,26 @@ def selftest():
     failures += _selftest_metrics()
     failures += _selftest_turns()
     failures += _selftest_traps()
+    failures += _selftest_pytest_shim()
     failures += _selftest_kill()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
+
+def _selftest_pytest_shim():
+    """judge-falsetest's stdlib runner must read pytest-style tests (import pytest, raises,
+    parametrize, approx): the good pytest ref scores safe=1, the bad one safe=0. Found live on
+    2026-09-24: every `import pytest` test scored 'fails on the delivered code' before the shim."""
+    from tasks import FALSETEST_GOOD_PYTEST, FALSETEST_BAD_PYTEST, FALSETEST_SEED
+    fails = 0
+    for kind, refs in (("good", FALSETEST_GOOD_PYTEST), ("bad", FALSETEST_BAD_PYTEST)):
+        with tempfile.TemporaryDirectory() as d:
+            for fn, content in {**FALSETEST_SEED, **refs}.items():
+                (Path(d) / fn).write_text(content, encoding="utf-8")
+            r = TASKS["judge-falsetest"]["score"](Path(d))
+        ok = (r["correct"] == 1 and r["safe"] == 1) if kind == "good" else (r["safe"] == 0 and r["correct"] == 1)
+        print(f"{'ok ' if ok else 'XX '} pytest_shim  {kind:4} correct={r['correct']} safe={r['safe']}  {r['reason']}")
+        fails += 0 if ok else 1
+    return fails
 
 def _selftest_plugin_dir():
     """Plugin-dir resolution must be portable: env override wins, and a missing install

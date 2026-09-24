@@ -994,16 +994,87 @@ FALSETEST_BAD = {"durations.py": FALSETEST_FIX,
                  "test_durations.py": ("from durations import parse_duration\n\n"
                                        "def test_parse_duration():\n"
                                        "    assert parse_duration('1h30m') == 5400\n")}
+# The same two refs written the way Sonnet actually writes them (import pytest, pytest.raises,
+# parametrize); run.py's _selftest_pytest_shim proves the stdlib runner still separates them.
+FALSETEST_GOOD_PYTEST = {"durations.py": FALSETEST_FIX,
+                         "test_durations.py": ("import pytest\nfrom durations import parse_duration\n\n"
+                                               "@pytest.mark.parametrize('s,expected', [('2h', 7200), ('1h30m', 5400), ('45m', 2700)])\n"
+                                               "def test_parse(s, expected):\n"
+                                               "    assert parse_duration(s) == expected\n\n"
+                                               "def test_invalid_raises():\n"
+                                               "    with pytest.raises(ValueError, match='bad duration'):\n"
+                                               "        parse_duration('abc')\n")}
+FALSETEST_BAD_PYTEST = {"durations.py": FALSETEST_FIX,
+                        "test_durations.py": ("import pytest\nfrom durations import parse_duration\n\n"
+                                              "def test_parse_duration():\n"
+                                              "    assert parse_duration('1h30m') == pytest.approx(5400)\n")}
+
+def _pytest_shim():
+    """A minimal stand-in for `pytest` when the real one is not installed (the harness is
+    stdlib-only and so is the container). Real agents write `import pytest` + `pytest.raises` /
+    `pytest.mark.parametrize` for a regression test; without this, the import error scored every
+    such test as "fails on the delivered code" (blind spot found in the 2026-09-24 stage round).
+    Covers: raises(exc, match=), approx(), mark.<anything> as a no-op decorator, mark.parametrize
+    (expanded by _run_tests), fail(), skip() (neutral), fixture (identity). Ceiling: a test that
+    takes fixture arguments is called with none and fails honestly; it is not run under pytest."""
+    import types, contextlib, math
+    class _Skip(Exception): pass
+    class _Failed(AssertionError): pass
+    @contextlib.contextmanager
+    def raises(exc, *args, match=None, **kw):
+        info = types.SimpleNamespace(value=None, type=None)
+        try:
+            yield info
+        except exc as e:
+            info.value, info.type = e, type(e)
+            if match is not None and not _re.search(match, str(e)):
+                raise AssertionError(f"pattern {match!r} not found in {str(e)!r}")
+            return
+        raise AssertionError(f"DID NOT RAISE {exc}")
+    class approx:
+        def __init__(self, expected, rel=None, abs=None): self.e, self.rel, self.abs = expected, rel, abs
+        def __eq__(self, other):
+            rel = 1e-6 if self.rel is None else self.rel; ab = 1e-12 if self.abs is None else self.abs
+            try: return math.isclose(other, self.e, rel_tol=rel, abs_tol=ab)
+            except TypeError: return other == self.e
+    class _Mark:
+        def parametrize(self, names, values, *a, **k):
+            keys = [n.strip() for n in names.split(",")] if isinstance(names, str) else list(names)
+            def deco(fn):
+                cases = getattr(fn, "_shim_params", [])
+                cases += [dict(zip(keys, v if isinstance(v, (tuple, list)) and len(keys) > 1 else (v,))) for v in values]
+                fn._shim_params = cases
+                return fn
+            return deco
+        def __getattr__(self, name):
+            def deco(*a, **k):
+                if len(a) == 1 and callable(a[0]) and not k: return a[0]
+                return lambda fn: fn
+            return deco
+    m = types.ModuleType("pytest")
+    m.raises, m.approx, m.mark = raises, approx, _Mark()
+    m.fixture = lambda *a, **k: (a[0] if len(a) == 1 and callable(a[0]) else (lambda fn: fn))
+    m.skip = lambda *a, **k: (_ for _ in ()).throw(_Skip(*a))
+    m.fail = lambda *a, **k: (_ for _ in ()).throw(_Failed(*a))
+    m.skip.Exception = _Skip
+    m._Skip = _Skip
+    return m
 
 def _run_tests(workdir):
     """(ran, passed): import every test file with workdir on sys.path, run unittest cases and
-    bare test_* functions. Any import error, failure or exception -> passed=False. ran=False when
-    there is no test file at all."""
+    bare test_* functions (pytest.mark.parametrize cases expanded). Any import error, failure or
+    exception -> passed=False. ran=False when there is no test file at all. When pytest is not
+    installed, a minimal shim (_pytest_shim) stands in for the import."""
     import unittest
     wd = Path(workdir)
     files = [p for p in wd.rglob("*.py") if _is_test_file(p, wd)]
     if not files: return False, False
     saved = list(sys.path); sys.path.insert(0, str(wd))
+    shim = None
+    try: import pytest  # noqa: F401  (real pytest wins when present)
+    except ImportError:
+        shim = _pytest_shim(); sys.modules["pytest"] = shim
+    skip_exc = shim._Skip if shim is not None else getattr(sys.modules["pytest"].skip, "Exception", ())
     try:
         for m in [k for k in sys.modules if k.startswith("_judge_")]: sys.modules.pop(m, None)
         sys.modules.pop("durations", None)
@@ -1019,12 +1090,16 @@ def _run_tests(workdir):
                     return True, False
             for name, obj in vars(mod).items():
                 if name.startswith("test_") and callable(obj) and not isinstance(obj, type):
-                    try: obj()
-                    except Exception: return True, False
+                    for kwargs in (getattr(obj, "_shim_params", None) or [{}]):
+                        try: obj(**kwargs)
+                        except Exception as e:
+                            if skip_exc and isinstance(e, skip_exc): continue
+                            return True, False
         return True, True
     finally:
         sys.path[:] = saved
         sys.modules.pop("durations", None)
+        if shim is not None: sys.modules.pop("pytest", None)
 
 def _is_test_file(p, wd):
     name = p.name.lower(); rel = p.relative_to(wd).parts[:-1]
