@@ -117,6 +117,7 @@ function renderProofBlock(f) {
   if (f.baseline) out.push(`  baseline: ${f.baseline}`);
   out.push(`  failed_before: ${f.failed_before}`);
   out.push(`  passed_after: ${f.passed_after}`);
+  if (f.probes) out.push(`  probes: ${f.probes}`);
   out.push(`  status: ${f.status}`);
   out.push(`  pending: ${f.pending}`);
   return out.join('\n');
@@ -287,7 +288,8 @@ function decide(payload, env = process.env) {
   const pending = agent.pending !== undefined ? agent.pending : String(ledger.pendingDecisions(root).length);
   // A proof without a `contract` field links to the contract declared in the same message.
   const contractId = agent.contract || (contract ? contract.fields.id : null) || 'adhoc';
-  const base = { kind: 'proof', contract: contractId, check: agent.check || null, head: info ? info.head : null, agent_status: agentStatus, pending, enforce };
+  // `probes` is the verifier's count (run/survived); the oracle records it and never measures it.
+  const base = { kind: 'proof', contract: contractId, check: agent.check || null, head: info ? info.head : null, agent_status: agentStatus, probes: agent.probes || null, pending, enforce };
 
   // An honest NOT_VERIFIED, or a status that claims nothing, needs no re-run.
   if (!/^VERIFIED\b/i.test(agentStatus)) {
@@ -341,7 +343,7 @@ function main() {
   });
 }
 
-module.exports = { CONTRACT_KEYS, DEFAULT_TIMEOUT_MS, REASONS, decide, findBlock, findContractBlock, findProofBlock, lastAssistantFromTranscript, renderProofBlock, ruleCheckFor };
+module.exports = { DEFAULT_TIMEOUT_MS, REASONS, decide, findContractBlock, findProofBlock, lastAssistantFromTranscript, renderProofBlock, ruleCheckFor };
 
 if (require.main === module) {
   try { main(); } catch (e) { rt.exitSoon(0); }

@@ -233,9 +233,9 @@ function cli(argv) {
 }
 
 module.exports = {
-  CLOSED_PHASES, CONTRACT_PHASES, CONTRACT_TTL_MS, KINDS, RETENTION_DAYS,
-  append, cli, contracts, decisions, expiredContracts, gitCommonDir, humanDecisionFor, ledgerDir,
-  openContract, openContracts, pendingDecisions, prune, read, renderStats, stats,
+  CONTRACT_PHASES, KINDS, RETENTION_DAYS,
+  append, contracts, decisions, expiredContracts, gitCommonDir, humanDecisionFor, ledgerDir,
+  openContract, openContracts, pendingDecisions, prune, read, stats,
 };
 
 if (require.main === module) {

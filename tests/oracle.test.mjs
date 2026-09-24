@@ -192,6 +192,17 @@ describe('oracle: measurement', () => {
     assert.equal(p.status, 'NOT_VERIFIED: could not run the suite'); assert.equal(p.measured, null); assert.equal(p.pending, '1');
   });
 
+  test('(j) probes travel: the proof record keeps the block\'s probes and a corrected block re-emits them in the kernel\'s order', async () => {
+    const d = seedBuggyRepo();
+    const message = proofBlock({ check: 'node --test t.test.js', failed_before: 'n/a', passed_after: 'no', probes: '5/4', status: 'NOT_VERIFIED: not run', pending: 0 });
+    const r = await runHook(ORACLE, { input: stopPayload(d, message), env: baseEnv({ DEVANITY_GUARDS: 'on' }), cwd: d });
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(readLedger(d, 'proofs')[0].probes, '5/4');
+    const block = oracle.renderProofBlock({ check: 'x', failed_before: 'no', passed_after: 'yes', probes: '3/3', status: 'NOT_VERIFIED: r', pending: 0 });
+    assert.equal(block, 'devanity-proof:\n  check: x\n  failed_before: no\n  passed_after: yes\n  probes: 3/3\n  status: NOT_VERIFIED: r\n  pending: 0');
+    assert.ok(!oracle.renderProofBlock({ check: 'x', failed_before: 'no', passed_after: 'yes', status: 'VERIFIED', pending: 0 }).includes('probes'), 'no probes line when the agent wrote none');
+  });
+
   test('(h) timeout -> NOT_VERIFIED: timeout, temporary worktree removed', async () => {
     const d = seedBuggyRepo();
     const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified('node -e "setTimeout(()=>{}, 30000)"')), env: baseEnv({ DEVANITY_GUARDS: 'on', DEVANITY_ORACLE_TIMEOUT_MS: '1500' }), cwd: d });

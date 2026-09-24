@@ -220,8 +220,8 @@ Fonte única, compilada para três superfícies: contexto por caminho injetado n
 
 | Evento | Script | Comportamento | Falha segura |
 |---|---|---|---|
-| `SessionStart` (startup, resume, clear, compact) | inject | lê ledger; sem contrato aberto → kernel; contrato em EXECUTE → kernel + resumo do contrato; em VERIFY → contrato de falsificação, sem escada de ofício | qualquer erro → emite kernel estático |
-| `SubagentStart` | inject | `agent_type` = verifier → contrato de falsificação; = worker → nada; outros → kernel | igual |
+| `SessionStart` (startup, resume, clear, compact) | inject | kernel; depois as regras do repositório (`rules.json` válido, ≤200 tokens); depois, se o ledger tem mudança aberta (contrato não fechado, declarado há ≤24 h), o resumo dela com uma linha por fase (EXECUTE: escopo, prova, proibido; VERIFY: falsificar, não escrever; demais: continuar da fase), ≤480 chars; acima de 9.500 chars descarta primeiro a mudança, depois as regras, nunca o kernel, e registra `inject_truncated` | qualquer erro → emite kernel estático |
+| `SubagentStart` | inject | `agent_type` = verifier → uma linha: seu contrato é `agents/verifier.md`, e, se há mudança aberta, o id e a prova a falsificar; = worker → nada; outros → o mesmo que `SessionStart` | igual |
 | `UserPromptSubmit` | mode | trata `/devanity off|on|status|pending|reset|decide …` e `stop devanity` / `normal mode`, só como mensagem inteira; os verbos de modo (`plan`, `review`…) pertencem ao skill; `decide` é o único escritor de `by: human`, `reset` só grava `ABANDONED` em contratos | silencioso |
 | `PreToolUse` (Edit, Write, MultiEdit, Bash) | guard | (a) caminho `high-risk` sem decisão registrada no ledger para esse caminho nesta sessão → exit 2 com mensagem que nomeia a regra e como registrar a decisão; (b) Bash: comando que escreve em caminho `high-risk` (`sed -i`, `>`, `tee`, `mv`, `rm`, `git checkout --`) → mesma regra; (c) Bash: comando acima do teto de autoridade da sessão (`git push`, `--force`, `git merge` em branch protegida, `terraform apply`, `kubectl apply`, `npm publish`, `deploy`, lista configurável em `rules.json#commands`) → exit 2 | rules ausente/inválido → não bloqueia, anota. Detecção em Bash é heurística por padrão: é piso, e o CI de referência (§7.5) é o teto |
 | `Stop` | oracle | dispara só se a última mensagem do assistente (`last_assistant_message`, que o host entrega no payload junto com `transcript_path`; verificado em 2026-09-24) contém um bloco de certificado (§7.4). Então: worktree de HEAD em tmp **com os arquivos de teste da árvore atual sobrepostos**, roda o check declarado, exige falha; roda na árvore atual, exige sucesso; senão devolve `NOT_VERIFIED` com o motivo e bloqueia o fim do turno **uma vez** (respeita `stop_hook_active`: na segunda passagem, deixa terminar com `NOT_VERIFIED` visível). Arquivos de teste = os que casam com `rules.json#tests` (default: `test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `tests/**`) | sem git → `NOT_VERIFIED: no baseline`; check ausente → `NOT_VERIFIED: no check`; timeout configurável (default 120s) → `NOT_VERIFIED: timeout`. Nunca trava |
@@ -250,17 +250,15 @@ Bloco de formato fixo, único gatilho do `Stop` e único lugar onde "verificado"
 
 ```
 devanity-proof:
-  contract: <id ou "adhoc">
   check: <comando>
-  baseline: HEAD@<sha> + tests overlay | none
   failed_before: yes | no | n/a
   passed_after: yes | no
-  probes: <n>/<survived>          (fase 3; "0/0" antes)
+  probes: <n>/<survived>          (sondas do verifier; 0/0 quando nenhuma rodou)
   status: VERIFIED | NOT_VERIFIED: <motivo>
-  pending_decisions: <n>
+  pending: <n decisões>
 ```
 
-O agente escreve o bloco com o que **ele** executou; o `Stop` reexecuta e corrige `failed_before`, `passed_after` e `status`. Divergência entre o que o agente escreveu e o que o hook mediu é registrada como `false_ready` no ledger.
+Essa é a forma do kernel. O oráculo aceita ainda `contract: <id ou "adhoc">` (sem ele, a prova liga-se ao `devanity-contract:` da mesma mensagem, senão `adhoc`), `baseline: HEAD@<sha> + tests overlay` (que ele próprio escreve no bloco corrigido) e `pending_decisions` como sinônimo de `pending`. O agente escreve o bloco com o que **ele** executou; o `Stop` reexecuta e corrige `failed_before`, `passed_after` e `status`; `probes` e `pending` são copiados, nunca medidos. Divergência entre o que o agente escreveu e o que o hook mediu é registrada como `false_ready` no ledger.
 
 ### 7.5 CI de referência
 
@@ -278,10 +276,11 @@ Job de exemplo (GitHub Actions) que o `init` oferece: valida `rules.json`, confe
 
 - Diretório `<git-common-dir>/devanity/` (isto é, dentro de `.git/`, resolvido por `git rev-parse --git-common-dir`): nunca commitável por construção, compartilhado entre worktrees e subagentes do mesmo repositório. Sem git, o ledger é desativado e o kernel avisa uma vez.
 - Concorrência: escrita append-only em JSONL com `O_APPEND`; leitores toleram linha parcial no fim. Subagentes paralelos escrevem no mesmo arquivo; o `session_id` distingue.
-- Arquivos JSONL, um por tipo: `contracts.jsonl`, `decisions.jsonl`, `proofs.jsonl`, `deferrals.jsonl`, `events.jsonl` (false-ready, bloqueios, perguntas).
-- Registro de decisão: `{ ts, path, kind: reversible|irreversible|human, default, chosen, by: agent|human }`.
-- Registro de prova: `{ ts, contract_id, check, head_sha, failed_on_head: bool, passed_after: bool, probes: n, survived: n }`.
-- Retenção: 90 dias; `devanity debt` e `audit` leem; nada mais.
+- Arquivos JSONL, um por tipo: `contracts.jsonl`, `decisions.jsonl`, `proofs.jsonl`, `deferrals.jsonl` (reservado; ainda sem escritor), `events.jsonl` (`blocked`, `would_block`, `false_ready`, `rules_invalid`, `guard_payload_missing`, `inject_truncated`). Todo registro carrega `ts` e `session_id`; onde há `id`, o último registro por id vence campo a campo.
+- Registro de contrato: `{ id, phase: FRAME|INSPECT|PROVE|EXECUTE|VERIFY|ASSURE|DONE|ABANDONED, intent?, scope?, forbidden?, proof?, pending?, reason? }`; escrito pelo `Stop` a partir do bloco `devanity-contract:` e por `/devanity reset` (`ABANDONED`, `reason: reset`).
+- Registro de decisão: `{ id, path?, kind: reversible|irreversible|human, status: pending|decided, by: agent|agent-default|human, chosen? }`; `by: human` só via `/devanity decide`.
+- Registro de prova: `{ kind: proof, contract, check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason }`; `measured: null` quando o oráculo não reexecutou.
+- Retenção: 90 dias; `debt` (`stats`), `audit` e os hooks leem; `prune` só a pedido. A documentação operacional é `docs/ledger.md`.
 - Sem dados do prompt do usuário; só metadados. Sem envio a lugar nenhum.
 
 ## 9. Harness

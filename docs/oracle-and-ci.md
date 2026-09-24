@@ -15,9 +15,12 @@ devanity-proof:
   check: <command>
   failed_before: yes | no | n/a
   passed_after: yes | no
+  probes: <run>/<survived>
   status: VERIFIED | NOT_VERIFIED: <reason>
   pending: <n decisions>
 ```
+
+`probes` is the verifier's count and `pending` the agent's queue: both are copied into the record and into a corrected block, never measured. A `devanity-contract:` block in the same message is recorded too (see [`ledger.md`](ledger.md) §1); it never affects the verdict.
 
 ### How it decides
 
@@ -39,7 +42,7 @@ devanity-proof:
    | worktree could not be created | `NOT_VERIFIED: no baseline` |
    | no check anywhere | `NOT_VERIFIED: no check` |
 
-6. **Ledger**: every measured claim appends to `proofs.jsonl` `{kind: 'proof', contract, check, head, failed_before, passed_after, status, agent_status, pending, measured, reason}`. When `status` differs from what the agent wrote, `events.jsonl` gets `{kind: 'false_ready', check, agent_status, status, reason}`. That divergence is the `false_ready` metric of the harness.
+6. **Ledger**: every claim appends to `proofs.jsonl` `{kind: 'proof', contract, check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason}` (`measured: null` when nothing was re-run). When `status` differs from what the agent wrote, `events.jsonl` gets `{kind: 'false_ready', check, agent_status, status, reason}`. That divergence is the `false_ready` metric of the harness.
 
 ### What it emits
 
