@@ -138,7 +138,16 @@ def _plugin_dir(name):
 # inside a disposable container (F0.9 ships the Dockerfile); outside one the harness refuses.
 IN_CONTAINER = os.environ.get("DEVANITY_HARNESS_CONTAINER") == "1"
 
-CELL_TIMEOUT = 300  # seconds per cell; a hung agent is force-killed (process tree) so the pool can't freeze
+CELL_TIMEOUT = 300  # seconds per size-tier cell (ponytail's value; kept for comparability); a hung agent is force-killed (process tree)
+# Behavior-tier cells run their own checks and greenfield builds, and the 300 s ceiling cut a
+# Sonnet billing cell at the knee in the 2026-09-24 stage round (the surviving cell took 190 s).
+# The behavior tier has no published ponytail number to stay comparable with, so it gets its own
+# ceiling; both are overridable for a slow network. A killed cell is still scored on its files and
+# its stderr says "[KILLED after Ns timeout]"; score_workspace surfaces that as `timed_out`.
+CELL_TIMEOUTS = {"size": int(os.environ.get("DEVANITY_HARNESS_CELL_TIMEOUT", CELL_TIMEOUT)),
+                 "behavior": int(os.environ.get("DEVANITY_HARNESS_CELL_TIMEOUT_BEHAVIOR", 600))}
+
+def cell_timeout(task): return CELL_TIMEOUTS.get(_tier(task), CELL_TIMEOUT)
 
 # Claude Code refuses bypassPermissions for a root user (the harness container runs as `bench`, so
 # it is unaffected); a root host can run the size tier with acceptEdits, which auto-approves
@@ -547,6 +556,12 @@ def _cell_meta(workdir: Path):
             for k in keys:
                 if one[k] is not None: meta[k] = (meta.get(k) or 0) + one[k]
         result_text = j.get("result", "") or result_text
+    # A cell the harness killed at its timeout is scored on the files it left, but the summary
+    # must be able to tell it from a slow-but-finished one (2026-09-24 stage round: a killed
+    # billing cell hid inside a tokens/cost mean).
+    err_files = sorted(workdir.glob("_claude*.stderr.txt")) or [workdir / "_claude.stderr.txt"]
+    meta["timed_out"] = int(any("[KILLED after" in f.read_text(encoding="utf-8", errors="ignore")
+                                for f in err_files if f.exists()))
     return meta, result_text
 
 def score_workspace(task_id, arm, model, workdir: Path):
@@ -629,6 +644,28 @@ def _selftest_metrics():
     ok = d == [{"trap": "drift", "arm": "k", "model": "m", "n": 12, "standalone_rate": 1.0, "late_rate": 0.5, "drift": 0.5}]
     fails += 0 if ok else 1
     print(f"{'ok ' if ok else 'XX '} metrics      drift             -> {d}")
+    # timeouts: the size tier keeps ponytail's 300 s, the behavior tier has its own ceiling, and a
+    # cell the harness killed is visible as timed_out=1 from its stderr marker (not hidden in a mean)
+    with tempfile.TemporaryDirectory() as d:
+        ws = Path(d); (ws / "_claude.json").write_text(json.dumps({"result": "x"}), encoding="utf-8")
+        (ws / "_claude.stderr.txt").write_text("\n[KILLED after 300s timeout]", encoding="utf-8")
+        killed = _cell_meta(ws)[0]["timed_out"]
+        (ws / "_claude.stderr.txt").write_text("", encoding="utf-8")
+        alive = _cell_meta(ws)[0]["timed_out"]
+    ok = (cell_timeout({"tier": "size"}) == CELL_TIMEOUTS["size"] and cell_timeout({}) == CELL_TIMEOUTS["size"]
+          and cell_timeout({"tier": "behavior"}) == CELL_TIMEOUTS["behavior"] and killed == 1 and alive == 0)
+    fails += 0 if ok else 1
+    print(f"{'ok ' if ok else 'XX '} metrics      timeouts          -> size={CELL_TIMEOUTS['size']} behavior={CELL_TIMEOUTS['behavior']} killed={killed} alive={alive}")
+    # def blocks: a multi-line signature (`) -> T:` at column 0) stays one block with its body, and a
+    # module-level `if __name__` demo never rides on the function before it (both seen live 2026-09-24)
+    from tasks import _def_blocks
+    src = ('def refund(\n    charge_id: str,\n) -> int:\n    raise NotImplementedError\n\n'
+           'if __name__ == "__main__":\n    charge(amount_cents=5)\n\ndef other():\n    return total\n')
+    blocks = dict(_def_blocks(src))
+    ok = (set(blocks) == {"refund", "other"} and "NotImplementedError" in blocks["refund"]
+          and "amount_cents" not in blocks["refund"] and "total" in blocks["other"])
+    fails += 0 if ok else 1
+    print(f"{'ok ' if ok else 'XX '} metrics      def_blocks        -> {sorted(blocks)}")
     return fails
 
 def _is_compact(turn): return isinstance(turn, dict) and bool(turn.get("compact"))
@@ -711,7 +748,7 @@ def run_cell(task_id, arm, model, workdir: Path):
     turns = task.get("turns")
     if not turns:                                      # single turn: argv and file layout unchanged
         _run_turn(build_cmd(task, arm, model, claude), workdir, env,
-                  workdir / "_claude.json", workdir / "_claude.stderr.txt")
+                  workdir / "_claude.json", workdir / "_claude.stderr.txt", timeout=cell_timeout(task))
         return score_workspace(task_id, arm, model, workdir)
     # Multi-turn (SPEC §9.1b): one claude session, one workdir, N sequential prompts. Turn 1 pins
     # the session id (`--session-id`), later turns `--resume` it; each turn has its own CELL_TIMEOUT
@@ -721,14 +758,14 @@ def run_cell(task_id, arm, model, workdir: Path):
     for i, turn in enumerate(turns, 1):
         cmd = build_cmd(task, arm, model, claude, prompt=_turn_prompt(turn), session_id=sid, resume=i > 1)
         out_path, err_path = workdir / f"_claude.turn{i}.json", workdir / f"_claude.turn{i}.stderr.txt"
-        _run_turn(cmd, workdir, env, out_path, err_path)
+        _run_turn(cmd, workdir, env, out_path, err_path, timeout=cell_timeout(task))
         if _is_compact(turn):
             (workdir / "_compact.json").write_text(json.dumps(_compact_evidence(sid, i)), encoding="utf-8")
     shutil.copy(out_path, workdir / "_claude.json")
     shutil.copy(err_path, workdir / "_claude.stderr.txt")
     return score_workspace(task_id, arm, model, workdir)
 
-def _run_turn(cmd, workdir, env, out_path, err_path):
+def _run_turn(cmd, workdir, env, out_path, err_path, timeout=CELL_TIMEOUT):
     # stdout -> file, never a PIPE: on Windows a hung agent's child processes can hold a stdout PIPE
     # open forever, so subprocess.run(timeout=) never fires and the worker freezes. Writing to a file
     # lets proc.wait(timeout) return reliably; on timeout _tree_kill ends ONLY this cell's process
@@ -738,12 +775,12 @@ def _run_turn(cmd, workdir, env, out_path, err_path):
             proc = subprocess.Popen(cmd, cwd=str(workdir), stdout=so, stderr=se, env=env,
                                     start_new_session=(os.name != "nt"))
             try:
-                proc.wait(timeout=CELL_TIMEOUT)
+                proc.wait(timeout=timeout)
             except subprocess.TimeoutExpired:
                 _tree_kill(proc)
                 try: proc.wait(timeout=15)
                 except Exception: pass
-                se.write(f"\n[KILLED after {CELL_TIMEOUT}s timeout]".encode())
+                se.write(f"\n[KILLED after {timeout}s timeout]".encode())
     except Exception as e:
         out_path.write_text(json.dumps({"error": str(e)[:300]}), encoding="utf-8")
 
@@ -766,7 +803,7 @@ def _compact_evidence(session_id, turn_no):
 # Extra per-cell 0/1 fields some scorers expose beyond correct/safe (SPEC §9.1b); aggregated as
 # `<field>_rate` when present. drift = judge-rootcause standalone safe_rate - long-* t3_rootcause_rate
 # and queue_correct feed the F0.6 metrics; TRAPS (tasks.py) says which tasks share a trap.
-EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "compacted")
+EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "compacted", "timed_out")
 
 def aggregate(results):
     groups = defaultdict(list)
