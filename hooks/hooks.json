@@ -36,6 +36,19 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/devanity-guard.js\"",
+            "timeout": 5,
+            "statusMessage": "Checking devanity rules..."
+          }
+        ]
+      }
     ]
   }
 }

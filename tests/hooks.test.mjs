@@ -313,9 +313,10 @@ describe('autonomous session', () => {
 });
 
 describe('manifests', () => {
-  test('hooks.json wires the three events to existing scripts with a timeout and status message', () => {
+  test('hooks.json wires the events to existing scripts with a timeout and status message', () => {
     const cfg = JSON.parse(readFileSync(join(hooksDir, 'hooks.json'), 'utf8')).hooks;
-    assert.deepEqual(Object.keys(cfg).sort(), ['SessionStart', 'SubagentStart', 'UserPromptSubmit']);
+    assert.deepEqual(Object.keys(cfg).sort(), ['PreToolUse', 'SessionStart', 'SubagentStart', 'UserPromptSubmit']);
+    assert.equal(cfg.PreToolUse[0].matcher, 'Edit|Write|MultiEdit|NotebookEdit|Bash');
     for (const s of ['startup', 'resume', 'clear', 'compact']) assert.ok(cfg.SessionStart[0].matcher.split('|').includes(s), `SessionStart matcher lacks ${s}`);
     for (const [event, groups] of Object.entries(cfg)) {
       for (const group of groups) for (const h of group.hooks) {
