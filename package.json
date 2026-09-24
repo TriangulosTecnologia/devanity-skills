@@ -1,0 +1,7 @@
+{
+  "name": "devanity-skills",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.mjs"
+  }
+}

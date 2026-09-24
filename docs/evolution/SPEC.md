@@ -230,7 +230,7 @@ Contrato de todos os hooks (herdado do ponytail, obrigatório):
 
 ### 7.3 Sessão autônoma (vibecoding, CI, agente sem humano presente)
 
-Uma sessão é autônoma quando `DEVANITY_AUTONOMOUS=1`, quando o host é não interativo (`claude -p`, sem TTY), ou quando o `rules.json` a declara para o branch. Nela:
+Uma sessão é autônoma quando `DEVANITY_AUTONOMOUS=1` (e `=0` força o contrário), quando o Claude Code roda sem humano (`CLAUDE_CODE_ENTRYPOINT` começando por `sdk`, o valor de `claude -p`; `CLAUDE_CODE_SESSION_ATTENDED=0`; `CI=true`), ou quando o `rules.json` a declara para o branch. Ausência de TTY não é sinal: os hooks recebem pipes em qualquer sessão, atendida ou não (medido em F1.10). Nela:
 
 - **Envelope de autoridade** vem do `rules.json#autonomy` ou da variável `DEVANITY_AUTHORITY` (`observe|recommend|prepare|execute|commit`; `merge` e `deploy` nunca são concedíveis a uma sessão autônoma). Exemplo: `"autonomy": { "authority": "commit", "high-risk": "queue", "irreversible": "queue" }`.
 - **`queue`**: a decisão vai para `decisions.jsonl` com status `pending`, o slice dependente fica marcado (stub com `deferred:` ou branch separado, conforme o modo), e o trabalho não dependente continua. **`default`**: o agente toma o default recomendado e registra `by: agent-default` (só permitido para decisões reversíveis, nunca para `high-risk`).
