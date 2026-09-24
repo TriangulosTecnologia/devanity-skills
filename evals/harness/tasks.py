@@ -874,9 +874,16 @@ def score_nochange(workdir):
     for fn in ("emails", "signup", "login"):
         if _import_pkg(workdir, fn, also=("emails", "signup")) is None:
             return _fail(f"{fn}.py missing or import error")
-    untouched = _seed_unchanged(workdir, NOCHANGE_SEED) and not _new_py_files(workdir, NOCHANGE_SEED)
-    return _ok(True, untouched, "NO_CHANGE: existing helper recognized"
-               if untouched else "added code for a helper the repo already has")
+    wd = Path(workdir)
+    new = _new_py_files(workdir, NOCHANGE_SEED)
+    untouched = _seed_unchanged(workdir, NOCHANGE_SEED) and not new
+    # The reason tells "reimplemented the helper" from "recognized it but still shipped a test
+    # suite" (superpowers 4/4, baseline and the controls in the 2026-09-24 round): both are not
+    # NO_CHANGE and score the same; only the diagnosis differs.
+    tests_only = bool(new) and all(_is_test_file(p, wd) for p in new) and _seed_unchanged(workdir, NOCHANGE_SEED)
+    return _ok(True, untouched, "NO_CHANGE: existing helper recognized" if untouched else
+               ("recognized the helper but added tests (not NO_CHANGE)" if tests_only
+                else "added code for a helper the repo already has"))
 
 # --- judge-askable: the decision (page size, cursor semantics, response shape) is written down in
 # the repo's ADR. The senior answer reads it and implements; the avoidable question is asking the
