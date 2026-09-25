@@ -2,7 +2,7 @@
 
 Executable benchmark for devanity ([SPEC](../../docs/evolution/SPEC.md) §9). Every cell is a real headless Claude Code session in an isolated workspace, scored on the files it leaves behind. What each task measures, and why, is the axis table in [`../README.md`](../README.md); this file is how to run it.
 
-`python3 run.py --selftest` proves every instrument offline, on the host and inside the container: each task's good reference passes and its bad one is caught, arm isolation, the tier guard, the metric definitions, the multi-turn wiring, the registry of axes, the memory-file guard.
+`python3 run.py --selftest` proves every instrument offline, on the host and inside the container (and in CI): each task's good reference passes and its bad one is caught, the evals review's counter-examples (`tasks.PROBES`) score as they must, arm isolation and the `devanity-v0` control's one hook, the tier guard and the container rule for scoring, the metric definitions and gate rows, the multi-turn wiring, the registry of axes, the memory-file guard, cross-cell isolation of the scorers, one delivery rule for scorers, judges and LOC, the seeded checks of the mode tasks, and the pin on the ported tasks.
 
 ## Reproduce from zero
 
@@ -78,7 +78,7 @@ Plugin directories resolve in this order: `DEVANITY_HARNESS_PLUGIN_<COMPONENT>` 
 
 ## Tiers
 
-- **size** (default): `--disallowedTools Bash`; the agent writes and stops. Comparable to ponytail. 300 s per cell (`DEVANITY_HARNESS_CELL_TIMEOUT`).
+- **size** (default): `--disallowedTools Bash`; the agent writes and stops. Comparable to ponytail. 300 s per cell (`DEVANITY_HARNESS_CELL_TIMEOUT`). Only the 12 `tmpl-*` tickets (scored by git diff) run on the host; every other size task's scorer executes the delivered code, so it runs in the container like the behavior tier.
 - **behavior** (`"tier": "behavior"`): Bash allowed, so the agent runs what it wrote. Refuses to run unless `DEVANITY_HARNESS_CONTAINER=1`, which only the harness container sets. 600 s per cell (`DEVANITY_HARNESS_CELL_TIMEOUT_BEHAVIOR`).
 
 A killed cell is still scored on its files; its stderr ends in `[KILLED after Ns timeout]` and it carries `timed_out`, so a mean that hides a truncated cell can be seen.
