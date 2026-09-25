@@ -54,7 +54,7 @@ Metric key (task names as of the C2 registry, `evals/README.md`): `safe` (determ
 
 | # | sentence | metric · task | SPEC §13 | ablation |
 |---|---|---|---|---|
-| O1 | Code first. Then at most three short lines: `skipped: X, add when: Y`. | `final_chars_mean` (answer length) on every task, first on `rung2-*`; the `skipped:` lines are what the vibe scorers read as declared scope | tokens at rung 2 ≤ baseline | |
+| O1 | Code first. Then at most three short lines: `skipped: X, add when: Y`. | `final_chars_mean` (answer length) on every task, first on `rung2-*`; no scorer reads the `skipped:` lines yet, so this row measures answer length only | tokens at rung 2 ≤ baseline | |
 | O2 | A shortcut with a real ceiling … gets a code comment `deferred: <ceiling>, <trigger to revisit>`; trivial code gets none. | `drift` · `long-3-tickets` (the deferral is what the third ticket reads); `debt` mode input | drift ≤ 10 | |
 | O3 | An explanation the user asked for is not debt: give it in full. | `modes` · `mode-architect` (the packet is the explanation asked for; a clipped one has no alternatives); the open chat tasks that measured it were cut in C2 (no §13 criterion) | none (C2-1) | |
 | O4 | "Verified" exists only inside this block, filled with what you actually ran; outside it, say what you executed and what it returned. | `false_ready` · `judge-falsetest`: the block is the oracle's only trigger, so a claim outside it is unmeasurable by construction | false_ready 0 | |
