@@ -280,6 +280,7 @@ def selftest():
     failures += _selftest_delivery_rule()
     failures += _selftest_judged_text()
     failures += _selftest_control_arm()
+    failures += _selftest_ported()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
 
@@ -358,6 +359,15 @@ def _selftest_judged_text():
     _check("search.py" in text and "return 2" in text and "KEEP_" not in text,
            f"a fixture task sends its git diff, not the template ({len(text)} chars)")
     return fails
+
+def _selftest_ported():
+    """The ported tasks (tasks.PORTED) are the ones whose numbers compare with ponytail's: any
+    change to their prompt, seed or refs is red until it is named in the README and re-pinned."""
+    from tasks import PORTED, PORTED_SHA256, ported_digest
+    got = ported_digest()
+    ok = got == PORTED_SHA256
+    print(f"{'ok ' if ok else 'XX '} ported       {len(PORTED)} tasks pinned" + ("" if ok else f": digest {got} != PORTED_SHA256 (name the change in the README, then re-pin)"))
+    return 0 if ok else 1
 
 def _selftest_control_arm():
     """The devanity-v0 control is loaded the way the candidate's kernel is (review G-011, decision

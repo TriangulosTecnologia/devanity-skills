@@ -2665,6 +2665,18 @@ TASKS = {
                             "fixture": _TMPL},
 }
 
+# Ported from ponytail@e3ba2aa and kept unchanged (harness/README.md "Provenance"): their prompts,
+# seeds and good/bad refs are pinned, so an edit cannot land silently (review G-023); a deliberate
+# one is named in the README and re-pinned (--selftest prints the new digest). Scorers are not pinned.
+PORTED = ("todo-null", "safe-path", "critic-email", "rate-limit", "sql-user", "auth-token", "csv-sum", "cache",
+          "reuse-slug", "reuse-money", "trace-transfer", *(t for t in TASKS if t.startswith("tmpl-")))
+PORTED_SHA256 = "c6a0313a6a3e805bb73fcc83d48ff945dc08b0de11638fcfe9beed617dd3d989"
+
+def ported_digest():
+    h = hashlib.sha256()
+    for t in PORTED: h.update(json.dumps([t] + [TASKS[t].get(k) for k in ("prompt", "seed", "good", "bad")], sort_keys=True).encode())
+    return h.hexdigest()
+
 # ======================================================================================
 # PROBES -- the counter-examples of the 2026-09-25 evals review (G-###): plausible answers a scorer
 # once judged wrongly, each a regression case run.py --selftest scores (the task's seed, then these
