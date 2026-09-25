@@ -15,12 +15,14 @@ over-engineering score is a later pass.
   python run.py --selftest
       Verify every scorer (good passes, bad is caught). No API, no spend. Run first, always.
 
-  python run.py --all --models haiku,sonnet,opus --runs 5
-      Live run (spends API). Workspaces kept under runs/<stamp>/ for inspection.
+  ./container.sh python3 run.py --all --models haiku,sonnet,opus --runs 5
+      Live run (spends API). Workspaces kept under runs/<stamp>/ for inspection. On the host
+      only the tmpl-* tasks run; any other task refuses before spend.
 
-  python run.py --rescore runs/<stamp>
+  ./container.sh python3 run.py --rescore /runs/<stamp>
       Recompute metrics + aggregate from kept workspaces. No API. Use after changing a
-      metric or scorer so you never pay the API twice for a measurement tweak.
+      metric or scorer so you never pay the API twice for a measurement tweak. On the host
+      only a tmpl-*-only stamp rescores; any other refuses before scoring a cell.
 
 The claude CLI is the harness (no SDK dependency); its JSON output already carries
 cost/tokens/duration/permission_denials.
@@ -28,6 +30,9 @@ cost/tokens/duration/permission_denials.
 Two execution tiers (SPEC §9): "size" tasks run with Bash disallowed, for direct comparability
 with ponytail's published numbers; "behavior" tasks allow Bash and therefore only run inside a
 disposable container (DEVANITY_HARNESS_CONTAINER=1), because the agent executes code it wrote.
+Scoring is a second line: every scorer but the tmpl-* git diff executes delivered code, so it
+runs only in the container too (require_container_to_score), and the git diff reads a cell only
+while its .git/config is the one git init wrote (tasks.fixture_git_refusal).
 """
 import argparse, concurrent.futures, datetime, json, os, re, shutil, signal, statistics, subprocess, sys, tempfile, threading, uuid
 from collections import defaultdict
@@ -866,8 +871,8 @@ def require_container_to_score(task_ids):
     scorer that executes it runs only inside the harness container, on --rescore as on a live run.
     The selftest is the other side of the line: it scores the repository's own good/bad
     references (trusted code, reviewed like any other file here) and calls the scorers directly,
-    never through score_workspace, so it runs on the host. No variable a user sets moves the line;
-    IN_CONTAINER is set only by the image."""
+    never through score_workspace, so it runs on the host. IN_CONTAINER is one environment
+    variable, DEVANITY_HARNESS_CONTAINER=1, set by the image; setting it by hand defeats the guard."""
     untrusted = sorted({t for t in task_ids if executes_delivered_code(t)})
     if untrusted and not IN_CONTAINER:
         sys.exit("refusing to score outside the harness container: these tasks' scorers execute delivered code: "

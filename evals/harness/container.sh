@@ -78,7 +78,7 @@ run=("$DOCKER" run --rm --init
      -v "$REPO:/harness:ro")
 
 # runs/ is the one writable path: kept workspaces (runs/<stamp>/) must survive the container so
-# --rescore works offline on the host. It is mounted at /runs, NOT inside /harness: Claude Code
+# --rescore works offline later (in the container; on the host only for a tmpl-*-only stamp). It is mounted at /runs, NOT inside /harness: Claude Code
 # loads CLAUDE.md/AGENTS.md from every ancestor of a session's cwd, so a cell under
 # /harness/evals/harness/runs would inherit the repository's AGENTS.md (the kernel) in every arm
 # (found live 2026-09-24; run.py's memory_guard now refuses that layout before any spend).

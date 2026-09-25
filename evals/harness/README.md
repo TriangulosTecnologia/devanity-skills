@@ -31,7 +31,7 @@ python3 run.py --task tmpl-fe-datepicker,tmpl-fe-colorpicker,tmpl-fe-command,tmp
   --arms $FIELD --models sonnet --runs 4 --workers 4                                            # greenfield, autonomy, drift
 ./container.sh python3 run.py --task mode-review,mode-review-clean,mode-audit,mode-plan,mode-architect \
   --arms devanity --models sonnet --runs 4 --workers 4                                          # the modes (devanity only)
-./container.sh python3 run.py --rescore /runs/<stamp>   # 6. recompute metrics offline (the scorers execute delivered code: container; only a tmpl-*-only stamp rescores on the host)
+./container.sh python3 run.py --rescore /runs/<stamp>   # 6. recompute metrics offline (the scorers execute delivered code: container; a tmpl-*-only stamp may rescore on the host, where git reads a cell only while its .git/config is the one git init wrote)
 python3 judge.py --selftest && python3 judge.py --run <stamp>          # 7. over-engineering judge (small spend)
 python3 complete.py --selftest && python3 complete.py --run <stamp>    # 8. completeness judge (small spend)
 ./container.sh python3 run.py --fill /runs/<stamp>   # re-run only the cells that ended in an error or a usage limit (a cell killed at its timeout is a result, kept)
@@ -39,7 +39,7 @@ python3 complete.py --selftest && python3 complete.py --run <stamp>    # 8. comp
 
 Budget: a full round is about 1 500 cells (10 arms × 38 tasks + the 5 mode tasks on one arm, n=4); the 2026-09-24 round cost US$0.10–0.15 per surgical cell and up to US$0.56 per greenfield cell on Sonnet. Iterate the kernel on the affected axis plus the safety tasks, never on the full round per edit. Every workspace is kept under `runs/<stamp>/`, so a scorer change never costs API twice.
 
-`--rescore` accepts any kept stamp; a task removed from the registry is skipped, and a scorer change is applied to every cell the task still names. Every scorer except the `tmpl-*` git diff imports or runs the agent's code, so `score_workspace` refuses outside the container (live runs refuse before any spend, `--rescore` before scoring any cell); `--selftest` is the exception by construction, because it scores only the repository's own good/bad references.
+`--rescore` accepts any kept stamp; a task removed from the registry is skipped, and a scorer change is applied to every cell the task still names. Every scorer except the `tmpl-*` git diff imports or runs the agent's code, so `score_workspace` refuses outside the container; the git diff itself runs in the cell's agent-writable `.git`, so a cell whose `.git/config` differs from a fresh `git init`'s (or that carries a gitfile, `commondir` or `config.worktree`) scores `refused` and the judges' text is the refusal line, and every read pins `core.fsmonitor` off with `--no-ext-diff --no-textconv` (live runs refuse before any spend, `--rescore` before scoring any cell); `--selftest` is the exception by construction, because it scores only the repository's own good/bad references.
 
 ## Fixture
 
@@ -78,8 +78,8 @@ Plugin directories resolve in this order: `DEVANITY_HARNESS_PLUGIN_<COMPONENT>` 
 
 ## Tiers
 
-- **size** (default): `--disallowedTools Bash`; the agent writes and stops. Comparable to ponytail. 300 s per cell (`DEVANITY_HARNESS_CELL_TIMEOUT`). Only the 12 `tmpl-*` tickets (scored by git diff) run on the host; every other size task's scorer executes the delivered code, so it runs in the container like the behavior tier.
-- **behavior** (`"tier": "behavior"`): Bash allowed, so the agent runs what it wrote. Refuses to run unless `DEVANITY_HARNESS_CONTAINER=1`, which only the harness container sets. 600 s per cell (`DEVANITY_HARNESS_CELL_TIMEOUT_BEHAVIOR`).
+- **size** (default): `--disallowedTools Bash`; the agent writes and stops. Comparable to ponytail. 300 s per cell (`DEVANITY_HARNESS_CELL_TIMEOUT`). Only the 12 `tmpl-*` tickets (scored by git diff, which reads only a cell whose `.git/config` is the one `git init` wrote) may run on the host; every other size task's scorer executes the delivered code, so it runs in the container like the behavior tier.
+- **behavior** (`"tier": "behavior"`): Bash allowed, so the agent runs what it wrote. Refuses to run unless `DEVANITY_HARNESS_CONTAINER=1`, which the image sets; setting it by hand defeats the guard. 600 s per cell (`DEVANITY_HARNESS_CELL_TIMEOUT_BEHAVIOR`).
 
 A killed cell is still scored on its files; its stderr ends in `[KILLED after Ns timeout]` and it carries `timed_out`, so a mean that hides a truncated cell can be seen.
 
@@ -87,7 +87,7 @@ A killed cell is still scored on its files; its stderr ends in `[KILLED after Ns
 
 ## Container
 
-**The behavior tier never runs outside the container**: in it the agent executes code it wrote. The image, built from [`container/Dockerfile`](container/Dockerfile), is the only place `DEVANITY_HARNESS_CONTAINER=1` is set; do not export it by hand.
+**The behavior tier never runs outside the container**: in it the agent executes code it wrote. The image, built from [`container/Dockerfile`](container/Dockerfile), is the only place `DEVANITY_HARNESS_CONTAINER=1` is meant to be set: the variable is the whole guard, so exporting it by hand defeats it.
 
 ```bash
 ./container.sh                                     # build devanity-harness:local if missing, then: python3 run.py --selftest
