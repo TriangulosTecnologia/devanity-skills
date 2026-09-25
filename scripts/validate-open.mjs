@@ -11,15 +11,11 @@ const read = (path) => readFileSync(join(root, path), 'utf8');
 const requiredFiles = [
   'skills/devanity/SKILL.md',
   'skills/devanity/README.md',
-  'skills/devanity/modes/debt.md',
-  'skills/devanity/modes/init.md',
-  'skills/devanity/modes/maestro/SKILL.md',
-  'skills/devanity/modes/maestro/reference/protocol.md',
-  'skills/devanity/modes/maestro/reference/runtime.md',
-  'skills/devanity/modes/maestro/reference/change.schema.json',
-  'skills/devanity/modes/archer/SKILL.md',
-  'skills/devanity/modes/archer/reference/method.md',
-  'skills/devanity/modes/guardian/SKILL.md',
+  'skills/devanity/reference/vocabulary.md',
+  'skills/devanity/reference/quality.md',
+  'skills/devanity/reference/baseline.md',
+  'skills/devanity/reference/change.schema.json',
+  'skills/devanity/reference/rules.schema.json',
   'agents/worker.md',
   'agents/verifier.md',
   'docs/OPEN_DEVELOPMENT_MODEL.md',
@@ -35,7 +31,8 @@ const skillDirs = readdirSync(join(root, 'skills')).filter((name) => statSync(jo
 if (skillDirs.join(',') !== expectedSkills.join(',')) {
   fail(`skills/ must be the deliberate capability set (${expectedSkills.join(', ')}); found: ${skillDirs.join(', ')}`);
 }
-const expectedModes = ['archer', 'debt.md', 'guardian', 'init.md', 'maestro'];
+// One flat file per verb, the set the kernel's routing table and argument-hint promise.
+const expectedModes = ['architect.md', 'audit.md', 'debt.md', 'docs.md', 'improve.md', 'init.md', 'plan.md', 'review.md'];
 const modeEntries = existsSync(join(root, 'skills/devanity/modes')) ? readdirSync(join(root, 'skills/devanity/modes')).sort() : [];
 if (modeEntries.join(',') !== expectedModes.join(',')) {
   fail(`skills/devanity/modes must be the deliberate mode set (${expectedModes.join(', ')}); found: ${modeEntries.join(', ')}`);
@@ -65,6 +62,23 @@ for (const file of textFiles) {
   if (readFileSync(file, 'utf8').includes(legacyRepo)) fail(`${file.slice(root.length + 1)} still references ${legacyRepo}`);
 }
 
+// What the model loads speaks one interface: the `/devanity <verb>` invocations and one spelling of
+// each status token. The retired skill names (and their `/name` commands) and the spaced spellings
+// of the underscore tokens are what the pre-C1 files used; a file that reintroduces one teaches the
+// model a command that does not exist or a token no parser expects.
+const retiredNames = /\b(?:maestro|archer|guardian)\b/i;
+const spacedTokens = /\b(?:NOT VERIFIED|INVALID TARGET|NOT RUN|NOT ADJUDICATED|NOT FALSIFIED)\b/;
+for (const file of textFiles) {
+  const rel = file.slice(root.length + 1);
+  if (!rel.startsWith('skills/') && !rel.startsWith('agents/')) continue;
+  readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+    const name = line.match(retiredNames);
+    if (name) fail(`${rel}:${i + 1} names the retired "${name[0]}"; the interface is /devanity <verb>`);
+    const token = line.match(spacedTokens);
+    if (token) fail(`${rel}:${i + 1} spells "${token[0]}"; the token is ${token[0].replace(' ', '_')}`);
+  });
+}
+
 // The harness instruments are ported from ponytail (MIT). Every ported file carries its attribution
 // header and the full notice ships next to them; a rewrite that drops either is a licence defect (F0.11).
 const portedHarnessFiles = ['run.py', 'tasks.py', 'judge.py', 'complete.py'];
@@ -83,7 +97,7 @@ const parseJson = (path) => {
   catch (error) { fail(`${path} is not valid JSON: ${error.message}`); return null; }
 };
 
-const schema = parseJson('skills/devanity/modes/maestro/reference/change.schema.json');
+const schema = parseJson('skills/devanity/reference/change.schema.json');
 if (schema) {
   if (schema.title !== 'Devanity Open Change') fail('change.schema.json has unexpected title');
   const required = new Set(schema.required ?? []);

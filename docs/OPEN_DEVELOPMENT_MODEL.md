@@ -62,7 +62,7 @@ One concern has one owner. New skills/agents are justified only by an irreducibl
 
 ## Shared Change state
 
-One evolving **Change** is the lifecycle source of truth. `skills/devanity/modes/maestro/reference/protocol.md` defines the semantics; `skills/maestro/reference/change.schema.json` defines the interchange shape.
+One evolving **Change** is the lifecycle source of truth. `skills/devanity/reference/vocabulary.md` defines the semantics; `skills/devanity/reference/change.schema.json` defines the interchange shape.
 
 The core development objects remain:
 

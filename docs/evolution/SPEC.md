@@ -39,7 +39,7 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 
 - Competir com o ponytail em "menos código" como métrica principal.
 - Portar para 20 hosts antes de o kernel estar medido. Alvo da v1: Claude Code (hooks) e qualquer host que leia `AGENTS.md` (fallback estático).
-- Substituir o Maestro, o Archer ou o Guardian por dentro. Eles viram modos; seus arquivos de referência continuam.
+- Preservar os textos dos capabilities de origem. Na consolidação (PLAN C1) os modos foram reescritos como verbos sobre um vocabulário único; o que conta é o que eles fazem, e a eficácia é medida nas rodadas sobre a versão final.
 - Persistir estado fora da máquina do usuário. O ledger é local, opt-out, nunca commitado.
 - Garantir segurança. As guardas são um piso mecânico, não uma prova.
 - Inventar vocabulário novo. O kernel usa palavras que um engenheiro reconhece sem glossário.
@@ -51,8 +51,8 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 │    persona · escada de proporcionalidade · escada de ofício · limites · decisões · saída
 │
 ├─ MODOS  (sob demanda, mesma gramática do kernel)
-│    plan · architect · review · audit · improve · debt
-│    (Maestro → plan e ciclo completo; Archer → architect; Guardian → review/audit/improve/docs)
+│    plan · architect · review · audit · improve · docs · debt · init
+│    um arquivo por verbo; vocabulário, padrão de qualidade e baseline compartilhados em reference/
 │
 ├─ GUARDAS  hooks/  (por construção; derivadas de devanity.rules.json do repositório)
 │    SessionStart/SubagentStart: injeta kernel ou contrato da fase
@@ -72,24 +72,32 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 |---|---|---|---|
 | Kernel | autoridade, alto risco, gate de pergunta, `NO_CHANGE`, oráculo antes do fix | tamanho, escada com parada, um exemplo concreto por degrau, saída em ≤3 linhas, marcador de adiamento | escada de proporcionalidade; reversibilidade decide agir ou parar |
 | Modos | os três capabilities e suas referências | prefixo único, lentes finas sobre o mesmo núcleo | nomes como verbos |
-| Guardas | `bindings.md` (tabela regra → hook) | — | arquivo de regras compilado para prompt, hook e CI |
+| Guardas | a tabela regra → hook dos bindings de host | — | arquivo de regras compilado para prompt, hook e CI |
 | Ledger | `change.schema.json`, false-ready, deferred register | — | injeção por fase; números reais por repositório |
 | Harness | `evals/README.md` (métricas, adjudicação) | método executável inteiro | armadilhas de julgamento |
 
 ### 4.2 Estrutura de arquivos alvo
 
-Como implementada em F1.4 (decisão: mover as skills como subárvores inteiras, sem reescrever uma linha, para que todo link relativo e todo contrato validado continuem valendo; os nomes de verbo vivem na tabela de roteamento do kernel e os nomes internos ficam até a reescrita medida da fase 4).
+Como consolidada em C1 (decisão de 2026-09-25, PLAN "Decisões registradas"): o kernel roteia cada verbo para `modes/<verbo>.md`; cada modo declara na linha `Load:` o que carrega de `reference/`, e cada gramática vive num só arquivo que os modos citam.
 
 ```
 skills/devanity/
   SKILL.md                      kernel (≤130 linhas, ≤1,8k tokens; cap do validador)
   README.md
   modes/
-    maestro/                    plan — SKILL.md + reference/{protocol,runtime}.md, change.schema.json
-    archer/                     architect — SKILL.md + reference/method.md
-    guardian/                   review · audit · improve · docs — SKILL.md + modes/ + reference/
+    plan.md                     ciclo da mudança (FRAME→INSPECT→PROVE→EXECUTE→VERIFY→ASSURE), bloco devanity-contract
+    architect.md                decisão de arquitetura (A0/A1/A2, fases, pacote de decisão / ADR)
+    review.md  audit.md         qualidade do repositório: diff; escopo + rascunho de devanity.rules.json
+    improve.md  docs.md         um finding aprovado; superfícies de instrução
     debt.md                     adiamentos e decisões pendentes
     init.md                     primeira instalação num repositório
+  reference/
+    vocabulary.md               Change, identidade do alvo, evidência, autoridade, [DECIDE], finding, veredictos
+    quality.md                  basis-form, dimensões, síndromes, severidade, classe do fix, escada de durabilidade
+    baseline.md                 o que é a mudança, check focado, fingerprint, Light/Deep, reconciliação
+    claude-code.md              superfícies e hooks do host, menus, passe de contexto limpo
+    adjudication.md             contrato do adjudicador de contexto limpo, passado verbatim
+    change.schema.json  rules.schema.json
 agents/
   worker.md  verifier.md        mantidos; verifier ganha orçamento de sondas (fase 3)
 hooks/
@@ -109,7 +117,7 @@ evals/
   results/                      writeups datados, commitados
   scenarios.json                campo `trap` liga cenário a tarefa do harness
 scripts/
-  validate-skills.mjs           unidades aninhadas, tabela de roteamento ≡ argument-hint ≡ arquivos, caps, orçamento
+  validate-skills.mjs           tabela de roteamento ≡ argument-hint ≡ arquivos, linha Load: ⊇ citações, gramáticas, caps, orçamento
   validate-open.mjs             conjunto deliberado de capability e modos, protocolo, catálogo, atribuição do harness
   kernel.mjs                    invariants · build-agents · check-agents
 ```
@@ -145,15 +153,15 @@ O kernel contém exatamente estas seções, nesta ordem. Cada seção tem um or�
 ### 5.2 O que o kernel não contém
 
 - A0/A1/A2, dominant/trade, basis-form, Change Contract, false-ready. Vocabulário dos modos, não do kernel.
-- Formato de finding do Guardian. Vive em `reference/format.md`.
-- Instruções de host (menus, statusline). Vivem em `reference/bindings.md`.
+- Formato de finding e de `[DECIDE]`. Vive em `reference/vocabulary.md`.
+- Instruções de host (menus, hooks, passe de contexto limpo). Vivem em `reference/claude-code.md`.
 - Justificativas. Uma regra que precisa de parágrafo para se defender está mal formulada.
 
 ### 5.3 Idioma e voz
 
 Inglês (idioma dos skills). Segunda pessoa, imperativo, palavras comuns. Sem termos cunhados. A regra de estilo é a do ponytail: se a explicação é maior que a regra, apaga-se a explicação.
 
-### 5.4 Invariantes verificados em CI (`check-kernel-invariants.mjs`)
+### 5.4 Invariantes verificados em CI (`scripts/kernel.mjs invariants`)
 
 Frases que devem existir literalmente em `SKILL.md` e em `AGENTS.md`:
 
@@ -174,23 +182,23 @@ Alterar a redação de uma delas exige alterar o invariante na mesma PR; é o le
 
 ## 6. Modos
 
-| Modo | Origem | Entrada | Quando a escada o aciona |
+| Modo | Arquivo | Entrada | Quando a escada o aciona |
 |---|---|---|---|
-| `init` | novo | — | primeira instalação num repositório: `git init` se ausente, ledger, rascunho de `devanity.rules.json` (a partir de CODEOWNERS, diretórios, testes), job de CI de exemplo; nada é escrito sem confirmação |
-| `plan` | Maestro FRAME→PREFLIGHT | objetivo | degraus 3+ com mais de um slice, ou pedido explícito |
-| `architect` | Archer | drivers | degrau 5, quando o lite não basta |
-| `review` | Guardian review | diff | fim de mudança em degrau 3+; PR |
-| `audit` | Guardian audit | escopo | pedido explícito; gera/evolui `devanity.rules.json` |
-| `improve` | Guardian improve | finding | pedido explícito |
-| `docs` | Guardian docs | superfície | pedido explícito |
-| `debt` | novo | — | lista `deferred:` do código + ledger; nomeia os sem gatilho |
+| `init` | `modes/init.md` | — | primeira instalação num repositório: `git init` se ausente, ledger, rascunho de `devanity.rules.json` (a partir de CODEOWNERS, diretórios, testes), job de CI de exemplo; nada é escrito sem confirmação |
+| `plan` | `modes/plan.md` | objetivo | degraus 3+ com mais de um slice, ou pedido explícito |
+| `architect` | `modes/architect.md` | drivers | degrau 5, quando o lite não basta |
+| `review` | `modes/review.md` | diff | fim de mudança em degrau 3+; PR |
+| `audit` | `modes/audit.md` | escopo | pedido explícito; gera/evolui `devanity.rules.json` |
+| `improve` | `modes/improve.md` | finding | pedido explícito |
+| `docs` | `modes/docs.md` | superfície | pedido explícito |
+| `debt` | `modes/debt.md` | — | lista `deferred:` do código + ledger; nomeia os sem gatilho |
 
 Regras:
 
 - `disable-model-invocation` sai do capability. O kernel é sempre ativo; os modos são acionados pela escada ou por `/devanity <modo>`.
-- Cada modo carrega só seus arquivos de referência (tabela "load only what the mode needs" mantida).
-- A gramática de saída dos modos de diagnóstico (findings, `[DECIDE]`) é a atual do Guardian, sem alteração na fase 1.
-- Os nomes Maestro/Archer/Guardian podem aparecer em comentários internos e no changelog; nunca na interface do usuário nem no kernel.
+- Cada modo carrega só o que sua linha `Load:` declara; o validador reprova uma citação a `reference/` que a linha omite.
+- Uma só gramática de finding e de `[DECIDE]` para todos os modos (`reference/vocabulary.md`), validada estruturalmente.
+- Invocação só por `/devanity <verbo>`; os nomes dos capabilities de origem não aparecem em nada que o modelo carrega (validate-open.mjs).
 
 ## 7. Guardas
 
@@ -339,7 +347,7 @@ Válidos para toda PR desta evolução. Cada um existe porque um dos dois projet
 4. **Falsos bloqueios têm teto.** Na fase 2, taxa de bloqueio do `PreToolUse` em edições legítimas medida em repo real; acima de 5%, a regra volta para prosa até ser corrigida.
 5. **Hooks nunca travam a sessão.** Todo hook tem teste que simula stdin sem EOF e stdout fechado.
 6. **Fonte única.** `AGENTS.md` é gerado; PR que o edita à mão reprova no CI. Cópias para outros hosts só existem se geradas.
-7. **Sem retrabalho por dentro dos modos na fase 1.** Os arquivos de referência de Maestro/Archer/Guardian são movidos, não reescritos. Reescrita é fase própria, com medição.
+7. **Uma reescrita dos modos, antes das rodadas.** A fase 1 moveu sem reescrever; a consolidação (PLAN C1) reescreveu uma vez, preservando cada gramática validada. Depois dela, texto de modo muda só com número do harness.
 8. **Nenhuma referência numérica solta.** Regras citadas por número (`rule 7`) reprovam no validador se o número não existir na seção que as define. (Corrige o estado atual pós-#30.)
 9. **Ledger nunca vai para o git.** Teste no CI verifica `.devanity/` fora do índice do repo de fixture após uma execução.
 10. **Modelo do harness fixo por fase.** Trocar de modelo no meio de uma comparação invalida a comparação; a troca é uma fase nova com baseline novo.
@@ -362,12 +370,12 @@ Válidos para toda PR desta evolução. Cada um existe porque um dos dois projet
 - **Não** criar vocabulário no kernel. Se um termo precisa de definição, pertence a um modo.
 - **Não** fazer o hook `Stop` rodar suíte inteira. Só o check declarado; suíte é CI.
 - **Não** bloquear em `PreToolUse` sem dizer, na mensagem, qual regra e como registrar a decisão. Bloqueio mudo é atrito que faz o time desligar.
-- **Não** reescrever Guardian, Maestro ou Archer "já que estamos mexendo". Fase 1 move; medição decide o que reescrever depois.
+- **Não** reescrever um modo "já que estamos mexendo" depois da consolidação. A reescrita única foi C1; as seguintes esperam número.
 - **Não** fazer o degrau 4 parar a sessão inteira. Para o slice; o resto continua; a decisão vai para a fila.
 - **Não** dar ao agente um comando que registre decisão humana ou eleve autoridade. Se for conveniente, é exatamente o buraco.
 - **Não** confiar no guard de Bash como teto. É piso; o CI de referência é o teto.
 - **Não** aceitar "verificado" fora do bloco `devanity-proof`, nem no kernel, nem no harness, nem em revisão de PR.
-- **Não** mandar todo greenfield para o Archer completo. `architect-lite` primeiro.
+- **Não** mandar todo greenfield para o `architect` completo. `architect-lite` primeiro.
 
 ## 12. Riscos e mitigações
 
@@ -380,9 +388,9 @@ Válidos para toda PR desta evolução. Cada um existe porque um dos dois projet
 | Agente contorna guard via Bash | edição em `high-risk` sem bloqueio | heurística de Bash (§7.2); CI de referência como teto; medir taxa de contorno no harness |
 | Greenfield sem git/testes torna o oráculo inútil | `NOT_VERIFIED: no baseline` em toda tarefa vibe | `init` faz `git init`; overlay de testes sobre HEAD vazio; o kernel exige o check mesmo sem baseline |
 | Ledger desalinhado da realidade (fase presa) | usuário recebe contrato de sessão abandonada | expiração de contrato aberto após 24h sem evento; `/devanity reset` |
-| Reescrita acidental dos modos na migração | diff de fase 1 toca conteúdo, não só caminho | guardrail 7; revisão exige `git diff -M` mostrando rename puro |
+| Reescrita dos modos perde contrato | um validador de gramática deixa de reprovar o que reprovava | guardrail 7; toda gramática validada continua validada ou o validador muda no mesmo commit com o motivo (C1) |
 | Harness contaminado (plugin vazando) | baseline com comportamento de skill | teste de contaminação no `--selftest` |
-| Compressão do Guardian perde contrato | validadores de gramática falham | compressão só na fase 4, com o harness cobrindo `review`/`audit` |
+| Modos reescritos sem tarefa no harness | eficácia de `review`/`audit`/`plan` não medida | C2 cria as tarefas; as rodadas medem a versão final |
 
 ## 13. Critérios de sucesso da v1 (fim da fase 3)
 

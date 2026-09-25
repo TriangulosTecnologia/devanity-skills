@@ -103,7 +103,7 @@ function humanDecisionFor(cwd, rel, globToRegExp) {
 }
 
 // Contracts are records {id, phase, intent, scope, forbidden?, proof?, pending?}, a compact
-// projection of the Change Contract (modes/maestro/reference/change.schema.json). The latest
+// projection of the Change Contract (skills/devanity/reference/change.schema.json). The latest
 // record per id wins; `ts` is then the time of the latest phase declaration.
 function contracts(cwd) {
   return latestById(cwd, 'contracts');

@@ -1,6 +1,6 @@
 # debt
 
-Contract: `SKILL.md` governs this run. Read-only; writes nothing.
+Read-only: writes nothing.
 
 Collect every deliberate shortcut and every decision still owed, so a deferral cannot quietly become permanent.
 

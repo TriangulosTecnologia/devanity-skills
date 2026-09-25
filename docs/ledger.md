@@ -12,7 +12,7 @@ Phase 3 of the [evolution plan](evolution/PLAN.md) (F3.1, F3.2, F3.6, F3.7). `ho
 
 ## 1. The open change (`devanity-contract:`)
 
-The `plan` mode ends a message that enters or leaves a lifecycle phase with the block below (`skills/devanity/modes/maestro/SKILL.md`, "Persisting the phase"). The `Stop` hook parses the first such block in the last assistant message, with the same tolerance as the proof block (indentation, `key : value`, CRLF, a code fence), and appends it. A block without an `id`, or whose `phase` is not one of the eight, is not a contract and is ignored. It is recorded, never measured: the oracle's blocking decision depends only on the `devanity-proof:` block, and a message that carries only a contract ends the turn normally. A proof block without a `contract` field in the same message is linked to the contract's id.
+The `plan` mode ends a message that enters or leaves a lifecycle phase with the block below (`skills/devanity/modes/plan.md`, "The phase record"). The `Stop` hook parses the first such block in the last assistant message, with the same tolerance as the proof block (indentation, `key : value`, CRLF, a code fence), and appends it. A block without an `id`, or whose `phase` is not one of the eight, is not a contract and is ignored. It is recorded, never measured: the oracle's blocking decision depends only on the `devanity-proof:` block, and a message that carries only a contract ends the turn normally. A proof block without a `contract` field in the same message is linked to the contract's id.
 
 ```
 devanity-contract:

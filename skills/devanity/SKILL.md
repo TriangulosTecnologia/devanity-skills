@@ -63,16 +63,16 @@ devanity-proof:
 
 | Mode | Read | When |
 |---|---|---|
-| `plan` | `modes/maestro/SKILL.md` | rung 3+ with more than one slice, or on request: the full change lifecycle |
-| `architect` | `modes/archer/SKILL.md` | rung 5 when the ≤10-line shape is not enough |
-| `review` | `modes/guardian/SKILL.md` (`review`) | end of a rung 3+ change; a diff or PR |
-| `audit` | `modes/guardian/SKILL.md` (`audit`) | on request: repository-wide; also drafts `devanity.rules.json` |
-| `improve` | `modes/guardian/SKILL.md` (`improve`) | on request: one approved finding |
-| `docs` | `modes/guardian/SKILL.md` (`docs`) | on request: instruction surfaces |
+| `plan` | `modes/plan.md` | rung 3+ with more than one slice, or on request: the full change lifecycle |
+| `architect` | `modes/architect.md` | rung 5 when the ≤10-line shape is not enough |
+| `review` | `modes/review.md` | end of a rung 3+ change; a diff or PR |
+| `audit` | `modes/audit.md` | on request: repository-wide; also drafts `devanity.rules.json` |
+| `improve` | `modes/improve.md` | on request: one approved finding |
+| `docs` | `modes/docs.md` | on request: instruction surfaces |
 | `debt` | `modes/debt.md` | on request: every `deferred:` in the code and the pending decisions, the ones without a trigger flagged |
 | `init` | `modes/init.md` | first install in a repository: ledger, rules draft, CI job; nothing written without confirmation |
 
-Each mode loads only its own files. Their internal names (Maestro, Archer, Guardian) are implementation; the interface is the verb.
+A mode file names the references it loads; read nothing else.
 
 ## Boundaries
 

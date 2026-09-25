@@ -55,7 +55,7 @@ test('empty skills dir reports an error', () => {
 
 const withMethodology = (dir, body, name = 'foo') => {
   mkdirSync(join(dir, name, 'reference'), { recursive: true });
-  writeFileSync(join(dir, name, 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+  writeFileSync(join(dir, name, 'reference', 'quality.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
   return body;
 };
 
@@ -124,17 +124,17 @@ test('finding tag with unknown fix-class fails', () => {
   const body = `${fm('foo')}\n[P1][bogus][G-001][verification-loop][enforcement] Bad class\n  Key: a.ts:x:verification-loop:rule\n`;
   withSkill('foo', body, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    writeFileSync(join(dir, 'foo', 'reference', 'quality.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
     const errors = validate(dir);
     assert.ok(errors.some((e) => e.includes('unknown fix-class')), errors.join('; '));
   });
 });
 
-test('finding tag with unknown dimension slug fails (slugs parsed from methodology.md)', () => {
+test('finding tag with unknown dimension slug fails (slugs parsed from quality.md)', () => {
   const body = `${fm('foo')}\n[P1][dominant][G-001][not-a-slug][enforcement] Bad tag\n  Key: a.ts:x:not-a-slug:rule\n`;
   withSkill('foo', body, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    writeFileSync(join(dir, 'foo', 'reference', 'quality.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
     const errors = validate(dir);
     assert.ok(errors.some((e) => e.includes('unknown dimension slug')), errors.join('; '));
   });
@@ -165,7 +165,7 @@ test('a one-line finding cannot borrow the next finding\'s Key', () => {
   });
 });
 
-test('emitting finding tags with methodology.md missing fails (slug validation cannot run)', () => {
+test('emitting finding tags with quality.md missing fails (slug validation cannot run)', () => {
   const body = `${fm('foo')}\n[P1][dominant][G-001][verification-loop][enforcement] Tag\n  Key: a.ts:x:verification-loop:rule\n`;
   withSkill('foo', body, (dir) => {
     const errors = validate(dir);
@@ -191,7 +191,7 @@ test('one-line trade without basis: still passes (no detail tier owed)', () => {
   const body = `${fm('foo')}\n- [P2][trade][G-001][verification-loop][prose] One-liner — Key: a.ts:x:verification-loop:rule\n`;
   withSkill('foo', body, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    writeFileSync(join(dir, 'foo', 'reference', 'quality.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
     assert.deepEqual(validate(dir), []);
   });
 });
@@ -200,7 +200,7 @@ test('full-form finding (bold list item) missing any of fix/Key/why/basis fails 
   const incomplete = `${fm('foo')}\n- **[P1][trade][G-001][verification-loop][enforcement] Trade without terms**\n  - Key: a.ts:x:verification-loop:rule\n`;
   withSkill('foo', incomplete, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    writeFileSync(join(dir, 'foo', 'reference', 'quality.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
     const errors = validate(dir);
     for (const field of ['fix:', 'why:', 'basis:']) {
       assert.ok(errors.some((e) => e.includes(`no ${field}`)), `missing ${field}: ${errors.join('; ')}`);
@@ -209,7 +209,7 @@ test('full-form finding (bold list item) missing any of fix/Key/why/basis fails 
   const complete = `${fm('foo')}\n- **[P1][trade][G-001][verification-loop][enforcement] Trade with terms**\n  - fix: add the gate · a.ts:12\n  - Key: a.ts:x:verification-loop:rule\n  - why: rule is prose-only\n  - basis: trade — improves fidelity; CI cost not measured\n`;
   withSkill('foo', complete, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    writeFileSync(join(dir, 'foo', 'reference', 'quality.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
     assert.deepEqual(validate(dir), []);
   });
 });
@@ -218,7 +218,7 @@ test('a finding or decision headline not on a list item fails', () => {
   const bareFinding = `${fm('foo')}\n[P2][trade][G-001][verification-loop][prose] Bare — Key: a.ts:x:verification-loop:rule\n`;
   withSkill('foo', bareFinding, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    writeFileSync(join(dir, 'foo', 'reference', 'quality.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
     assert.ok(validate(dir).some((e) => e.includes('not a markdown list item')));
   });
   const bareDecide = `${fm('foo')}\n[DECIDE][dormant][G-002][trade] Bare — worth doing when pain observed\n`;
@@ -267,7 +267,7 @@ test('severity out of P0–P3 and short G-aliases fail', () => {
   const p9 = `${fm('foo')}\n[P9][trade][G-001][verification-loop][enforcement] Bad sev\n  Key: a.ts:x:verification-loop:rule\n`;
   withSkill('foo', p9, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    writeFileSync(join(dir, 'foo', 'reference', 'quality.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
     assert.ok(validate(dir).some((e) => e.includes('invalid severity P9')));
   });
   const shortAlias = `${fm('foo')}\n[DECIDE][dormant][G-7][trade] Short alias\n`;
@@ -429,10 +429,10 @@ test('restating the dimension count fails — as a digit, as a word, and inside 
 });
 
 test('naming the list instead of the number passes', () => {
-  const body = `${fm('foo')}\nExactly one of the slugs in \`reference/methodology.md\`; one row per dimension, none omitted.\n`;
+  const body = `${fm('foo')}\nExactly one of the slugs in \`reference/quality.md\`; one row per dimension, none omitted.\n`;
   withSkill('foo', body, (dir) => {
     mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-    writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
+    writeFileSync(join(dir, 'foo', 'reference', 'quality.md'), '1. **Verification loop** (`verification-loop`) — x.\n');
     assert.deepEqual(validate(dir), []);
   });
 });
@@ -466,7 +466,7 @@ test('a skill README link to a missing path fails; resolvable and non-filesystem
 const twoSlugs = '1. **Alpha** (`alpha`) — x.\n2. **Beta** (`beta`) — y.\n';
 const withSlugs = (dir) => {
   mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
-  writeFileSync(join(dir, 'foo', 'reference', 'methodology.md'), twoSlugs);
+  writeFileSync(join(dir, 'foo', 'reference', 'quality.md'), twoSlugs);
 };
 
 test('a dimension table must carry one row per slug — omission, unknown row and duplicate all fail', () => {
@@ -474,7 +474,7 @@ test('a dimension table must carry one row per slug — omission, unknown row an
   const table = (rows) => `${fm('foo')}\n\`\`\`md\n| Dimension | Status |\n| --- | --- |\n${rows}\`\`\`\n`;
   const cases = [
     ['| alpha | GOOD |\n', 'omits beta'],
-    ['| alpha | GOOD |\n| beta | GOOD |\n| gamma | GOOD |\n', 'not in reference/methodology.md: gamma'],
+    ['| alpha | GOOD |\n| beta | GOOD |\n| gamma | GOOD |\n', 'not in reference/quality.md: gamma'],
     ['| alpha | GOOD |\n| alpha | WEAK |\n| beta | GOOD |\n', 'repeats alpha'],
   ];
   for (const [rows, expected] of cases) {
@@ -524,16 +524,13 @@ test('a link inside a fenced block is not a link (no false positive)', () => {
   }
 });
 
-// --- nested units and routing tables (skills/devanity/modes/<former skill>/) ---
+// --- units and routing tables ---
 
-test('a nested unit (modes/<name>/SKILL.md) is discovered and validated with its own root', () => {
+test('each top-level directory is one unit; nothing nested is discovered', () => {
   withSkill('kern', fm('kern'), (dir) => {
     mkdirSync(join(dir, 'kern', 'modes', 'inner'), { recursive: true });
     writeFileSync(join(dir, 'kern', 'modes', 'inner', 'SKILL.md'), fm('wrongname'));
-    const units = findUnits(dir).map(([n, , d]) => `${n}@${d}`);
-    assert.deepEqual(units.sort(), ['inner@2', 'kern@0'].sort());
-    const errors = validate(dir);
-    assert.ok(errors.some((e) => e.startsWith('inner:') && e.includes('name')), errors.join('; '));
+    assert.deepEqual(findUnits(dir).map(([n]) => n), ['kern']);
   });
 });
 
@@ -572,16 +569,11 @@ test('README may reference a routed verb; an unrouted verb fails', () => {
   });
 });
 
-test('a top-level unit over the kernel token cap fails; the same body nested passes', () => {
+test('a unit over the kernel token cap fails', () => {
   const big = fm('kern') + 'x'.repeat((KERNEL_TOKEN_CAP + 200) * 4) + '\n';
   withSkill('kern', big, (dir) => {
     const errors = validate(dir);
     assert.ok(errors.some((e) => e.includes('kernel max')), errors.join('; '));
-  });
-  withSkill('kern', fm('kern'), (dir) => {
-    mkdirSync(join(dir, 'kern', 'modes', 'inner'), { recursive: true });
-    writeFileSync(join(dir, 'kern', 'modes', 'inner', 'SKILL.md'), fm('inner') + 'x'.repeat((KERNEL_TOKEN_CAP + 200) * 4) + '\n');
-    assert.deepEqual(validate(dir), []);
   });
 });
 
@@ -606,4 +598,30 @@ test('a rule cited by number must exist in SKILL.md\'s `- **Rule N — …**` li
   });
   // Skip: a unit that defines no numbered rules has nothing to resolve against.
   withSkill('foo', `${fm('foo')}\nSee rule 42.\n`, (dir) => assert.deepEqual(validate(dir), []));
+});
+
+test('a rung cited by number must exist in SKILL.md\'s numbered ladder; a range and inline code are not citations', () => {
+  const ladder = `${fm('foo')}\n1. **Does it need to change?** No.\n2. **Trivial?** Do it.\n3. **Behavior?** Test first.\n`;
+  withSkill('foo', ladder, (dir) => {
+    mkdirSync(join(dir, 'foo', 'modes'), { recursive: true });
+    writeFileSync(join(dir, 'foo', 'modes', 'go.md'), '# go\n\nWatch it fail (kernel rung 3); rungs 2–3 write little; `rung 9` is quoted.\n');
+    assert.deepEqual(validate(dir), []);
+    writeFileSync(join(dir, 'foo', 'modes', 'go.md'), '# go\n\nPropose and stop (kernel rung 4).\n');
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('modes/go.md:3 cites "rung 4"') && e.includes('rungs 1–3')), errors.join('; '));
+  });
+});
+
+test('a mode\'s Load: line declares what it may cite; an undeclared citation fails; a Load: line listing more passes', () => {
+  withSkill('foo', fm('foo'), (dir) => {
+    mkdirSync(join(dir, 'foo', 'reference'), { recursive: true });
+    mkdirSync(join(dir, 'foo', 'modes'), { recursive: true });
+    for (const f of ['a.md', 'b.md', 'c.json']) writeFileSync(join(dir, 'foo', 'reference', f), '# r\n');
+    writeFileSync(join(dir, 'foo', 'modes', 'go.md'), 'Load: `reference/a.md`, `reference/b.md`, `reference/c.json`.\n\nSee `reference/a.md` and `reference/c.json`.\n');
+    assert.deepEqual(validate(dir), []);
+    writeFileSync(join(dir, 'foo', 'modes', 'go.md'), 'Load: `reference/a.md`.\n\nSee `reference/b.md` and `reference/c.json`.\n');
+    const errors = validate(dir);
+    assert.ok(errors.some((e) => e.includes('cites reference/b.md') && e.includes('omits it')), errors.join('; '));
+    assert.ok(errors.some((e) => e.includes('cites reference/c.json') && e.includes('omits it')), errors.join('; '));
+  });
 });

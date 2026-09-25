@@ -29,7 +29,7 @@ const parseFrontmatter = (text) => {
   return fm;
 };
 
-// How many dimensions exist is derivable from the list in reference/methodology.md, which is that
+// How many dimensions exist is derivable from the list in reference/quality.md, which is that
 // list's one home. Any call site restating it goes stale the moment a dimension is added or removed.
 // "one" is deliberately excluded: "exactly one dimension" states a cardinality rule, not a count.
 const COUNT_WORDS = 'two|three|four|five|six|seven|eight|nine|ten|eleven|twelve';
@@ -57,9 +57,9 @@ const SENTENCES = /(?<=\.)\s+/;
 // markdown; a real tokenizer measurement should replace it before this file grows much further.
 const SKILL_LINE_CAP = 130;
 const SKILL_TOKEN_CAP = 5000;
-// A top-level unit is the always-on kernel: it is injected into every session, compaction and
+// Every unit's SKILL.md is an always-on kernel: it is injected into every session, compaction and
 // subagent, so its cost is paid on every turn, not once per invocation. docs/evolution/SPEC.md §4.2
-// fixes it at ~1.8k tokens; nested procedures (modes) keep the platform cap above.
+// fixes it at ~1.8k tokens; depth belongs in modes/ and reference/, loaded on demand.
 export const KERNEL_TOKEN_CAP = 1800;
 const estimateTokens = (s) => {
   let wide = 0;
@@ -73,7 +73,7 @@ const estimateTokens = (s) => {
 // counts stayed green throughout. The honest mechanism is a ratchet, not a cap: the budget sits at
 // the last deliberate size, and the PR that grows the skill raises it in the same diff — growth
 // stays possible and stops being free. Lowering it after a trim is the same deliberate act.
-export const SKILL_TOTAL_BUDGETS = { devanity: 206000 }; // chars, every file under skills/<name>/ (kernel + modes: the former archer 20000 + guardian 133247 + maestro 37500 + kernel, README, debt, init, reference/rules.schema.json)
+export const SKILL_TOTAL_BUDGETS = { devanity: 108300 }; // bytes, every file under skills/<name>/: 105176 after the C1 rewrite (205345 with the moved subtrees before it), +3% headroom
 export function checkSkillTotal(skillsDir, budgets) {
   const errors = [];
   const sizeOf = (d) => readdirSync(d).reduce((n, f) => {
@@ -112,28 +112,20 @@ export function checkRelativeLinks(file) {
   return errors;
 }
 
-// A unit is any directory under skillsDir that holds a SKILL.md, at any depth: the top-level
-// capability (the kernel) and the procedures nested under its modes/ (the former standalone skills,
-// moved without rewrite). Each unit is validated with the same rules against its own root, so a
-// nested unit's contracts (guardian's object grammar, mode tables) keep being enforced after the
-// move. Returned as [name, root, depth].
+// A unit is a top-level directory under skillsDir: one capability, whose SKILL.md is the always-on
+// kernel and whose modes/ and reference/ hold flat files. Nested skills (modes/<name>/SKILL.md) no
+// longer exist; validate-open.mjs pins the exact mode set, so one cannot reappear unnoticed.
+// Returned as [name, root].
 export function findUnits(skillsDir) {
-  const units = [];
-  const walk = (dir, depth) => {
-    for (const n of readdirSync(dir)) {
-      const p = join(dir, n);
-      if (!statSync(p).isDirectory()) continue;
-      if (existsSync(join(p, 'SKILL.md')) || depth === 0) units.push([n, p, depth]);
-      walk(p, depth + 1);
-    }
-  };
-  if (existsSync(skillsDir)) walk(skillsDir, 0);
-  return units;
+  if (!existsSync(skillsDir)) return [];
+  return readdirSync(skillsDir)
+    .filter((n) => statSync(join(skillsDir, n)).isDirectory())
+    .map((n) => [n, join(skillsDir, n)]);
 }
 
 // The mode set a unit exposes: modes/<m>.md files plus the verbs of a routing table in SKILL.md whose
-// Read cell names a path under the unit (`| verb | \`modes/...\` |`). The kernel routes verbs to
-// nested units this way; a plain skill has only files. Paths named by the table must exist.
+// Read cell names a path under the unit (`| verb | \`modes/...\` |`). Paths named by the table must
+// exist, so a route cannot outlive the file it points at.
 function modeSet(root, raw, err, skill) {
   const modesDir = join(root, 'modes');
   const files = existsSync(modesDir)
@@ -156,7 +148,7 @@ export function validate(skillsDir) {
   const units = findUnits(skillsDir);
   if (units.length === 0) errors.push('no skills found under skills/');
 
-  for (const [skill, root, depth] of units) {
+  for (const [skill, root] of units) {
     const skillMd = join(root, 'SKILL.md');
     if (!existsSync(skillMd)) { err(skill, 'missing SKILL.md'); continue; }
     const raw = readFileSync(skillMd, 'utf8');
@@ -183,28 +175,34 @@ export function validate(skillsDir) {
       }
     }
 
-    // 2b. Numbered-rule integrity: a `rule N` / `Core rule N` citation anywhere in the unit must name
-    //     a rule its own SKILL.md defines as `- **Rule N — …**`. Renumbering the list (PR #30 dropped
-    //     two rules) left every cross-reference pointing one or two rules off, and each still read as
-    //     current — the same failure a broken path has, minus the 404. Fences and inline code are
-    //     ignored: an example or a quoted grammar is not a citation. Units that define no numbered
-    //     rules are skipped; there is nothing to resolve against.
-    const definedRules = new Set([...stripFences(raw).matchAll(/^- \*\*Rule (\d+) — /gm)].map((m) => Number(m[1])));
-    if (definedRules.size) {
-      const ruleRe = /\b(?:Core rule|Rule|rule) (\d+)\b/g;
-      for (const file of scanFiles) {
-        const rel = file.slice(root.length + 1);
-        let inFence = false;
-        readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
-          if (line.trimStart().startsWith('```')) { inFence = !inFence; return; }
-          if (inFence) return;
-          for (const m of line.replace(/`[^`]*`/g, '').matchAll(ruleRe)) {
-            if (!definedRules.has(Number(m[1]))) {
-              err(skill, `${rel}:${i + 1} cites "${m[0]}" but SKILL.md defines rules ${Math.min(...definedRules)}–${Math.max(...definedRules)} — point at the rule that now holds the content, or at the section it moved to`);
+    // 2b. Numbered-citation integrity: a `rule N` / `Core rule N` citation must name a rule SKILL.md
+    //     defines as `- **Rule N — …**`, and a `rung N` citation a rung of its numbered ladder
+    //     (`N. **…**`, the kernel's "stop at the first rung that holds"). Renumbering a list (PR #30
+    //     dropped two rules) left every cross-reference pointing one or two items off, and each
+    //     still read as current — the same failure a broken path has, minus the 404. The modes cite
+    //     the kernel by rung, so this is where a renumbered ladder would surface. Fences and inline
+    //     code are ignored: an example or a quoted grammar is not a citation. A list SKILL.md does
+    //     not define is skipped; there is nothing to resolve against.
+    const unfenced = stripFences(raw);
+    const numbered = [
+      ['rules', new Set([...unfenced.matchAll(/^- \*\*Rule (\d+) — /gm)].map((m) => Number(m[1]))), /\b(?:Core rule|Rule|rule) (\d+)\b/g],
+      ['rungs', new Set([...unfenced.matchAll(/^(\d+)\. \*\*/gm)].map((m) => Number(m[1]))), /\b[Rr]ung (\d+)\b/g],
+    ].filter(([, defined]) => defined.size);
+    for (const file of numbered.length ? scanFiles : []) {
+      const rel = file.slice(root.length + 1);
+      let inFence = false;
+      readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+        if (line.trimStart().startsWith('```')) { inFence = !inFence; return; }
+        if (inFence) return;
+        const bare = line.replace(/`[^`]*`/g, '');
+        for (const [label, defined, re] of numbered) {
+          for (const m of bare.matchAll(re)) {
+            if (!defined.has(Number(m[1]))) {
+              err(skill, `${rel}:${i + 1} cites "${m[0]}" but SKILL.md defines ${label} ${Math.min(...defined)}–${Math.max(...defined)} — point at the ${label.slice(0, -1)} that now holds the content, or at the section it moved to`);
             }
           }
-        });
-      }
+        }
+      });
     }
 
     // 3. Contract agreement: the exposed mode set (modes/*.md ∪ routing-table verbs, see modeSet)
@@ -222,7 +220,7 @@ export function validate(skillsDir) {
     }
 
     // 4. Guardian-object integrity (raw text — objects live inside fenced templates/examples).
-    //    format.md defines four EXCLUSIVE forms, and this validates them as structure, not as
+    //    reference/vocabulary.md defines four EXCLUSIVE forms, and this validates them as structure, not as
     //    text: a full finding (bold headline, opened and closed) carries fix/Key/why/basis as
     //    nested list items, exactly once each; a one-line finding carries its fields inline and
     //    grows no tier; a blocking decision is always full-form with its five fields; a dormant
@@ -240,10 +238,10 @@ export function validate(skillsDir) {
     const tagRe = /\[P(\d)\]\[([a-z]+)\]\[G-(\d+)\]\[([a-z-]+)\]\[([a-z-]+)\]/g;
     const decideRe = /\[DECIDE\]\[([a-z]+)\]\[G-(\d+)\]\[([a-z]+)\]/g;
     const isTemplate = (line) => /dominant\|trade|blocking\|dormant|G-#/.test(line);
-    const methodologyPath = join(root, 'reference', 'methodology.md');
+    const qualityPath = join(root, 'reference', 'quality.md');
     const slugs = new Set();
-    if (existsSync(methodologyPath)) {
-      for (const m of readFileSync(methodologyPath, 'utf8').matchAll(/^\d+\.\s+\*\*[^*]+\*\*\s+\(`([a-z-]+)`\)/gm)) slugs.add(m[1]);
+    if (existsSync(qualityPath)) {
+      for (const m of readFileSync(qualityPath, 'utf8').matchAll(/^\d+\.\s+\*\*[^*]+\*\*\s+\(`([a-z-]+)`\)/gm)) slugs.add(m[1]);
     }
     const FINDING_FIELDS = ['fix', 'Key', 'why', 'basis'];
     const DECISION_FIELDS = ['decision', 'context', 'options', 'recommendation', 'if undecided'];
@@ -270,7 +268,7 @@ export function validate(skillsDir) {
       const requireFields = (kind, label, tier, fields) => {
         for (const field of fields) {
           const n = fieldCount(tier, field);
-          if (n === 0) err(skill, `${rel} ${kind} "${label}" has no ${field}: in its detail tier (format.md: one nested item per field)`);
+          if (n === 0) err(skill, `${rel} ${kind} "${label}" has no ${field}: in its detail tier (reference/vocabulary.md: one nested item per field)`);
           if (n > 1) err(skill, `${rel} ${kind} "${label}" repeats ${field}: ${n}× — each field appears exactly once`);
         }
       };
@@ -302,19 +300,19 @@ export function validate(skillsDir) {
           if (t[3].length < 3) err(skill, `${rel} finding "${t[0]}" alias must be G-NNN (≥3 digits)`);
           if (slugs.size && !slugs.has(t[4])) err(skill, `${rel} uses unknown dimension slug "${t[4]}"`);
           if (!RUNGS.has(t[5])) err(skill, `${rel} uses unknown ladder rung "${t[5]}"`);
-          if (!isListItem) err(skill, `${rel} finding "${t[0]}" headline is not a markdown list item (format.md rendering principle)`);
+          if (!isListItem) err(skill, `${rel} finding "${t[0]}" headline is not a markdown list item (reference/vocabulary.md, Rendering a report)`);
           if (boldOpen && !boldClosed) {
-            err(skill, `${rel} full-form finding "${t[0]}" headline does not close its bold (format.md: \`- **…**\`)`);
+            err(skill, `${rel} full-form finding "${t[0]}" headline does not close its bold (reference/vocabulary.md: \`- **…**\`)`);
           } else if (boldOpen) {
             requireFields('full-form finding', t[0], tier, FINDING_FIELDS);
           } else {
             // One-line form: the key (and a dominant's check) ride the headline; no tier follows.
-            if (!/Key:\s*\S/.test(line)) err(skill, `${rel} one-line finding "${t[0]}" has no inline Key: on its headline (format.md one-line form)`);
+            if (!/Key:\s*\S/.test(line)) err(skill, `${rel} one-line finding "${t[0]}" has no inline Key: on its headline (reference/vocabulary.md, one-line form)`);
             if (t[2] === 'dominant' && !/basis:\s*\S/.test(line)) {
               err(skill, `${rel} one-line finding "${t[0]}" is dominant without an inline basis: — the class must be trade or the check recorded`);
             }
             if (nestedItems(tier).length) {
-              err(skill, `${rel} one-line finding "${t[0]}" carries a detail tier — bold the headline to render it as full form (format.md)`);
+              err(skill, `${rel} one-line finding "${t[0]}" carries a detail tier — bold the headline to render it as full form (reference/vocabulary.md)`);
             }
           }
         }
@@ -323,19 +321,19 @@ export function validate(skillsDir) {
           if (!STATUSES.has(d[1])) err(skill, `${rel} decision "${d[0]}" uses unknown status "${d[1]}" (expected blocking|dormant)`);
           if (d[2].length < 3) err(skill, `${rel} decision "${d[0]}" alias must be G-NNN (≥3 digits)`);
           if (!DECIDE_KINDS.has(d[3])) err(skill, `${rel} decision "${d[0]}" uses unknown kind "${d[3]}" (expected rule|trade|acceptance|scope)`);
-          if (!isListItem) err(skill, `${rel} decision "${d[0]}" headline is not a markdown list item (format.md rendering principle)`);
+          if (!isListItem) err(skill, `${rel} decision "${d[0]}" headline is not a markdown list item (reference/vocabulary.md, Rendering a report)`);
           if (d[1] === 'blocking') {
-            if (!boldOpen) err(skill, `${rel} blocking decision "${d[0]}" must render full-form (bold headline over a nested detail tier, format.md)`);
-            else if (!boldClosed) err(skill, `${rel} full-form decision "${d[0]}" headline does not close its bold (format.md: \`- **…**\`)`);
+            if (!boldOpen) err(skill, `${rel} blocking decision "${d[0]}" must render full-form (bold headline over a nested detail tier, reference/vocabulary.md)`);
+            else if (!boldClosed) err(skill, `${rel} full-form decision "${d[0]}" headline does not close its bold (reference/vocabulary.md: \`- **…**\`)`);
             else requireFields('blocking decision', d[0], tier, DECISION_FIELDS);
           } else if (nestedItems(tier).length) {
-            err(skill, `${rel} dormant decision "${d[0]}" carries a detail tier — dormant renders as one line (format.md)`);
+            err(skill, `${rel} dormant decision "${d[0]}" carries a detail tier — dormant renders as one line (reference/vocabulary.md)`);
           }
         }
       });
     }
     // If any file emits concrete tags, the slug list must have loaded — else slug validation is blind.
-    if (anyTags && slugs.size === 0) err(skill, 'emits finding tags but reference/methodology.md is missing or unparseable — cannot validate dimension slugs');
+    if (anyTags && slugs.size === 0) err(skill, 'emits finding tags but reference/quality.md is missing or unparseable — cannot validate dimension slugs');
 
     // 4b. No literal dimension count anywhere but the list itself. Fences are NOT stripped: an
     //     output template or worked example that fixes the count goes stale exactly like prose.
@@ -345,7 +343,7 @@ export function validate(skillsDir) {
       for (const line of readFileSync(file, 'utf8').split('\n')) {
         const dim = line.match(DIM_COUNT_RE);
         if (dim && isDerivedCount(dim)) {
-          err(skill, `${rel} states the dimension count literally ("${dim[0]}") — name the list in reference/methodology.md, not the number`);
+          err(skill, `${rel} states the dimension count literally ("${dim[0]}") — name the list in reference/quality.md, not the number`);
         }
         for (const sentence of line.split(SENTENCES)) {
           const row = sentence.match(ROW_COUNT_RE);
@@ -376,32 +374,36 @@ export function validate(skillsDir) {
           const missing = [...slugs].filter((s) => !rows.includes(s));
           const unknown = [...new Set(rows.filter((r) => !slugs.has(r)))];
           const dupes = [...new Set(rows.filter((r, k) => rows.indexOf(r) !== k))];
-          if (missing.length) err(skill, `${rel} dimension table omits ${missing.join(', ')} — one row per dimension in reference/methodology.md, none omitted`);
-          if (unknown.length) err(skill, `${rel} dimension table has row(s) not in reference/methodology.md: ${unknown.join(', ')}`);
+          if (missing.length) err(skill, `${rel} dimension table omits ${missing.join(', ')} — one row per dimension in reference/quality.md, none omitted`);
+          if (unknown.length) err(skill, `${rel} dimension table has row(s) not in reference/quality.md: ${unknown.join(', ')}`);
           if (dupes.length) err(skill, `${rel} dimension table repeats ${dupes.join(', ')} — one row per dimension`);
         });
       }
     }
 
-    // 5. Mode dependency agreement: a mode file may not cite a reference its table row omits.
-    //    A row may list MORE than the mode cites (a mode can need a contract without naming its
-    //    path), never less — otherwise a fresh-session run that loads only the row is missing a
-    //    reference the mode's own steps require. Subset, not equality, is the invariant.
+    // 5. Mode dependency agreement: a mode file may not cite a reference it does not declare. A mode
+    //    declares its load set on its own `Load:` line (where the kernel's router sends the model,
+    //    so the kernel pays nothing for it), or in a mode-table row of SKILL.md. The declaration may
+    //    list MORE than the mode cites (a mode can need a contract without naming its path), never
+    //    less: otherwise a fresh-session run that loads only the declared set is missing a reference
+    //    the mode's own steps require. Subset, not equality, is the invariant.
     if (existsSync(modesDir)) {
+      const refsIn = (text, re) => new Set([...text.matchAll(re)].map((r) => r[1]));
       const rows = new Map();
       for (const row of raw.matchAll(/^\|\s*([a-z][a-z-]*)\s*\|([^\n]*)\|/gm)) {
-        const refs = new Set([...row[2].matchAll(/reference\/[a-z-]+\.md/g)].map((r) => r[0]));
+        const refs = refsIn(row[2], /(reference\/[a-z-]+\.(?:md|json))/g);
         if (refs.size) rows.set(row[1], refs);
       }
       for (const file of readdirSync(modesDir).filter((f) => f.endsWith('.md'))) {
         const body = readFileSync(join(modesDir, file), 'utf8');
-        const cited = new Set([...body.matchAll(/`(reference\/[a-z-]+\.md)`/g)].map((m) => m[1]));
-        if (cited.size === 0) continue; // cites nothing, so nothing can be omitted — no row required
+        const cited = refsIn(body, /`(reference\/[a-z-]+\.(?:md|json))`/g);
+        if (cited.size === 0) continue; // cites nothing, so nothing can be omitted — no declaration required
         const mode = file.slice(0, -3);
-        const declared = rows.get(mode) ?? new Set();
-        if (!rows.has(mode)) { err(skill, `modes/${file} cites references but the mode table has no row for "${mode}"`); continue; }
+        const load = body.match(/^Load:([^\n]*)$/m);
+        if (!load && !rows.has(mode)) { err(skill, `modes/${file} cites references but declares none — no Load: line and no row for "${mode}" in the mode table`); continue; }
+        const declared = new Set([...(rows.get(mode) ?? []), ...(load ? refsIn(load[1], /`(reference\/[a-z-]+\.(?:md|json))`/g) : [])]);
         for (const ref of cited) {
-          if (!declared.has(ref)) err(skill, `modes/${file} cites ${ref} but the mode table row for "${mode}" omits it`);
+          if (!declared.has(ref)) err(skill, `modes/${file} cites ${ref} but its declaration (Load: line or the mode table row for "${mode}") omits it`);
         }
       }
     }
@@ -413,7 +415,7 @@ export function validate(skillsDir) {
     if (tokens > SKILL_TOKEN_CAP) {
       err(skill, `SKILL.md is ~${tokens} tokens / ${raw.length} chars (max ~${SKILL_TOKEN_CAP} — auto-compaction re-attaches only the first ${SKILL_TOKEN_CAP} tokens, silently dropping the tail; move depth into a reference file)`);
     }
-    if (depth === 0 && tokens > KERNEL_TOKEN_CAP) {
+    if (tokens > KERNEL_TOKEN_CAP) {
       err(skill, `SKILL.md is ~${tokens} tokens (kernel max ~${KERNEL_TOKEN_CAP}: the always-on body is paid on every turn, compaction and subagent; move depth into a mode)`);
     }
 
@@ -465,7 +467,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
     process.exit(1);
   }
   const units = findUnits(skillsRoot);
-  const top = units.filter(([, , d]) => d === 0).map(([n]) => n);
-  const nested = units.filter(([, , d]) => d > 0).map(([n]) => n);
-  console.log(`✓ ${top.length} capability(ies) valid: ${top.join(', ')}${nested.length ? ` (modes: ${nested.join(', ')})` : ''}`);
+  const modes = (root) => (existsSync(join(root, 'modes')) ? readdirSync(join(root, 'modes')).filter((f) => f.endsWith('.md')).map((f) => f.slice(0, -3)) : []);
+  console.log(`✓ ${units.length} capability(ies) valid: ${units.map(([n, r]) => `${n} (modes: ${modes(r).join(', ')})`).join('; ')}`);
 }

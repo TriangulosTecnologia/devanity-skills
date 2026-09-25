@@ -1,6 +1,6 @@
 # init
 
-Contract: `SKILL.md` governs this run. Propose everything, write nothing without an explicit yes per item.
+Propose everything; write nothing without an explicit yes per item.
 
 First installation of devanity in a repository. The goal is that the guards have something to enforce and the ledger somewhere to live, derived from what the repository already says about itself.
 
@@ -13,8 +13,8 @@ First installation of devanity in a repository. The goal is that the guards have
    - `check` per high-risk path from the test command the repository already uses (never invented);
    - `tests` globs if the repository's naming differs from the defaults (`test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `tests/**`).
    Show the file in full. Every tier assignment names the evidence it came from.
-3. **Ledger.** State that it lives at `<git-common-dir>/devanity/` (inside `.git/`, never committed) and what it records: decisions, proofs, deferrals, events. No file is created until the first event.
-4. **CI job.** Offer the reference workflow (`.github/workflows/devanity-rules.yml`): validates the rules file, checks the PR's delta against each path's budget, runs the `check` of touched high-risk paths, and requires a `devanity-proof` block in the PR body for rung 3+ changes. Show it; write it only on yes.
+3. **Ledger.** State that it lives at `<git-common-dir>/devanity/` (inside `.git/`, never committed) and what it records: decisions, proofs, contracts, events. No file is created until the first event.
+4. **CI job.** Offer the reference workflow as `.github/workflows/devanity-rules.yml`, copied from the plugin's `${CLAUDE_PLUGIN_ROOT}/.github/workflows/devanity-rules.example.yml`. It validates the rules file, checks the PR's delta against each path's budget, runs the `check` of touched high-risk paths, and requires a `devanity-proof` block in the PR body for rung 3+ changes. Show it; write it only on yes.
 5. **Report** what was written, what was declined, and the one next step (usually: `/devanity audit <scope>` to refine the rules from a real pass).
 
 Nothing here changes the code. A repository without a rules file still gets the kernel; the guards then only record, never block.

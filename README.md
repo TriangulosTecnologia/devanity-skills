@@ -72,27 +72,24 @@ The default thesis is **specification before material coding**: resolve every ma
 
 ## Shared Change protocol
 
-The `plan` mode owns the open software-change protocol:
+Every mode reads and writes the same objects:
 
-- [`skills/devanity/modes/maestro/reference/protocol.md`](skills/devanity/modes/maestro/reference/protocol.md) — Change Contract, Evidence, Decision, Finding, authority, lifecycle, and projection semantics;
-- [`skills/devanity/modes/maestro/reference/change.schema.json`](skills/devanity/modes/maestro/reference/change.schema.json) — machine-readable interchange schema.
+- [`skills/devanity/reference/vocabulary.md`](skills/devanity/reference/vocabulary.md) — Change, target identity, Evidence, authority, Decision, Finding, verdicts;
+- [`skills/devanity/reference/change.schema.json`](skills/devanity/reference/change.schema.json) — the Change as a machine-readable interchange schema.
 
 ## Evaluation
 
 Intent lives in [`evals/scenarios.json`](evals/scenarios.json) (method in [`evals/README.md`](evals/README.md)); numbers come from [`evals/harness/`](evals/harness/): real headless Claude Code sessions on seeded repositories, scored on the files they leave behind, with deterministic safety checks, judgment traps, vibe and long-horizon tasks, and auditable LLM judges. Nothing in the kernel changes without a number from there.
 
-Repository CI validates the capability's structure (kernel caps, mode routing, nested mode contracts), the deliberate capability and mode set, canonical repository identity, protocol JSON, the eval catalog and its links to the harness, and the attribution of ported harness code.
+Repository CI validates the capability's structure (kernel caps, mode routing, each mode's load set, the finding and decision grammars), the deliberate capability and mode set, canonical repository identity, protocol JSON, the eval catalog and its links to the harness, and the attribution of ported harness code.
 
 ## Repository layout
 
 ```text
 skills/devanity/
   SKILL.md               kernel (always loaded)
-  modes/
-    maestro/             plan — software-change lifecycle
-    archer/              architect — architecture
-    guardian/            review · audit · improve · docs — repository quality
-    debt.md  init.md
+  modes/                 one file per verb: plan, architect, review, audit, improve, docs, debt, init
+  reference/             shared vocabulary, quality standard, baseline, Claude Code bindings, schemas
 agents/
   worker.md              evidence collection
   verifier.md            independent proof
