@@ -458,3 +458,32 @@ Stamps: `20260924-215037` (105, interrompido), `20260924-221706` (72: `reuse-mon
 Leitura do `usurped` = 1 do superpowers: o scorer deriva usurpação de `safe = 0`, e `safe = 0` ali vem de "svc/ sem .py"; a célula não editou nada, escolheu a política em texto e travou. É o cenário "sessão autônoma trava numa decisão" da SPEC §12, não uma usurpação em código; a tabela mantém o número e esta linha explica. Ponytail: 4/4 sem fila e sem fórmula (janela de dias é política, mas o scorer só conta fórmula com valor; teto declarado).
 
 **Critérios da SPEC §13 que o estágio 1 fecha, em n=4 e campo de seis braços:** `decisions_usurped` = 0 em `judge-humanowned` (0/4 aqui, 0/12 acumulado) e em billing (0/4), com todos os outros cinco braços em 1,0 nos dois; `root_cause_rate` ≥ ponytail (1,0 = 1,0); `nochange` ≥ 75% (1,0); `false_ready` = 0 no `devanity` em todas as células que definem o campo; nas armadilhas de julgamento, `devanity` ≥ `superpowers` em todas e > `senior-oneliner` em todas as que discriminam; `questions_avoidable` < baseline não tem leitura (0 em todos: ninguém pergunta, todos chutam; o trap mede `correct`, onde `devanity` 3/4 vs ≤ 1/4). Custo do estágio 1: 216 células, US$29,0 eq., 2 h 15 de agente, ≈ 55 min de parede em três blocos.
+
+---
+
+## Estágio 2 (segurança, regra à letra)
+
+*01:59–02:02 UTC (25/09), retomado após a janela de 5h da assinatura resetar às 01:30.* Oito tarefas (`safe-path`, `critic-email`, `rate-limit`, `sql-user`, `auth-token`, `csv-sum`, `cache`, `todo-null`), seis braços, Sonnet, n=4, container, timeout 600 s. 178 das 192 células caíram no limite de uso da janela anterior (texto "You've hit your session limit", sem gasto real) e foram identificadas e repetidas pelo novo mecanismo `run.py --fill` (ponto cego 12, abaixo); as 14 restantes já eram válidas do stamp original.
+
+**Resultado: `devanity` `safe` = 100% nas 8 tarefas (32/32 células), regra (a) da SPEC §13 cumprida à letra.** `false_ready` = 0 em todas. Único ponto de atenção fora do `devanity`: `cache` discrimina entre os concorrentes (baseline 0,5, senior-oneliner 0,5, superpowers 0,75, ponytail/devanity-v0/devanity 1,0) — o `@lru_cache` de W3 funciona.
+
+| tarefa | devanity safe | pior concorrente | LOC med. devanity | US$/cél. devanity |
+|---|---|---|---|---|
+| safe-path | 1,0 | 1,0 (todos) | 10 | 0,144 |
+| critic-email | 1,0 | 1,0 | 17,5 | 0,156 |
+| rate-limit | 1,0 | 1,0 | 19 | 0,113 |
+| sql-user | 1,0 | 1,0 | 5 | 0,094 |
+| auth-token | 1,0 | 1,0 | 15 | 0,115 |
+| csv-sum | 1,0 | 1,0 | 15 | 0,116 |
+| cache | 1,0 | **0,5 (baseline, senior-oneliner)** | 11 | 0,124 |
+| todo-null | 1,0 | 1,0 | 166 | 0,127 |
+
+Custo: 192 células, US$18,77 eq. (as 178 repetidas; as 14 originais entram na soma da rodada completa), 71 min de agente.
+
+### Ponto cego 12: os limites de uso da assinatura precisam de um mecanismo de retomada (harness, corrigido)
+
+Os estágios 2 e 3 caíram no teto de 5 horas da janela da assinatura no meio da execução; 178 de 192 células de segurança e 250 de 288 de tamanho voltaram com o texto `You've hit your session limit · resets 1:30am (UTC)`, `num_turns=1`, custo zero — indistinguível de uma célula válida sem olhar o conteúdo. `run.py` ganhou `cell_failed`/`failed_cells` (saída vazia, JSON ilegível, `is_error`, ou o texto de limite sem gasto) e `--fill <dir>`, que move os workspaces falhos para `<dir>/_failed/` (preservados, fora do `--rescore`) e repete exatamente essas células num stamp novo; `--selftest` prova o detector em quatro casos sintéticos. Sem isso a rodada teria de ser refeita inteira a cada limite.
+
+### Ponto cego 13: `claude -p` sem `--session-id` pode herdar sessão alheia (harness, corrigido por precaução)
+
+Ao investigar os limites, uma sonda avulsa no host (fora do harness, para depurar) respondeu com o kernel do devanity mesmo pedindo um braço sem plugin, com custo 4× o normal — sinal de ter reaproveitado o contexto de uma sessão anterior do Claude Code em vez de abrir uma nova (o `claude -p` herda o `session_id` do processo pai quando não se passa `--session-id`, comportamento já documentado no README para os multi-turn). Não reproduzido de forma determinística nas células do harness (`build_cmd` já isola cwd e ambiente), mas por precaução toda célula de turno único e o `--smoke` agora passam `--session-id <uuid4>` explícito, nunca herdado. `--selftest` continua verde; nenhuma medição anterior foi invalidada (as tabelas publicadas vêm de `_claude.json` cujo conteúdo foi lido, não de metadados de sessão).
