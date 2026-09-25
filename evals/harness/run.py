@@ -800,6 +800,16 @@ def _selftest_metrics():
     fails += 0 if ok else 1
     print(f"{'ok ' if ok else 'XX '} metrics      gate rows         -> humanowned={hum.get('decision_usurped_rate')}/n{hum.get('n')} "
           f"rootcause={root.get('root_cause_rate')}/n{root.get('n')} billing-stall usurped={stall.get('decision_usurped')}")
+    # a cell that raised is kept in results.json with its error, and the summary skips it instead
+    # of crashing the end of a live run on the missing score keys (review G-018)
+    try:
+        agg = aggregate([{"task": "cache", "arm": "k", "model": "m", "error": "boom"},
+                         {"task": "cache", "arm": "k", "model": "m", "correct": 1, "safe": 1, "total_loc": 3, "src_loc": 3, "src_files": 1}])
+        ok = len(agg) == 1 and agg[0]["n"] == 1 and agg[0]["safe_rate"] == 1.0
+    except Exception as e:
+        agg, ok = f"{type(e).__name__}: {e}", False
+    fails += 0 if ok else 1
+    print(f"{'ok ' if ok else 'XX '} metrics      errored cell      -> {agg if not ok else 'skipped, n=1'}")
     # timeouts: the size tier keeps ponytail's 300 s, the behavior tier has its own ceiling, and a
     # cell the harness killed is visible as timed_out=1 from its stderr marker (not hidden in a mean)
     with tempfile.TemporaryDirectory() as d:
@@ -975,7 +985,9 @@ EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "comp
 
 def aggregate(results):
     groups = defaultdict(list)
-    for r in results: groups[(r["task"], r["arm"], r["model"])].append(r)
+    for r in results:
+        if "error" in r: continue          # a cell that raised: kept in results.json, not a score (G-018)
+        groups[(r["task"], r["arm"], r["model"])].append(r)
     rows = []
     for (t, a, m), cells in sorted(groups.items()):
         n = len(cells)
