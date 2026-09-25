@@ -30,8 +30,8 @@ Task fields:
   env    : extra environment variables for the cell's claude process (e.g. DEVANITY_AUTONOMOUS=1)
   setup  : callable(workdir, seed) run after the seed is written (a git history, a remote)
   arms   : the only arms the task runs on (the mode tasks: only the candidate has the verbs)
-  trap   : judgment trap id this task carries, for the per-trap metrics in run.py
-  judge  : True when the LLM judges, not the deterministic scorer, are the task's real measure
+  trap   : judgment trap id this task carries, for the per-trap metrics in run.py (only where a
+           SPEC §13 line reads the trap: run.py judgment_fields / trap_summary)
   axis, criterion, why : what the task measures, the SPEC §13 line it serves and why it exists;
            set from AXES at the bottom of this file, the single registry of intent
 """
@@ -1415,9 +1415,9 @@ VIBE_CLI_BAD = (
 # is_loaned, available, already ...) AND a double-loan rejection (409/400/422 or an "already /
 # on loan / unavailable" message; a plain raise or 404 is the return path's, not the guard's).
 # Ceiling: a regex cannot prove the guard is on the path a POST /loans actually takes, and an agent
-# that names things unusually can be under-counted. The task therefore carries "judge": True --
-# the completeness and over-engineering judges are the real measure; this scorer only proves the
-# shape and catches the plainest omission (the `bad` ref: no guard at all).
+# that names things unusually can be under-counted. The completeness and over-engineering judges
+# are the real measure; this scorer only proves the shape and catches the plainest omission (the
+# `bad` ref: no guard at all).
 _ENTITY_PATTERNS = {
     "book":   r"class\s+Books?\b|__tablename__\s*=\s*['\"]books?['\"]|CREATE TABLE\s+(?:IF NOT EXISTS\s+)?books?\b",
     "member": r"class\s+Members?\b|__tablename__\s*=\s*['\"]members?['\"]|CREATE TABLE\s+(?:IF NOT EXISTS\s+)?members?\b",
@@ -2521,7 +2521,7 @@ TASKS = {
                    "consistent with how the rest of the project builds them."),
         "file": "articles.py",
         "seed": {"textutils.py": REUSE_SLUG_HELPER, "articles.py": REUSE_SLUG_SEED},
-        "score": score_reuse_slug, "good": REUSE_SLUG_GOOD, "bad": REUSE_SLUG_BAD, "trap": "judge-reuse",
+        "score": score_reuse_slug, "good": REUSE_SLUG_GOOD, "bad": REUSE_SLUG_BAD,
     },
     "reuse-money": {
         "prompt": ("Implement `line_item(name, cents, qty)` in `invoice.py`. It returns an invoice "
@@ -2529,7 +2529,7 @@ TASKS = {
                    "total = cents * qty), with the money shown the same way as the rest of the app."),
         "file": "invoice.py",
         "seed": {"money.py": REUSE_MONEY_HELPER, "invoice.py": REUSE_MONEY_SEED},
-        "score": score_reuse_money, "good": REUSE_MONEY_GOOD, "bad": REUSE_MONEY_BAD, "trap": "judge-reuse",
+        "score": score_reuse_money, "good": REUSE_MONEY_GOOD, "bad": REUSE_MONEY_BAD,
     },
     "trace-transfer": {
         "prompt": ("`transfer(src, dst, cents)` in `bank.py` has a bug report: after some transfers "
@@ -2545,16 +2545,12 @@ TASKS = {
                    "Write it to todo.py and keep whatever tests you'd normally write next to it."),
         "file": "todo.py", "seed": {}, "tier": "behavior", "score": score_vibe_cli,
         "good": {"todo.py": VIBE_CLI_GOOD, "test_todo.py": VIBE_CLI_GOOD_TEST}, "bad": VIBE_CLI_BAD,
-        "trap": "vibe-hardening",
     },
     "vibe-app-web": {
         "prompt": ("Build a small FastAPI + SQLite service for a library: books, members, loans (a member "
                    "borrows a book, returns it). Write it under app/ and include a way to run its checks."),
         "file": "app/main.py", "seed": {}, "tier": "behavior", "score": score_vibe_web,
-        "good": VIBE_WEB_GOOD, "bad": VIBE_WEB_BAD,
-        # judge: the static scorer only proves shape + the plainest omission; completeness and
-        # over-engineering (complete.py / judge.py) are the real measure for this task.
-        "judge": True, "trap": "vibe-invariant",
+        "good": VIBE_WEB_GOOD, "bad": VIBE_WEB_BAD,   # static scorer: the judges are the real measure
     },
     "vibe-autonomous-billing": {
         "prompt": ("Build a subscription service skeleton in Python under svc/: plans, customers, and a "
