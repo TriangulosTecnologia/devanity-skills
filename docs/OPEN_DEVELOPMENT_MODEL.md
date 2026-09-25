@@ -224,7 +224,7 @@ System vectors:
 
 Important capability errors include false-ready, false-block, unnecessary routing, silent human-owned decisions, false verification, architecture overreach, and Guardian false findings.
 
-`evals/scenarios.json` is the behavioral catalog. A real failure should become a regression case before or with its correction. Behavioral claims require actual model/host runs; schema validation alone is not evidence of behavioral effectiveness.
+The eval registry (`AXES` in `evals/harness/tasks.py`, rendered in `evals/README.md`) is the behavioral catalog. A real failure should become a regression task, with a good and a bad reference, before or with its correction. Behavioral claims require actual model/host runs; schema validation alone is not evidence of behavioral effectiveness.
 
 ## Boundary with managed Devanity
 

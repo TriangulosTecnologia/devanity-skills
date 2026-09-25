@@ -79,9 +79,9 @@ Every mode reads and writes the same objects:
 
 ## Evaluation
 
-Intent lives in [`evals/scenarios.json`](evals/scenarios.json) (method in [`evals/README.md`](evals/README.md)); numbers come from [`evals/harness/`](evals/harness/): real headless Claude Code sessions on seeded repositories, scored on the files they leave behind, with deterministic safety checks, judgment traps, vibe and long-horizon tasks, and auditable LLM judges. Nothing in the kernel changes without a number from there.
+What is measured, and against which competitor, is the axis table in [`evals/README.md`](evals/README.md); numbers come from [`evals/harness/`](evals/harness/): real headless Claude Code sessions on seeded repositories, scored on the files they leave behind, with deterministic safety checks, judgment traps, rung-2 cost, the modes, vibe and long-horizon tasks, and auditable LLM judges. Nothing in the kernel changes without a number from there.
 
-Repository CI validates the capability's structure (kernel caps, mode routing, each mode's load set, the finding and decision grammars), the deliberate capability and mode set, canonical repository identity, protocol JSON, the eval catalog and its links to the harness, and the attribution of ported harness code.
+Repository CI validates the capability's structure (kernel caps, mode routing, each mode's load set, the finding and decision grammars), the deliberate capability and mode set, canonical repository identity, protocol JSON, the eval registry against the SPEC's success criteria, and the attribution of ported harness code.
 
 ## Repository layout
 

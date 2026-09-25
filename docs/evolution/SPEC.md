@@ -113,12 +113,11 @@ AGENTS.md                       kernel sem frontmatter e sem as seções de host
 .claude-plugin/marketplace.json marketplace de um plugin, para `/plugin marketplace add`
 tests/hooks.test.mjs            testes dos hooks
 evals/
-  harness/                      run.py · tasks.py · judge.py · complete.py · fixture.py · build_plugins.py · container/
+  harness/                      run.py · tasks.py (tarefas e o registro de eixos AXES) · judge.py · complete.py · fixture.py · build_plugins.py · container/
   results/                      writeups datados, commitados
-  scenarios.json                campo `trap` liga cenário a tarefa do harness
 scripts/
   validate-skills.mjs           tabela de roteamento ≡ argument-hint ≡ arquivos, linha Load: ⊇ citações, gramáticas, caps, orçamento
-  validate-open.mjs             conjunto deliberado de capability e modos, protocolo, catálogo, atribuição do harness
+  validate-open.mjs             conjunto deliberado de capability e modos, protocolo, registro de eixos ≡ SPEC §13, atribuição do harness
   kernel.mjs                    invariants · build-agents · check-agents
 ```
 

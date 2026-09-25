@@ -266,6 +266,7 @@ def selftest():
     failures += _selftest_tier_guard()
     failures += _selftest_metrics()
     failures += _selftest_turns()
+    failures += _selftest_registry()
     failures += _selftest_pytest_shim()
     failures += _selftest_billing_formula()
     failures += _selftest_fill()
