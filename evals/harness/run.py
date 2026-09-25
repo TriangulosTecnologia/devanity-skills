@@ -1105,7 +1105,10 @@ def rescore(run_dir):
 _LIMIT_RE = re.compile(r"(hit your (session|usage) limit|usage limit|rate.?limit|overloaded|429|api error)", re.I)
 
 def cell_failed(ws: Path):
-    """Reason string when the workspace holds no completed agent run, else None."""
+    """Reason string when the workspace holds no completed agent run, else None. A cell the
+    harness killed at its timeout is a completed run (its files are scored, `timed_out` marks it):
+    re-running it would replace a slow arm's real result with a fresh draw (review G-010)."""
+    if _cell_meta(ws)[0]["timed_out"]: return None
     files = _turn_files(ws) or [ws / "_claude.json"]
     for f in files:
         if not f.exists() or f.stat().st_size == 0: return "no output"
@@ -1144,11 +1147,14 @@ def _selftest_fill():
         empty = ws("cache__baseline__sonnet__1", "")
         err = ws("cache__baseline__sonnet__2", json.dumps({"is_error": True, "result": "API Error"}))
         lim = ws("cache__baseline__sonnet__3", json.dumps({"result": "You've hit your session limit · resets 1:30am (UTC)", "num_turns": 1, "total_cost_usd": 0}))
+        killed = ws("cache__baseline__sonnet__4", "")   # killed at its timeout: empty JSON, marker in stderr
+        (killed / "_claude.stderr.txt").write_text("\n[KILLED after 600s timeout]", encoding="utf-8")
         ws("_failed", None); ws("notes", None)
         _check(cell_failed(good) is None, "a completed run is not failed")
         _check(cell_failed(empty) == "no output", "empty output is failed")
         _check((cell_failed(err) or "").startswith("error"), "is_error is failed")
         _check((cell_failed(lim) or "").startswith("limit"), "usage-limit text with no spend is failed")
+        _check(cell_failed(killed) is None, "a cell killed at its timeout is a result, never re-rolled (G-010)")
         names = sorted(c[4].name for c in failed_cells(root))
         _check(names == ["cache__baseline__sonnet__1", "cache__baseline__sonnet__2", "cache__baseline__sonnet__3"], "failed_cells lists exactly the failed cells")
     return fails

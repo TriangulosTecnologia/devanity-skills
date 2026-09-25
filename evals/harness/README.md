@@ -34,7 +34,7 @@ python3 run.py --task tmpl-fe-datepicker,tmpl-fe-colorpicker,tmpl-fe-command,tmp
 ./container.sh python3 run.py --rescore /runs/<stamp>   # 6. recompute metrics offline (the scorers execute delivered code: container; only a tmpl-*-only stamp rescores on the host)
 python3 judge.py --selftest && python3 judge.py --run <stamp>          # 7. over-engineering judge (small spend)
 python3 complete.py --selftest && python3 complete.py --run <stamp>    # 8. completeness judge (small spend)
-python3 run.py --fill <stamp>                  # re-run only the cells that ended in an error or a usage limit
+./container.sh python3 run.py --fill /runs/<stamp>   # re-run only the cells that ended in an error or a usage limit (a cell killed at its timeout is a result, kept)
 ```
 
 Budget: a full round is about 1 500 cells (10 arms × 38 tasks + the 5 mode tasks on one arm, n=4); the 2026-09-24 round cost US$0.10–0.15 per surgical cell and up to US$0.56 per greenfield cell on Sonnet. Iterate the kernel on the affected axis plus the safety tasks, never on the full round per edit. Every workspace is kept under `runs/<stamp>/`, so a scorer change never costs API twice.
