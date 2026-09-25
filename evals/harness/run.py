@@ -420,15 +420,18 @@ def _selftest_remote_excluded():
 
 def _selftest_probes():
     """The review's counter-examples (tasks.PROBES): each seeds its task, writes the probe's files
-    and must score exactly the fields it names. A scorer edit that reopens a blind spot is red here."""
+    and must score exactly the fields it names. A scorer edit that reopens a blind spot is red here.
+    A probe flagged "ceiling" names the fields a known ceiling scores now: red when a scorer change
+    moves it, so the change says so and re-records it (a flip toward right is welcome)."""
     from tasks import PROBES
     fails = 0
-    for label, tid, files, want in PROBES:
+    for label, tid, files, want, *flag in PROBES:
         task = TASKS[tid]
         with tempfile.TemporaryDirectory() as d:
             r = score_cell(tid, seed_workspace(task, Path(d), files))
         ok = all(r.get(k) == v for k, v in want.items())
-        print(f"{'ok ' if ok else 'XX '} probe        {label:34} want {want} -> {r['reason']}")
+        note = ("known ceiling, as recorded" if ok else "ceiling MOVED: re-record it in tasks.PROBES") if flag == ["ceiling"] else ""
+        print(f"{'ok ' if ok else 'XX '} probe        {label:34} want {want} -> {r['reason']}" + (f"  [{note}]" if note else ""))
         fails += 0 if ok else 1
     return fails
 
