@@ -33,7 +33,7 @@ import argparse, concurrent.futures, datetime, json, os, re, shutil, signal, sta
 from collections import defaultdict
 from pathlib import Path
 
-from tasks import TASKS, SELFCHECK_DEFS, is_test_file, proof_fields
+from tasks import TASKS, SELFCHECK_DEFS, is_delivery, is_test_file, proof_fields
 import fixture
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -204,8 +204,7 @@ def code_stats(workdir: Path):
     never as bloat, and an in-file __main__/demo() self-check is reclassified from source to test,
     so following the 'leave a runnable check' rule is not counted as code bloat against it."""
     files = [p for p in workdir.rglob("*") if p.is_file() and p.suffix in CODE_EXT
-             and "__pycache__" not in p.parts and "node_modules" not in p.parts
-             and not p.name.startswith((".", "_"))]
+             and "node_modules" not in p.parts and is_delivery(workdir, p)]
     src = [p for p in files if not is_test_file(p, workdir)]
     tst = [p for p in files if is_test_file(p, workdir)]
     total = code = sc_test = 0
@@ -278,6 +277,7 @@ def selftest():
     failures += _selftest_probes()
     failures += _selftest_seeded_checks()
     failures += _selftest_remote_excluded()
+    failures += _selftest_delivery_rule()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
 
@@ -297,6 +297,33 @@ def _selftest_seeded_checks():
         ok = bool(r) and r.returncode == 0 and bool(m) and int(m.group(1)) >= 1
         print(f"{'ok ' if ok else 'XX '} seeded_check {tid:17} {recipe or 'no Makefile test recipe'} -> "
               f"{('rc=' + str(r.returncode) + ', ' + (m.group(0) if m else 'no test ran')) if r else 'nothing to run'}")
+        fails += 0 if ok else 1
+    return fails
+
+def _selftest_delivery_rule():
+    """One rule says what is the agent's delivery and what is harness or VCS state
+    (tasks._harness_part; review G-026 found five disagreeing copies): the scorers' file lists, the
+    judges' text, the LOC count and the sandbox copy must all see the same source files."""
+    from tasks import _touched, _src_files, _sandbox_copy, source_text
+    tree = {"pkg/__init__.py": "X = 1\n", "pkg/mod.py": "def f():\n    return 1\n", "_claude.json": "{}",
+            ".git/hooks/pre.py": "x = 1\n", "_remote.git/hooks/post.py": "y = 1\n", "pkg/__pycache__/mod.py": "z = 1\n"}
+    want = ["pkg/__init__.py", "pkg/mod.py"]
+    with tempfile.TemporaryDirectory() as d:
+        ws = Path(d)
+        for fn, c in tree.items(): (ws / fn).parent.mkdir(parents=True, exist_ok=True); (ws / fn).write_text(c, encoding="utf-8")
+        rel = lambda paths, base: sorted(str(Path(p).relative_to(base)).replace("\\", "/") for p in paths)
+        box = _sandbox_copy(ws)
+        try: copied = rel([p for p in box.rglob("*.py") if p.is_file()], box)
+        finally: shutil.rmtree(box, ignore_errors=True)
+        seen = {"_touched": [f for f in _touched(ws, {})[1] if f.endswith(".py")],
+                "_src_files": rel(_src_files(ws), ws),
+                "source_text": sorted(re.findall(r"^# === (.+?) ===$", source_text(ws), re.M)),
+                "_sandbox_copy": copied,
+                "code_stats": code_stats(ws)["src_files"]}
+    fails = 0
+    for name, got in seen.items():
+        ok = got == (len(want) if name == "code_stats" else want)
+        print(f"{'ok ' if ok else 'XX '} delivery     {name:13} -> {got}")
         fails += 0 if ok else 1
     return fails
 

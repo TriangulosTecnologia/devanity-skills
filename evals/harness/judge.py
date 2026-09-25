@@ -23,7 +23,7 @@ import argparse, json, os, re, shutil, subprocess, sys, tempfile, time, urllib.r
 from collections import defaultdict
 from pathlib import Path
 
-from tasks import TASKS, is_test_file
+from tasks import TASKS, source_text      # source_text: what the judges read (complete.py imports it from here)
 import run as _run                      # RUNS_DIR (DEVANITY_HARNESS_RUNS_DIR) and memory_guard
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -86,18 +86,6 @@ def _judge_call_cli(user, system, retries=3):
         except Exception as e:
             if attempt == retries - 1: return f'{{"error": "{str(e)[:120]}"}}'
             time.sleep(2 * (attempt + 1))
-
-def source_text(workdir: Path):
-    """Concatenate the agent's source files (tests + artifacts excluded), with name headers. A
-    dot or underscore anywhere in the path is harness or VCS state (`.git/`, `_remote.git/`,
-    `_claude.json`), never the submission."""
-    out = []
-    for p in sorted(workdir.rglob("*")):
-        if not p.is_file() or "__pycache__" in p.parts or p.suffix == ".pyc": continue
-        if any(part.startswith((".", "_")) for part in p.relative_to(workdir).parts) or is_test_file(p, workdir): continue
-        try: out.append(f"# === {p.relative_to(workdir)} ===\n{p.read_text(encoding='utf-8', errors='ignore')}")
-        except Exception: continue
-    return "\n\n".join(out)
 
 def judge_call(task_prompt, files, key, retries=3, system=RUBRIC):
     user = f"TASK GIVEN TO THE AUTHOR:\n{task_prompt}\n\nFILES THEY WROTE:\n{files}"

@@ -809,6 +809,24 @@ def _harness_part(part):
     `_claude*.json`, `_remote.git`, caches. `__init__.py` is code."""
     return part.startswith(".") or (part.startswith("_") and part != "__init__.py")
 
+def is_delivery(workdir, p):
+    """The one delivery rule (review G-026: five copies disagreed): a file is the agent's when no
+    part of its path under `workdir` is harness or VCS state. The scorers' file lists, the judges'
+    text (source_text), run.py's LOC (code_stats) and the sandbox copy all route through it."""
+    return not any(_harness_part(x) for x in Path(p).relative_to(workdir).parts)
+
+def source_text(workdir: Path):
+    """Concatenate the agent's source files (tests + artifacts excluded), with name headers: what
+    the LLM judges (judge.py, complete.py) read. A dot or underscore anywhere in the path is
+    harness or VCS state (is_delivery), never the submission; `__init__.py` is code."""
+    workdir = Path(workdir)
+    out = []
+    for p in sorted(workdir.rglob("*")):
+        if not p.is_file() or p.suffix == ".pyc" or not is_delivery(workdir, p) or is_test_file(p, workdir): continue
+        try: out.append(f"# === {p.relative_to(workdir)} ===\n{p.read_text(encoding='utf-8', errors='ignore')}")
+        except Exception: continue
+    return "\n\n".join(out)
+
 def _touched(workdir, seed):
     """(seeded files the agent changed, files it created), both sorted and repo-relative."""
     wd = Path(workdir)
@@ -817,8 +835,8 @@ def _touched(workdir, seed):
         try: same = (wd / fn).read_text(encoding="utf-8") == content
         except Exception: same = False
         if not same: changed.append(fn)
-    new = [rel for rel in (str(p.relative_to(wd)).replace("\\", "/") for p in wd.rglob("*") if p.is_file())
-           if rel not in seed and not any(_harness_part(x) for x in rel.split("/"))]
+    new = [rel for rel in (str(p.relative_to(wd)).replace("\\", "/") for p in wd.rglob("*") if p.is_file() and is_delivery(wd, p))
+           if rel not in seed]
     return sorted(changed), sorted(new)
 
 def _seed_unchanged(workdir, seed):
@@ -1167,12 +1185,10 @@ def score_falsetest(workdir):
 # ======================================================================================
 
 def _src_files(workdir, under=None):
-    """Delivered .py files (optionally under a subdir), skipping harness/underscore/dot files."""
+    """Delivered .py files (optionally under a subdir), by the one delivery rule (is_delivery)."""
     root = Path(workdir) / under if under else Path(workdir)
     if not root.is_dir(): return []
-    return sorted(p for p in root.rglob("*.py")
-                  if "__pycache__" not in p.parts
-                  and (not p.name.startswith(("_", ".")) or p.name == "__init__.py"))
+    return sorted(p for p in root.rglob("*.py") if is_delivery(workdir, p))
 
 def _compile_all(paths):
     """First compile error as a string, or None when every file compiles."""
@@ -1238,10 +1254,11 @@ def _run_py(script_dir, args, timeout=15):
         return None, "", "TIMEOUT"
 
 def _sandbox_copy(workdir):
-    """Copy the delivered files (no harness _files, no .git) into a fresh temp dir; caller removes it."""
+    """Copy the delivered files (is_delivery's rule; `__init__.py` kept) into a fresh temp dir;
+    caller removes it."""
     d = tempfile.mkdtemp(prefix="devanity-vibe-")
     _shutil.copytree(workdir, d, dirs_exist_ok=True,
-                     ignore=_shutil.ignore_patterns("_*", ".git", "__pycache__", "*.pyc", "node_modules"))
+                     ignore=lambda _dir, names: [n for n in names if _harness_part(n) or n == "node_modules" or n.endswith(".pyc")])
     return Path(d)
 
 def _traceback(stderr): return "Traceback (most recent call last)" in (stderr or "")
