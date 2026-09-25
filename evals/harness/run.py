@@ -310,9 +310,11 @@ def _selftest_delivery_rule():
     (tasks._harness_part; review G-026 found five disagreeing copies): the scorers' file lists, the
     judges' text, the LOC count and the sandbox copy must all see the same source files."""
     from tasks import _touched, _src_files, _sandbox_copy, source_text
-    tree = {"pkg/__init__.py": "X = 1\n", "pkg/mod.py": "def f():\n    return 1\n", "_claude.json": "{}",
+    # the agent's own `_helper.py` is code (review G-040); the harness's entries are named, not guessed
+    tree = {"pkg/__init__.py": "X = 1\n", "pkg/mod.py": "def f():\n    return 1\n", "pkg/_helper.py": "def g():\n    return 2\n",
+            "_claude.json": "{}", "_claude.turn1.json": "{}", "_claude.turn1.stderr.txt": "", "_compact.json": "{}", "_failed/old.py": "w = 1\n",
             ".git/hooks/pre.py": "x = 1\n", "_remote.git/hooks/post.py": "y = 1\n", "pkg/__pycache__/mod.py": "z = 1\n"}
-    want = ["pkg/__init__.py", "pkg/mod.py"]
+    want = ["pkg/__init__.py", "pkg/_helper.py", "pkg/mod.py"]
     with tempfile.TemporaryDirectory() as d:
         ws = Path(d)
         for fn, c in tree.items(): (ws / fn).parent.mkdir(parents=True, exist_ok=True); (ws / fn).write_text(c, encoding="utf-8")
