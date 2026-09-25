@@ -8,7 +8,10 @@ import { mkdtempSync, mkdirSync, cpSync, rmSync, readFileSync, writeFileSync, ex
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+import { INVARIANTS } from '../scripts/kernel.mjs';
 
+const { FALLBACK_KERNEL } = createRequire(import.meta.url)('../hooks/devanity-runtime.js');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const hooksDir = join(root, 'hooks');
 const INJECT = join(hooksDir, 'devanity-inject.js');
@@ -128,10 +131,26 @@ describe('SessionStart', () => {
     const r = await runHook(join(stray, 'hooks', 'devanity-inject.js'), { input: sessionStart(), env: baseEnv(cfg), args: ['SessionStart'] });
     assert.equal(r.code, 0, r.stderr);
     assert.ok(r.stdout.includes('fallback'), 'fallback must say it is one');
-    for (const mark of ['NO_CHANGE', 'fails first', 'Propose and stop', 'ONE thing', 'Never cut', 'trust-boundary validation', 'data loss', 'devanity-proof']) {
-      assert.ok(r.stdout.includes(mark), `fallback lacks "${mark}"`);
+    assert.ok(r.stdout.includes(FALLBACK_KERNEL), 'the hook must emit the whole compact kernel');
+    assert.ok(FALLBACK_KERNEL.split('\n').length <= 25, 'fallback must stay within 25 lines');
+  });
+
+  // The fallback is the kernel a packaging error leaves the model with, so it may lose craft
+  // detail but never a measured rule: every kernel invariant, and the Decisions bullets verbatim,
+  // in the kernel's order (human-owned before reversible: the reversed order is the one that let
+  // a billing rule be defaulted in the 2026-09-24 round).
+  test('the compact fallback carries every kernel invariant and the kernel\'s Decisions verbatim, in order', () => {
+    for (const phrase of INVARIANTS) assert.ok(FALLBACK_KERNEL.includes(phrase), `fallback lacks invariant "${phrase}"`);
+    const kernel = readFileSync(join(root, 'skills', 'devanity', 'SKILL.md'), 'utf8');
+    const decisions = kernel.split('## Decisions')[1].split('\n## ')[0].split('\n').filter((l) => l.startsWith('- '));
+    assert.ok(decisions.length >= 3, 'kernel Decisions section not found');
+    let at = -1;
+    for (const bullet of decisions) {
+      const i = FALLBACK_KERNEL.indexOf(bullet);
+      assert.ok(i >= 0, `fallback lacks the kernel Decisions bullet: ${bullet.slice(0, 60)}…`);
+      assert.ok(i > at, `fallback reorders the kernel Decisions: ${bullet.slice(0, 60)}…`);
+      at = i;
     }
-    assert.ok(r.stdout.split('\n').length <= 25, 'fallback must stay within 25 lines');
   });
 });
 
