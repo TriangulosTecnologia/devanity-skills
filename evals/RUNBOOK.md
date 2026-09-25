@@ -1,6 +1,6 @@
 # F1.13 runbook: the single reference round
 
-Everything a fresh session needs to run PLAN F1.13 without this conversation. The repository is the memory: SPEC §9 and §13 say what is measured and what "green" means, `evals/harness/README.md` says how each instrument works, `evals/results/kernel-sentences.md` is the table the round completes. This file adds only the order, the stop rules and what this cloud environment needs.
+Everything a fresh session needs to run PLAN F1.13 without this conversation. The repository is the memory: SPEC §9 and §13 say what is measured and what "green" means, `evals/harness/README.md` says how each instrument works, `evals/kernel-sentences.md` is the table the round completes. This file adds only the order, the stop rules and what this cloud environment needs.
 
 ## Inputs (from the maintainer, outside the repository)
 

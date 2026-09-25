@@ -30,7 +30,7 @@ The verbs are for the moments that need a procedure:
 | List deferred shortcuts and pending decisions | `/devanity debt` |
 | First install in a repository | `/devanity init` |
 
-With the plugin installed, a few whole-message commands talk to the hooks rather than to the model: `/devanity on|off`, `/devanity status` (state, open change, pending decisions), `/devanity pending`, `/devanity decide <id> <option> [--path <glob>]` (the only way a human decision reaches the guards), `/devanity reset` (abandons the open change), and `/devanity debt --stats` for the repository's numbers. What they enforce and record: [`docs/guards.md`](docs/guards.md), [`docs/oracle-and-ci.md`](docs/oracle-and-ci.md), [`docs/ledger.md`](docs/ledger.md).
+With the plugin installed, a few whole-message commands talk to the hooks rather than to the model: `/devanity on|off`, `/devanity status` (state, open change, pending decisions), `/devanity pending`, `/devanity decide <id> <option> [--path <glob>]` (the only way a human decision reaches the guards), `/devanity reset` (abandons the open change), and `/devanity debt --stats` for the repository's numbers. What they enforce and record: [`docs/hooks.md`](docs/hooks.md).
 
 You normally **do not invoke Worker or Verifier yourself**: Worker collects evidence and does not decide; Verifier tries to falsify a completed change and does not edit. The modes use them when needed; missing roles degrade explicitly rather than becoming fabricated evidence.
 
@@ -60,7 +60,7 @@ for agent in worker verifier; do
 done
 ```
 
-Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific mechanics belong in bindings/reference surfaces, not in the core methods. Hosts that read an instruction file and run no hooks get the kernel from [`AGENTS.md`](AGENTS.md), generated from the kernel and checked for drift in CI (no modes, no persistence).
+Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific mechanics belong in `skills/devanity/reference/claude-code.md`, not in the kernel or the modes. Hosts that read an instruction file and run no hooks get the kernel from [`AGENTS.md`](AGENTS.md), generated from the kernel and checked for drift in CI (no modes, no persistence).
 
 ## Status
 
@@ -86,18 +86,20 @@ Repository CI validates the capability's structure (kernel caps, mode routing, e
 ## Repository layout
 
 ```text
-skills/devanity/
-  SKILL.md               kernel (always loaded)
-  modes/                 one file per verb: plan, architect, review, audit, improve, docs, debt, init
-  reference/             shared vocabulary, quality standard, baseline, Claude Code bindings, schemas
-agents/
-  worker.md              evidence collection
-  verifier.md            independent proof
-hooks/                   kernel injection, guards, proof oracle, ledger (plugin install only)
-docs/                    development model, evolution spec and plan, guards, oracle, ledger
-evals/                   scenario catalog and executable harness
-scripts/                 validators
+skills/devanity/     the skill: SKILL.md (kernel), modes/ (one file per verb), reference/
+agents/              worker (evidence) and verifier (independent proof)
+hooks/               kernel injection, commands, guard, proof oracle, ledger (plugin install only)
+scripts/             validators, AGENTS.md generator, reference CI job
+tests/               node:test suites (npm test)
+docs/                development model, hooks, evolution spec and plan
+evals/               the measured axes, the runbook, the harness, dated results
+AGENTS.md            the kernel for hosts that run no hooks (generated)
+devanity.rules.json  this repository's own rules
+.claude-plugin/      plugin manifest and marketplace
+.github/             CI
 ```
+
+Every file, one line each: [SPEC §4.2](docs/evolution/SPEC.md#42-estrutura-de-arquivos-alvo).
 
 A new capability or a new mode is an architecture change. Add one only when it owns an irreducible responsibility with a stable contract, independent use, and measurable outcome.
 

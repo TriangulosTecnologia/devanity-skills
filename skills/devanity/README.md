@@ -32,13 +32,4 @@ The kernel applies to every coding turn without being invoked. The modes are for
 | `debt` | `/devanity debt` | deferred shortcuts and pending decisions |
 | `init` | `/devanity init` | first install in a repository |
 
-## Layout
-
-```text
-skills/devanity/
-  SKILL.md        the kernel (always loaded)
-  modes/          one file per verb
-  reference/      the shared vocabulary, the quality standard, the baseline, host bindings, schemas
-```
-
 Status: candidate. The kernel is measured by [`evals/harness/`](../../evals/harness/) against the field in [`docs/evolution/PLAN.md`](../../docs/evolution/PLAN.md) before release; until then, `1.0.0-candidate`.

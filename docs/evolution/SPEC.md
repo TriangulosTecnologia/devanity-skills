@@ -59,7 +59,7 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 │    PreToolUse: alto risco sem decisão registrada → bloqueia
 │    Stop: "verificado" sem oráculo executado contra HEAD → bloqueia
 │
-├─ LEDGER  .devanity/  (local, opt-out, gitignored)
+├─ LEDGER  <git-common-dir>/devanity/  (local, dentro de .git/, nunca commitável)
 │    contratos · provas · decisões · adiamentos · false-ready
 │
 └─ HARNESS  evals/harness/  (Claude Code headless; repo real pinado; braços isolados; referências good/bad)
@@ -78,12 +78,12 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 
 ### 4.2 Estrutura de arquivos alvo
 
-Como consolidada em C1 (decisão de 2026-09-25, PLAN "Decisões registradas"): o kernel roteia cada verbo para `modes/<verbo>.md`; cada modo declara na linha `Load:` o que carrega de `reference/`, e cada gramática vive num só arquivo que os modos citam.
+Como consolidada em C1 (decisão de 2026-09-25, PLAN "Decisões registradas"): o kernel roteia cada verbo para `modes/<verbo>.md`; cada modo declara na linha `Load:` o que carrega de `reference/`, e cada gramática vive num só arquivo que os modos citam. Este é o único layout detalhado do repositório (o README resume o nível de cima); `validate-open.mjs` falha quando um arquivo rastreado fora de `evals/harness/`, `evals/results/` e `tests/` não aparece aqui pelo nome, ou quando uma entrada da raiz falta no README.
 
 ```
 skills/devanity/
   SKILL.md                      kernel (≤130 linhas, ≤1,8k tokens; cap do validador)
-  README.md
+  README.md                     página de instalação como skill (`npx skills`)
   modes/
     plan.md                     ciclo da mudança (FRAME→INSPECT→PROVE→EXECUTE→VERIFY→ASSURE), bloco devanity-contract
     architect.md                decisão de arquitetura (A0/A1/A2, fases, pacote de decisão / ADR)
@@ -99,26 +99,37 @@ skills/devanity/
     adjudication.md             contrato do adjudicador de contexto limpo, passado verbatim
     change.schema.json  rules.schema.json
 agents/
-  worker.md  verifier.md        mantidos; verifier ganha orçamento de sondas (fase 3)
-hooks/
-  hooks.json                    SessionStart · SubagentStart · UserPromptSubmit (fase 1) · PreToolUse · Stop (fase 2)
-  devanity-runtime.js           caminhos, estado, saída por evento, detecção de sessão autônoma
-  devanity-inject.js            SessionStart + SubagentStart: kernel (ou contrato do verifier; nada para o worker)
-  devanity-mode.js              UserPromptSubmit: /devanity on|off, "stop devanity", "normal mode"
-  devanity-guard.js             PreToolUse (fase 2)
-  devanity-oracle.js            Stop (fase 2)
-  devanity-rules.js             carrega/valida devanity.rules.json (fase 2)
-AGENTS.md                       kernel sem frontmatter e sem as seções de host, gerado de SKILL.md
-.claude-plugin/plugin.json      manifest do plugin
-.claude-plugin/marketplace.json marketplace de um plugin, para `/plugin marketplace add`
-tests/hooks.test.mjs            testes dos hooks
-evals/
-  harness/                      run.py · tasks.py (tarefas e o registro de eixos AXES) · judge.py · complete.py · fixture.py · build_plugins.py · container/
-  results/                      writeups datados, commitados
+  worker.md  verifier.md        coleta de evidência; prova independente com orçamento de sondas
+hooks/                          só na instalação como plugin; documentados em docs/hooks.md
+  hooks.json                    SessionStart · SubagentStart · UserPromptSubmit · PreToolUse · Stop
+  devanity-runtime.js           payload, caminhos, estado, kernel de fallback, detecção de sessão autônoma
+  devanity-rules.js             carrega/valida devanity.rules.json, globs
+  devanity-ledger.js            ledger em <git-common-dir>/devanity/; CLI stats · prune
+  devanity-inject.js            SessionStart + SubagentStart: kernel, regras, mudança aberta
+  devanity-mode.js              UserPromptSubmit: /devanity on|off|status|reset|pending|decide
+  devanity-guard.js             PreToolUse: caminhos high-risk, autoridade de comandos
+  devanity-oracle.js            Stop: mede o bloco devanity-proof
 scripts/
   validate-skills.mjs           tabela de roteamento ≡ argument-hint ≡ arquivos, linha Load: ⊇ citações, gramáticas, caps, orçamento
-  validate-open.mjs             conjunto deliberado de capability e modos, protocolo, registro de eixos ≡ SPEC §13, atribuição do harness
+  validate-open.mjs             conjunto deliberado de modos, protocolo, registro de eixos ≡ SPEC §13, atribuição do harness, este layout
   kernel.mjs                    invariants · build-agents · check-agents
+  devanity-rules-ci.mjs         job de CI de referência (o teto do guard); --self-check neste repositório
+tests/                          node:test de hooks, scripts e kernel; `npm test` roda todos
+docs/
+  OPEN_DEVELOPMENT_MODEL.md     modelo de desenvolvimento (em inglês): problema, contrato, fronteiras
+  hooks.md                      o que cada hook aplica e registra
+  evolution/SPEC.md  PLAN.md    esta especificação; fases, gates e decisões
+evals/
+  README.md                     os eixos medidos (renderiza AXES; validado)
+  RUNBOOK.md                    a rodada de referência F1.13: ordem e regras de parada
+  kernel-sentences.md           tabela viva frase do kernel → métrica
+  harness/                      run.py · selftest.py · tasks.py (tarefas e o registro AXES) · judge.py · complete.py · fixture.py · build_plugins.py · container/
+  results/                      writeups datados, commitados
+AGENTS.md                       kernel sem frontmatter e sem as seções de host, gerado de SKILL.md
+devanity.rules.json             as regras deste próprio repositório (dogfood)
+.claude-plugin/                 plugin.json (manifest) · marketplace.json (`/plugin marketplace add`)
+.github/workflows/              validate.yml (CI) · devanity-rules.example.yml (modelo para o consumidor)
+README.md  LICENCE  package.json  .gitignore
 ```
 
 ## 5. O kernel
@@ -287,7 +298,7 @@ Job de exemplo (GitHub Actions) que o `init` oferece: valida `rules.json`, confe
 - Registro de contrato: `{ id, phase: FRAME|INSPECT|PROVE|EXECUTE|VERIFY|ASSURE|DONE|ABANDONED, intent?, scope?, forbidden?, proof?, pending?, reason? }`; escrito pelo `Stop` a partir do bloco `devanity-contract:` e por `/devanity reset` (`ABANDONED`, `reason: reset`).
 - Registro de decisão: `{ id, path?, kind: reversible|irreversible|human, status: pending|decided, by: agent|agent-default|human, chosen? }`; `by: human` só via `/devanity decide`.
 - Registro de prova: `{ kind: proof, contract, check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason }`; `measured: null` quando o oráculo não reexecutou.
-- Retenção: 90 dias; `debt` (`stats`), `audit` e os hooks leem; `prune` só a pedido. A documentação operacional é `docs/ledger.md`.
+- Retenção: 90 dias; `debt` (`stats`), `audit` e os hooks leem; `prune` só a pedido. A documentação operacional é `docs/hooks.md`.
 - Sem dados do prompt do usuário; só metadados. Sem envio a lugar nenhum.
 
 ## 9. Harness
@@ -349,7 +360,7 @@ Válidos para toda PR desta evolução. Cada um existe porque um dos dois projet
 6. **Fonte única.** `AGENTS.md` é gerado; PR que o edita à mão reprova no CI. Cópias para outros hosts só existem se geradas.
 7. **Uma reescrita dos modos, antes das rodadas.** A fase 1 moveu sem reescrever; a consolidação (PLAN C1) reescreveu uma vez, preservando cada gramática validada. Depois dela, texto de modo muda só com número do harness.
 8. **Nenhuma referência numérica solta.** Regras citadas por número (`rule 7`) reprovam no validador se o número não existir na seção que as define. (Corrige o estado atual pós-#30.)
-9. **Ledger nunca vai para o git.** Teste no CI verifica `.devanity/` fora do índice do repo de fixture após uma execução.
+9. **Ledger nunca vai para o git.** Teste no CI verifica `<git-common-dir>/devanity/` fora do índice do repo de fixture após uma execução.
 10. **Modelo do harness fixo por fase.** Trocar de modelo no meio de uma comparação invalida a comparação; a troca é uma fase nova com baseline novo.
 11. **Cada PR tem um dono, um número e uma fase.** Sem PR "diversos".
 12. **Nenhum caminho de auto-concessão.** Revisão de qualquer PR de hooks procura explicitamente uma forma de o agente registrar `by: human` ou elevar `authority`. Se existir, a PR reprova.

@@ -13,7 +13,7 @@
 // (outside git, no check, guards recording), re-run an honest NOT_VERIFIED, or hang the session.
 //
 // F3.1: the same pass persists a `devanity-contract:` block (the change's lifecycle phase) to
-// contracts.jsonl. It is recorded, never measured or blocked; docs/ledger.md has the grammar.
+// contracts.jsonl. It is recorded, never measured or blocked; docs/hooks.md (Ledger) has the grammar.
 //
 // Host contract confirmed against Claude Code 2.1.281: the payload carries last_assistant_message,
 // transcript_path, stop_hook_active, cwd, session_id; `{"decision":"block","reason":…}` on stdout

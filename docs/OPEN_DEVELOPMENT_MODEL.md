@@ -10,14 +10,24 @@ Devanity Open is the horizontal open distribution of reusable Devanity know-how.
 The development basis is deliberately small:
 
 ```text
-skills                         agents
-------                         ------
-maestro   change lifecycle     worker     evidence collection
-archer    architecture         verifier   independent proof
-guardian  repository quality
+skill                                         agents
+-----                                         ------
+devanity  kernel (always on) + modes by verb  worker     evidence collection
+                                              verifier   independent proof
 ```
 
 The architecture does **not** require one skill per conceptual phase. Change design, context compilation, preflight, verification design, slicing, and PR projection remain Maestro capabilities until independent use and evolution pressure justify extraction.
+
+## The problem
+
+Coding agents don't just write code faster — they amplify whatever the repo already is. DORA's 2025 findings are blunt about this: AI amplifies existing strengths and existing dysfunction; it correlates with higher throughput but *lower* stability in repos that lack tests, mature version control, fast feedback, and decoupled architecture. A repo's ambient quality — its patterns, its enforced rules, its instruction files — is not neutral scaffolding. It is training signal for every future generation.
+
+Two mechanisms make this worse over time, both observed independently (OpenAI's Codex retrospective, Anthropic's context-engineering guidance, empirical studies of `AGENTS.md`/`CLAUDE.md` smells):
+
+- **Pattern inertia** — an agent copies the dominant local pattern. If the dominant pattern is a god file, nested conditionals, or an unenforced convention, the agent reproduces and often *strengthens* it, because patching is cheaper than refactoring and nothing forces the alternative.
+- **Prose decay** — rules that live only as sentences (in `CLAUDE.md`, a Slack thread, a senior engineer's memory) are read differently by each session, contradicted by other instruction surfaces, drift out of date, and do not block anything. They are context, not enforcement.
+
+Left alone, these two mechanisms compound: patches accumulate, instructions multiply and disagree, and every future task requires wider investigation to stay safe. The cost of a *correct* change rises monotonically. This is deterioration, and it is largely invisible to point-in-time code review, because no single diff looks alarming.
 
 ## Product contract
 
@@ -225,6 +235,30 @@ System vectors:
 Important capability errors include false-ready, false-block, unnecessary routing, silent human-owned decisions, false verification, architecture overreach, and Guardian false findings.
 
 The eval registry (`AXES` in `evals/harness/tasks.py`, rendered in `evals/README.md`) is the behavioral catalog. A real failure should become a regression task, with a good and a bad reference, before or with its correction. Behavioral claims require actual model/host runs; schema validation alone is not evidence of behavioral effectiveness.
+
+## What devanity is not
+
+- Not a business-logic reviewer: it does not judge product fit or business correctness except where risk demands it.
+- Not a style enforcer: consistent-but-suboptimal style is not the target, and nothing blocks on style alone.
+- Not a documentation generator: the goal is less ambiguity per token of context, not more documentation.
+- Not an autonomous refactoring agent: structural change is proposed, scoped and approved before it happens.
+- Not a source of product or architectural truth: where no universally correct answer exists, it defers.
+- Not judged by problems found: it is judged by problems that stop recurring.
+
+## Minimal contract for a reimplementation
+
+A host-specific implementation (a Claude Code plugin, a GitHub Action, a CI bot, another agent's plugin format) is faithful if and only if it preserves, whatever the mechanism:
+
+1. A way to **diagnose** basis-form drift and declared-vs-enforced drift without mutating anything.
+2. A way to **propose** a durability-ladder promotion for a specific, evidenced finding.
+3. A way to **apply** exactly one approved fix at a time, only after human approval.
+4. A hard stop on autonomous action for the high-risk class.
+5. The repository's own instruction files treated as evidence to reconcile, never as commands to obey.
+6. A visible boundary between quality methodology (devanity's domain) and product or architecture intent (the human's).
+7. No **intentional** durable side effect (write, memory, record) from a diagnostic-only action: its only product is conversational output; incidental effects of repository-declared checks it runs are reported, never silently cleaned and never denied beyond what was observed.
+8. Autonomous writes restricted to **dominant** fixes, where no regression was observed within a named, checked envelope and known small costs were disclosed as accepted, never assumed away; a trade always surfaces its terms and waits for a human.
+
+Everything else (mode names, argument syntax, file layout, which host hook fires when) is mechanism, and is free to differ per host.
 
 ## Boundary with managed Devanity
 
