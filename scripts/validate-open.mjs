@@ -190,7 +190,7 @@ function main() {
 
   // The harness instruments are ported from ponytail (MIT). Every ported file carries its attribution
   // header and the full notice ships next to them; a rewrite that drops either is a licence defect (F0.11).
-  const portedHarnessFiles = ['run.py', 'tasks.py', 'judge.py', 'complete.py'];
+  const portedHarnessFiles = ['run.py', 'selftest.py', 'tasks.py', 'judge.py', 'complete.py'];
   if (!existsSync(join(root, 'evals/harness/LICENSE-ponytail'))) fail('evals/harness/LICENSE-ponytail is missing');
   for (const name of portedHarnessFiles) {
     const path = `evals/harness/${name}`;
