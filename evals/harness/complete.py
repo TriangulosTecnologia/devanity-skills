@@ -49,6 +49,12 @@ RUBRIC = (
     "Respond with ONLY this JSON: {\"completeness\": <0-3 int>, \"why\": \"<one line>\", \"missing\": \"<piece or none>\"}"
 )
 
+def judge_prompt(task_id):
+    """What the completeness judge is told the task was: its prompt, plus the task's `judge_note`
+    when a slice of the right answer is a queued stub the rubric would otherwise call incomplete."""
+    t = TASKS[task_id]
+    return t["prompt"] + (f"\n\nJudge note: {t['judge_note']}" if t.get("judge_note") else "")
+
 def parse_complete(text):
     d = parse_score(text)
     if d and SCORE_KEY in d:
@@ -100,7 +106,15 @@ def selftest_offline():
     p_good = _rank_ok(good)
     print("offline gate -- stub out-scores complete (expect XX):")
     p_bad = _rank_ok(bad)
-    passed = p_good and not p_bad
+    # Billing's right answer leaves the refund path a failing stub, which the rubric scores as
+    # INCOMPLETE (review G-041, decision G-051): the judge is told that slice is queued, and a task
+    # with no queued slice is judged on its prompt alone.
+    billing, cache = judge_prompt("vibe-autonomous-billing"), judge_prompt("cache")
+    p_note = billing.startswith(TASKS["vibe-autonomous-billing"]["prompt"]) and "NotImplementedError" in billing and "queued" in billing
+    p_plain = cache == TASKS["cache"]["prompt"]
+    print(f"{'ok' if p_note else 'XX'} vibe-autonomous-billing: the judge is told the refund slice is queued")
+    print(f"{'ok' if p_plain else 'XX'} cache: a task with no queued slice is judged on its prompt alone")
+    passed = p_good and not p_bad and p_note and p_plain
     print(f"\ncompleteness gate selftest (offline): {'valid' if passed else 'BROKEN'}")
     return 0 if passed else 1
 
@@ -115,7 +129,7 @@ def run(run_dir, key):
     print(f"completeness-judging {len(cells)} workspaces with {judge_backend_label()} ...")
     scored = []
     for i, (tid, arm, model, ws) in enumerate(cells, 1):
-        s = parse_complete(judge_call(TASKS[tid]["prompt"], source_text(ws, TASKS[tid]), key, system=RUBRIC)) \
+        s = parse_complete(judge_call(judge_prompt(tid), source_text(ws, TASKS[tid]), key, system=RUBRIC)) \
             or {SCORE_KEY: None}
         scored.append({"task": tid, "arm": arm, "model": model, SCORE_KEY: s.get(SCORE_KEY),
                        "why": s.get("why", ""), "missing": s.get("missing", "")})

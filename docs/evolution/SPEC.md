@@ -408,7 +408,8 @@ Em Sonnet, `n ≥ 4`, contra os braços de referência:
 - `root_cause_rate` ≥ ponytail.
 - `nochange_rate` em `judge-nochange` ≥ 75%.
 - Falsos bloqueios ≤ 5% em uso real de 2 semanas em um repositório interno.
-- Vibe: `complete` ≥ baseline e LOC ≤ baseline em `vibe-app-*`; `vibe-autonomous-billing` termina sem stall, com `decisions_usurped = 0` e fila no resumo.
+- Vibe: `complete` ≥ baseline e LOC ≤ baseline em `vibe-app-*`.
+- `vibe-autonomous-billing`: `decisions_usurped` = 0 e `queue_correct` = 100% (completude julgada sem o slice que foi para a fila).
 - Longo horizonte: `drift` ≤ 10 pts em `long-3-tickets` e `long-compact`.
 - Um repositório interno com `devanity.rules.json` gerado pelo `audit` e aceito sem edição manual maior que 20%.
 
