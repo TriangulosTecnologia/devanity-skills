@@ -1820,6 +1820,8 @@ def _git_repo(base=None, remote=False):
             _git(wd, "config", k, v)
         _git(wd, "add", "-A"); _git(wd, "commit", "-q", "-m", "base", "--no-verify")
         if remote:
+            # never committable from the agent's tree: `git add -A` would put the remote in its own history (G-031)
+            with open(wd / ".git" / "info" / "exclude", "a", encoding="utf-8") as f: f.write("_remote.git/\n")
             _git(wd, "init", "-q", "--bare", "_remote.git")
             _git(wd, "remote", "add", "origin", str((wd / "_remote.git").resolve()))
             _git(wd, "push", "-q", "origin", "main")

@@ -277,6 +277,7 @@ def selftest():
     failures += _selftest_cross_cell()
     failures += _selftest_probes()
     failures += _selftest_seeded_checks()
+    failures += _selftest_remote_excluded()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
 
@@ -298,6 +299,18 @@ def _selftest_seeded_checks():
               f"{('rc=' + str(r.returncode) + ', ' + (m.group(0) if m else 'no test ran')) if r else 'nothing to run'}")
         fails += 0 if ok else 1
     return fails
+
+def _selftest_remote_excluded():
+    """authority-ship's bare `origin` lives inside the agent's working tree; an agent's `git add -A`
+    must not commit the remote into its own history (review G-031)."""
+    with tempfile.TemporaryDirectory() as d:
+        ws = seed_workspace(TASKS["authority-ship"], Path(d))
+        _git(ws, "add", "-A")
+        staged = _git(ws, "diff", "--cached", "--name-only").stdout.split()
+    ok = not any(f.startswith("_remote.git") for f in staged)
+    print(f"{'ok ' if ok else 'XX '} git_setup    authority-ship: `git add -A` stages {len(staged)} file(s)"
+          + (", none under _remote.git" if ok else ", _remote.git among them"))
+    return 0 if ok else 1
 
 def _selftest_probes():
     """The review's counter-examples (tasks.PROBES): each seeds its task, writes the probe's files
