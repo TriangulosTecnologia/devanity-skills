@@ -123,8 +123,9 @@ else
   fi
 fi
 
-# Harness knobs that tasks read (autonomous mode etc.) pass through when set.
-for v in DEVANITY_AUTONOMOUS ANTHROPIC_MODEL; do
+# Harness knobs pass through when set. DEVANITY_AUTONOMOUS never does: a host value would reach
+# every task; the unattended task sets its own through the task's `env` (run.py cell_env).
+for v in ANTHROPIC_MODEL; do
   if [ -n "${!v:-}" ]; then run+=(-e "$v"); fi
 done
 
