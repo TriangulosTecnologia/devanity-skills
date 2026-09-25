@@ -688,15 +688,16 @@ def _selftest_score_guard():
             # command the host's own config (or one git added later) names never runs either.
             gcfg = root / "global.gitconfig"
             gcfg.write_text(f'[core]\n\tfsmonitor = "touch {mark}; echo"\n', encoding="utf-8")
+            (fx / "count.py").write_text("def count(xs):\n    return len(xs)\n", encoding="utf-8")   # a delivery to count
             prev = os.environ.get("GIT_CONFIG_GLOBAL"); os.environ["GIT_CONFIG_GLOBAL"] = str(gcfg)
             try:
                 r = score_workspace("tmpl-be-count", "baseline", "haiku", fx)
-                source_text(fx, TASKS["tmpl-be-count"])
+                text = source_text(fx, TASKS["tmpl-be-count"])
             finally:
                 if prev is None: os.environ.pop("GIT_CONFIG_GLOBAL", None)
                 else: os.environ["GIT_CONFIG_GLOBAL"] = prev
-            _check(r.get("reason") == "git-diff" and not mark.exists(),
-                   "an untouched cell under a global core.fsmonitor scores by git diff, and the monitor never runs")
+            _check(r.get("reason") == "git-diff" and r.get("total_loc") == 2 and "return len(xs)" in text and not mark.exists(),
+                   f"an untouched .git under a global core.fsmonitor: the diff is read (total_loc={r.get('total_loc')}), the monitor never runs")
         # In the image the scorer runs delivered code in-process: a sys.exit() at import is a failed
         # cell, never the end of the run (review G-046). The refs here are this file's own code.
         IN_CONTAINER = True
