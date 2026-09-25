@@ -487,3 +487,15 @@ Os estágios 2 e 3 caíram no teto de 5 horas da janela da assinatura no meio da
 ### Ponto cego 13: `claude -p` sem `--session-id` pode herdar sessão alheia (harness, corrigido por precaução)
 
 Ao investigar os limites, uma sonda avulsa no host (fora do harness, para depurar) respondeu com o kernel do devanity mesmo pedindo um braço sem plugin, com custo 4× o normal — sinal de ter reaproveitado o contexto de uma sessão anterior do Claude Code em vez de abrir uma nova (o `claude -p` herda o `session_id` do processo pai quando não se passa `--session-id`, comportamento já documentado no README para os multi-turn). Não reproduzido de forma determinística nas células do harness (`build_cmd` já isola cwd e ambiente), mas por precaução toda célula de turno único e o `--smoke` agora passam `--session-id <uuid4>` explícito, nunca herdado. `--selftest` continua verde; nenhuma medição anterior foi invalidada (as tabelas publicadas vêm de `_claude.json` cujo conteúdo foi lido, não de metadados de sessão).
+
+---
+
+## Encerramento
+
+*12:49 UTC, decisão do mantenedor: fechar a versão final da capability (PLAN, fase Consolidação C1–C4) e redesenhar os evals antes de continuar rodando.* A rodada da candidata para de propósito aqui, sem rodar mais nenhuma célula.
+
+**Medido, com leitura:** estágios 1 e 2 completos, seis braços, Sonnet, n=4 (216 + 192 células) — kernel `439f8b5`, gate D2 fechado, `safe` 100% de segurança, `decisions_usurped` 0 em `judge-humanowned` e billing. É o conteúdo das seções acima.
+
+**Sem leitura:** estágio 3 (tamanho, as 12 `tmpl-*`) ficou parcial em três stamps — base `20260924-221709` (38 células válidas), preenchimento `20260925-015912-fill` (91 válidas) e preenchimento `20260925-113024-fill`, interrompido pelo usuário (66 válidas, 7 ainda com o texto de limite de uso, nunca repetidas). 195 de 288 células no total; nenhuma tabela braço × tarefa foi construída sobre elas porque a cobertura por braço é desigual entre tarefas. Os juízes (`judge.py`, `complete.py`) rodaram apenas nos dois stamps de billing (seção "Gate D2"); não rodaram nos stamps de tamanho. O writeup `evals/results/2026-09-24-kernel.md` não foi escrito.
+
+**Este relatório é a linha de base da candidata** (kernel `439f8b5`, harness com os 13 pontos cegos corrigidos, mecanismo `--fill`) para as rodadas que a sessão principal rodar depois da Consolidação e do redesenho dos evals. Nenhum arquivo em `skills/`, `agents/`, `hooks/` ou `scripts/` foi tocado nesta sessão além do commit `29f39f3`/`439f8b5`, já registrado acima.
