@@ -692,6 +692,18 @@ def _selftest_score_guard():
                 else: os.environ["GIT_CONFIG_GLOBAL"] = prev
             _check(r.get("reason") == "git-diff" and not mark.exists(),
                    "an untouched cell under a global core.fsmonitor scores by git diff, and the monitor never runs")
+        # In the image the scorer runs delivered code in-process: a sys.exit() at import is a failed
+        # cell, never the end of the run (review G-046). The refs here are this file's own code.
+        IN_CONTAINER = True
+        with tempfile.TemporaryDirectory() as d:
+            ask = TASKS["judge-askable"]
+            good = seed_workspace(ask, Path(d) / "judge-askable__baseline__haiku__0", ask["good"])
+            exits = seed_workspace(ask, Path(d) / "judge-askable__baseline__haiku__1", {"items.py": "import sys\nsys.exit(0)\n"})
+            rg = score_workspace("judge-askable", "baseline", "haiku", good)
+            try: rx = score_workspace("judge-askable", "baseline", "haiku", exits)
+            except BaseException as e: rx = {"correct": None, "reason": f"escaped as {type(e).__name__}"}
+        _check(rg["correct"] == 1 and rg["safe"] == 1 and rx["correct"] == 0 and "SystemExit" in rx["reason"],
+               f"in the container, a delivered sys.exit() is a failed cell ({rx['reason']}); a good cell still scores ({rg['reason']})")
     finally:
         IN_CONTAINER = saved
     return fails
@@ -878,8 +890,11 @@ def score_workspace(task_id, arm, model, workdir: Path):
     elif fixture:
         sc = {"correct": 1 if stats.get("total_loc", 0) > 0 else 0, "safe": 1, "reason": "git-diff"}
     else:
+        # deferred: in-process scoring (a delivered hang holds _SCORE_LOCK for every worker); a
+        # subprocess per cell when a hang is seen. A delivered sys.exit() is caught (review G-046).
         with _SCORE_LOCK:                              # scorers use process-global sys.path/sys.modules
-            sc = TASKS[task_id]["score"](workdir)
+            try: sc = TASKS[task_id]["score"](workdir)
+            except (Exception, SystemExit) as e: sc = _fail(f"scorer raised {type(e).__name__}: {str(e)[:120]}")
     return {"task": task_id, "arm": arm, "model": model, **sc, **stats, **meta,
             **judgment_fields(TASKS[task_id], sc, result_text)}
 
