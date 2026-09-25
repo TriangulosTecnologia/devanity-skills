@@ -1,10 +1,10 @@
-// Self-test for the kernel checks (node:test). Run: node --test scripts/kernel.test.mjs
+// Self-test for the kernel checks (node:test). Run: node --test tests/kernel.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { INVARIANTS, checkInvariants, renderAgentsMd } from './kernel.mjs';
+import { INVARIANTS, checkInvariants, renderAgentsMd } from '../scripts/kernel.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const kernel = readFileSync(join(root, 'skills', 'devanity', 'SKILL.md'), 'utf8');

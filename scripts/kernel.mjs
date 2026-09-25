@@ -3,7 +3,7 @@
 //   node scripts/kernel.mjs invariants        # the load-bearing phrases exist verbatim in SKILL.md and AGENTS.md
 //   node scripts/kernel.mjs build-agents      # regenerate AGENTS.md from SKILL.md (the instruction-only fallback)
 //   node scripts/kernel.mjs check-agents      # fail if AGENTS.md drifted from what build-agents would write
-// Dependency-free. Test: node --test scripts/kernel.test.mjs
+// Dependency-free. Test: node --test tests/kernel.test.mjs
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

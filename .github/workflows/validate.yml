@@ -18,5 +18,5 @@ jobs:
       - run: python3 evals/harness/run.py --selftest
       - run: node scripts/kernel.mjs invariants
       - run: node scripts/kernel.mjs check-agents
-      - run: node --test scripts/validate-skills.test.mjs scripts/kernel.test.mjs tests/*.test.mjs
+      - run: npm test
       - run: node scripts/devanity-rules-ci.mjs --self-check

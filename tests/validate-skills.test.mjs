@@ -1,10 +1,10 @@
-// Dependency-free self-test for the skill validator (node:test). Run: node --test scripts/validate-skills.test.mjs
+// Dependency-free self-test for the skill validator (node:test). Run: node --test tests/validate-skills.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validate, checkRelativeLinks, checkSkillTotal, findUnits, KERNEL_TOKEN_CAP } from './validate-skills.mjs';
+import { validate, checkRelativeLinks, checkSkillTotal, findUnits, KERNEL_TOKEN_CAP } from '../scripts/validate-skills.mjs';
 
 const fm = (name) => `---\nname: ${name}\ndescription: test skill\n---\n\n# ${name}\n`;
 

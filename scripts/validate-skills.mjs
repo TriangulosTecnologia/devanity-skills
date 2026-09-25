@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Minimal, dependency-free skill validator for this repo (TriangulosTecnologia/devanity-skills).
 // Checks the few invariants that break silently; deliberately NOT a markdown/prose linter.
-// Run: node scripts/validate-skills.mjs   ·   Test: node --test scripts/validate-skills.test.mjs
+// Run: node scripts/validate-skills.mjs   ·   Test: node --test tests/validate-skills.test.mjs
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
