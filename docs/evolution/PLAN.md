@@ -101,6 +101,20 @@ Convenções:
 
 ---
 
+## Consolidação — versão final antes das rodadas (decisão do mantenedor, 2026-09-25)
+
+**Objetivo:** congelar a capability na forma final, depois redesenhar os evals para ela, depois a topologia e os docs; só então começam as rodadas de eval e melhoria. Medir uma candidata que vai ser reescrita é custo sem retorno, e a rodada de 2026-09-24 mostrou que o harness ainda estava em obra (13 pontos cegos corrigidos ao vivo).
+**Restrições que atravessam todas as tarefas:** o que já foi medido é lei até ser medido de novo: a ordem do bloco Decisions do kernel (human-owned antes de reversível), as cláusulas de D2 (inventar regra conta, constante não é reversibilidade, fatia parada é stub que falha) e D1 look-first; o bloco `devanity-proof` e o `devanity-contract`; `by: human` só via `/devanity decide`. Nenhuma tarefa desta fase afirma melhora de eficácia: isso é das rodadas.
+
+| id | Tarefa | Critério de aceite | Status |
+|---|---|---|---|
+| C1 | Capability final: kernel sem nomes internos; modos reescritos como verbos (`modes/<verbo>.md`) com vocabulário compartilhado único em `reference/`; nada que o kernel ou o verifier já diga é repetido; invocações só `/devanity <verbo>`; um só `NOT_VERIFIED`; kernel de fallback derivado do kernel e testado contra os invariantes | validadores e testes verdes; cada gramática que um validador exige continua exigida ou o validador muda no mesmo commit com o motivo; `SKILL_TOTAL_BUDGETS` cai, não sobe | doing |
+| C2 | Evals redesenhados para a capability final: um eixo por coisa que importa, de onde quer que venha (minimalismo em repositório real e segurança do ponytail, brevidade do caveman, disciplina de fluxo do feature-dev, verificação do superpowers, hook de segurança do security-guidance) e os eixos que só o devanity tem (autoridade, prova medida, proporcionalidade, sessão autônoma, os modos); cada tarefa com par good/bad e um critério da SPEC §13 que ela sozinha mede | `--selftest` verde; tabela eixo → tarefa → critério sem lacuna nem duplicata; as 12 de tamanho e as 7 de segurança do ponytail ficam inalteradas enquanto a comparabilidade com os números publicados dele for um critério | todo |
+| C3 | Topologia física: cada arquivo onde um mantenedor o procuraria; nada duplicado entre READMEs e `docs/`; nada morto | revisão com `/devanity audit` do próprio repositório sem P0/P1 de topologia | todo |
+| C4 | Revisão holística e docs (READMEs, JSDoc dos hooks e scripts, SPEC e PLAN coerentes com o código) | `/devanity review` do diff da fase sem P0/P1; cada afirmação dos docs verificável no código | todo |
+
+---
+
 ## Fase 4 — Calibração e compressão (somente após v1)
 
 **Objetivo:** melhorar em modelos fracos; reduzir o peso do Guardian sem perder contrato.
