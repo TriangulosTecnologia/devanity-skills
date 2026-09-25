@@ -609,30 +609,13 @@ def score_todo(workdir):
 #    (repair the shared helper) gets right.
 # ======================================================================================
 
-_pkg_path = []   # the one workspace _import_pkg has put on sys.path (at most one entry)
-
-def _evict_under(path):
-    """Drop every cached module whose file lies under `path`: a helper the agent split into its
-    own module is in no scorer's `also` list, and it answered the next import by name (review
-    G-038: cell B scored with cell A's paging.py). Bounded: one pass over sys.modules."""
-    for name, m in list(sys.modules.items()):
-        f = getattr(m, "__file__", None)
-        if f and _contained(str(path), f): sys.modules.pop(name, None)
-
 def _import_pkg(workdir, modname, also=()):
     """Import a produced module by name with workdir on sys.path, so its own intra-repo imports
-    (`from textutils import slugify`) resolve. Fresh each call: drop cached names first, the
-    whole package of `modname` included (a previous workspace's submodules must not survive),
-    every module loaded from the previous workspace (_evict_under), and that workspace's sys.path
-    entry (review G-001: a cell that deleted its module was scored with the last cell's). The
-    current entry stays until the next call, so an import inside a delivered function still
-    resolves while the scorer calls it. Not thread-safe: run.py serializes scoring (_SCORE_LOCK)."""
+    (`from textutils import slugify`) resolve. Each cell is scored in its own process (run.py
+    score_cell), so no other cell's path or module is ever cached here; within one cell a scorer
+    may import several modules or one twice, so the named package and `also` are dropped first."""
     wd = str(workdir)
-    while _pkg_path:
-        old = _pkg_path.pop()
-        while old in sys.path: sys.path.remove(old)
-        _evict_under(old)
-    if wd not in sys.path: sys.path.insert(0, wd); _pkg_path.append(wd)
+    if wd not in sys.path: sys.path.insert(0, wd)
     top = modname.split(".")[0]
     for m in [k for k in sys.modules if k == top or k.startswith(top + ".")] + list(also): sys.modules.pop(m, None)
     try:
@@ -1160,13 +1143,15 @@ def _run_tests(workdir):
     wd = Path(workdir)
     files = [p for p in wd.rglob("*.py") if is_test_file(p, wd)]
     if not files: return False, False
-    saved = list(sys.path); sys.path.insert(0, str(wd))
+    # One cell runs its tests three times (delivered code, seed, partial fix: score_falsetest), each
+    # in a copy with its own durations.py, so every module a run loads leaves with it, namespace
+    # packages included (G-038's sibling: a helper the tests import, cached with the fix inside).
+    saved, saved_mods = list(sys.path), set(sys.modules); sys.path.insert(0, str(wd))
     saved_pytest = sys.modules.get("pytest")
     shim = _pytest_shim(); sys.modules["pytest"] = shim
     skip_exc = shim._Skip
     try:
-        for m in [k for k in sys.modules if k.startswith("_judge_")]: sys.modules.pop(m, None)
-        sys.modules.pop("durations", None)
+        sys.modules.pop("durations", None)             # the scorer's own import of the delivered module
         for i, f in enumerate(files):
             try:
                 spec = importlib.util.spec_from_file_location(f"_judge_{i}", str(f))
@@ -1187,8 +1172,7 @@ def _run_tests(workdir):
         return True, True
     finally:
         sys.path[:] = saved
-        sys.modules.pop("durations", None)
-        _evict_under(wd)                               # a helper the tests import, cached with this run's durations (G-038)
+        for m in set(sys.modules) - saved_mods: sys.modules.pop(m, None)
         if saved_pytest is None: sys.modules.pop("pytest", None)
         else: sys.modules["pytest"] = saved_pytest
 
@@ -2961,6 +2945,20 @@ def registry_problems():
             seen.setdefault(tid, row["axis"])
     out += [f"{tid} has no axis (add it to AXES)" for tid in TASKS if tid not in seen]
     return out
+
+def score_one(task_id, workdir):
+    """The scorer process of one cell (run.py score_cell): the score goes out as one JSON line on
+    the original stdout, and fd 1 is pointed at stderr first, so a delivered print never mixes
+    into it. Anything the scorer or the delivered code raises, SystemExit and KeyboardInterrupt
+    included, is this cell's _fail; os._exit skips the atexit handlers and threads it left."""
+    out = os.fdopen(os.dup(1), "w"); os.dup2(2, 1)
+    try: sc = TASKS[task_id]["score"](Path(workdir))
+    except BaseException as e: sc = _fail(f"scorer: raised {type(e).__name__}: {str(e)[:120]}")
+    out.write(json.dumps(sc, default=str) + "\n"); out.flush(); sys.stderr.flush()
+    os._exit(0)
+
+if __name__ == "__main__" and sys.argv[1:2] == ["--score-one"] and len(sys.argv) == 4:
+    score_one(sys.argv[2], sys.argv[3])
 
 if __name__ == "__main__" and sys.argv[1:] == ["--registry"]:
     # read by scripts/validate-open.mjs, which checks the criteria against SPEC §13
