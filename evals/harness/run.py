@@ -275,8 +275,23 @@ def selftest():
     failures += _selftest_memory_guard()
     failures += _selftest_kill()
     failures += _selftest_cross_cell()
+    failures += _selftest_probes()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
+
+def _selftest_probes():
+    """The review's counter-examples (tasks.PROBES): each seeds its task, writes the probe's files
+    and must score exactly the fields it names. A scorer edit that reopens a blind spot is red here."""
+    from tasks import PROBES
+    fails = 0
+    for label, tid, files, want in PROBES:
+        task = TASKS[tid]
+        with tempfile.TemporaryDirectory() as d:
+            r = task["score"](seed_workspace(task, Path(d), files))
+        ok = all(r.get(k) == v for k, v in want.items())
+        print(f"{'ok ' if ok else 'XX '} probe        {label:34} want {want} -> {r['reason']}")
+        fails += 0 if ok else 1
+    return fails
 
 def _selftest_cross_cell():
     """Scoring one cell must never see another cell's code (review G-001): after a good cell is
