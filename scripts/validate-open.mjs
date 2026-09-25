@@ -171,6 +171,9 @@ function main() {
   const loaded = loadRegistry(root);
   if (loaded.error) fail(loaded.error);
   else for (const e of checkRegistry(loaded.registry, read('docs/evolution/SPEC.md'))) fail(e);
+  // evals/README.md renders the registry for people: an axis missing from its table is drift.
+  const evalsReadme = read('evals/README.md');
+  for (const row of loaded.registry?.axes ?? []) if (!evalsReadme.includes(`| ${row.axis} |`)) fail(`evals/README.md has no row for the eval axis "${row.axis}"`);
   const evalTasks = Object.keys(loaded.registry?.tasks ?? {}).length;
   const evalAxes = (loaded.registry?.axes ?? []).length;
 
