@@ -73,3 +73,28 @@ test('an axis without a README row fails', () => {
   const errors = checkReadme(axes, readme('`reuse-a` `reuse-b`').replace('| real repo |', '| real repos |'));
   assert.ok(errors.some((e) => e.includes('no row') && e.includes('real repo')), errors.join('; '));
 });
+
+// The layout check: SPEC §4.2 names every tracked file outside the generated or enumerable trees,
+// names nothing that is not there, and the README summary names every top-level directory.
+import { checkLayout } from '../scripts/validate-open.mjs';
+const layoutSpec = ['### 4.2 Estrutura', '```', 'hooks/', '  devanity-guard.js   guard', 'README.md  LICENCE', '```', '## 5. O kernel'].join('\n');
+const layoutReadme = ['## Repository layout', '```text', 'hooks/   hooks', 'evals/   evals', '```'].join('\n');
+
+test('a layout that matches the tree passes', () => {
+  assert.deepEqual(checkLayout(['hooks/devanity-guard.js', 'README.md', 'LICENCE', 'evals/results/r.md'], layoutSpec, layoutReadme), []);
+});
+
+test('a tracked file SPEC §4.2 does not name fails', () => {
+  const errors = checkLayout(['hooks/devanity-guard.js', 'hooks/devanity-new.js', 'README.md', 'LICENCE'], layoutSpec, layoutReadme);
+  assert.ok(errors.some((e) => e.includes('hooks/devanity-new.js')), errors.join('; '));
+});
+
+test('a file SPEC §4.2 names that does not exist fails', () => {
+  const errors = checkLayout(['README.md', 'LICENCE'], layoutSpec, layoutReadme);
+  assert.ok(errors.some((e) => e.includes('devanity-guard.js') && e.includes('no tracked file')), errors.join('; '));
+});
+
+test('a top-level directory the README layout omits fails', () => {
+  const errors = checkLayout(['hooks/devanity-guard.js', 'README.md', 'LICENCE', 'tests/x.test.mjs'], layoutSpec, layoutReadme);
+  assert.ok(errors.some((e) => e.includes('tests/') && e.includes('README')), errors.join('; '));
+});

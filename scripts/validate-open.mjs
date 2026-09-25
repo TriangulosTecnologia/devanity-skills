@@ -68,6 +68,41 @@ export function checkReadme(registry, readme) {
   return errors;
 }
 
+// One layout, checked against the tree: the SPEC §4.2 block names every tracked file by its basename
+// (outside the trees a glob already describes: the harness, the dated results, the test suites) and
+// no file that is gone; the README summary names every top-level directory. A layout that is only
+// prose drifts the first time a file moves.
+const LAYOUT_ENUMERABLE = ['evals/harness/', 'evals/results/', 'tests/'];
+export function checkLayout(files, specText, readme) {
+  const errors = [];
+  const fenced = (text, heading, until) => {
+    const from = text.indexOf(heading);
+    if (from < 0) return null;
+    const to = text.indexOf(until, from + heading.length);
+    const section = text.slice(from, to < 0 ? undefined : to);
+    const open = section.indexOf('```');
+    const close = section.indexOf('```', open + 3);
+    return open < 0 || close < 0 ? null : section.slice(section.indexOf('\n', open) + 1, close);
+  };
+  const spec = fenced(String(specText), '### 4.2', '\n## 5.');
+  const summary = fenced(String(readme), '## Repository layout', '\n## ');
+  if (spec === null) return ['docs/evolution/SPEC.md §4.2 has no layout block'];
+  if (summary === null) return ['README.md "Repository layout" has no layout block'];
+  const named = (block, name) => new RegExp(`(^|[\\s/·(])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[\\s/·),])`, 'm').test(block);
+  const basenames = new Set(files.map((f) => f.split('/').pop()));
+  for (const file of files) {
+    if (LAYOUT_ENUMERABLE.some((prefix) => file.startsWith(prefix))) continue;
+    if (!named(spec, file.split('/').pop())) errors.push(`docs/evolution/SPEC.md §4.2 does not name the tracked file ${file}`);
+  }
+  for (const [, name] of spec.matchAll(/(?:^|[\s/·(])([\w.-]+\.(?:md|js|mjs|json|py|yml|sh))(?=$|[\s/·),])/gm)) {
+    if (!basenames.has(name)) errors.push(`docs/evolution/SPEC.md §4.2 names ${name}, but no tracked file has that name`);
+  }
+  for (const dir of new Set(files.filter((f) => f.includes('/')).map((f) => f.split('/')[0]))) {
+    if (!named(summary, `${dir}/`.replace(/\/$/, ''))) errors.push(`README.md "Repository layout" does not name the top-level directory ${dir}/`);
+  }
+  return errors;
+}
+
 // The registry is Python; read it by running the harness's own printer, never by parsing its source.
 export function loadRegistry(root) {
   const r = spawnSync('python3', ['evals/harness/tasks.py', '--registry'], { cwd: root, encoding: 'utf8' });
@@ -189,6 +224,12 @@ function main() {
   if (loaded.error) fail(loaded.error);
   else for (const e of checkRegistry(loaded.registry, read('docs/evolution/SPEC.md'))) fail(e);
   if (loaded.registry) for (const e of checkReadme(loaded.registry, read('evals/README.md'))) fail(e);
+  // Outside a git checkout (a `git archive` extract) there is no tracked set to compare; say so.
+  const tracked = spawnSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' });
+  let layout = 'layout checked against the tree';
+  if (tracked.status === 0 && tracked.stdout.trim()) {
+    for (const e of checkLayout(tracked.stdout.trim().split('\n'), read('docs/evolution/SPEC.md'), read('README.md'))) fail(e);
+  } else layout = 'layout NOT checked (not a git checkout)';
   const evalTasks = Object.keys(loaded.registry?.tasks ?? {}).length;
   const evalAxes = (loaded.registry?.axes ?? []).length;
 
@@ -204,7 +245,7 @@ function main() {
     for (const error of errors) console.error(`  - ${error}`);
     process.exit(1);
   }
-  console.log(`✓ Devanity Open architecture valid: ${expectedSkills.length} capability, ${expectedModes.length} modes, ${expectedAgents.length} agents, ${evalTasks} eval tasks on ${evalAxes} axes, every SPEC §13 criterion accounted for`);
+  console.log(`✓ Devanity Open architecture valid: ${expectedSkills.length} capability, ${expectedModes.length} modes, ${expectedAgents.length} agents, ${evalTasks} eval tasks on ${evalAxes} axes, every SPEC §13 criterion accounted for, ${layout}`);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();
