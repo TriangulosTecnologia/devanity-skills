@@ -33,7 +33,8 @@ import argparse, concurrent.futures, datetime, json, os, re, shutil, signal, sta
 from collections import defaultdict
 from pathlib import Path
 
-from tasks import TASKS, SELFCHECK_DEFS, SKIP_DIFF, is_delivery, is_test_file, proof_fields
+from tasks import (TASKS, SELFCHECK_DEFS, SKIP_DIFF, READ_GIT, DIFF_SAFE, is_delivery, is_test_file, proof_fields,
+                   fixture_git_refusal, _fail)
 import fixture
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -229,9 +230,10 @@ def _git_snapshot(workdir):
 def git_diff_stats(workdir):
     """Added lines (incl comments) of code files the agent created OR modified, vs the seeded
     base. This is the delivered-code metric and matches the '+N' a PR/diff shows. Tests counted
-    separately; lockfiles/generated files skipped."""
-    _git(workdir, "add", "-A")
-    out = _git(workdir, "diff", "--cached", "--numstat", "HEAD").stdout
+    separately; lockfiles/generated files skipped. Call it only on a cell fixture_git_refusal
+    passes; the exec-capable git settings are pinned off here too (tasks.READ_GIT)."""
+    _git(workdir, *READ_GIT, "add", "-A")
+    out = _git(workdir, *READ_GIT, "diff", *DIFF_SAFE, "--cached", "--numstat", "HEAD").stdout
     loc = files = test_loc = test_files = 0
     for line in out.splitlines():
         parts = line.split("\t")
@@ -612,8 +614,9 @@ def _selftest_tier_guard():
 
 def _selftest_score_guard():
     """Delivered code is untrusted, so scoring a cell whose scorer executes it refuses outside the
-    container (review G-002), on --rescore as on a live run; a fixture cell (git diff, nothing
-    executed) scores anywhere. Proven with IN_CONTAINER forced off, so it holds inside the image too."""
+    container (review G-002), on --rescore as on a live run; a fixture cell is read by git, which
+    runs nothing delivered only while its .git/config is the one git init wrote, so any other is
+    refused (review G-036). Proven with IN_CONTAINER forced off, so it holds inside the image too."""
     global IN_CONTAINER
     fails, saved = 0, IN_CONTAINER
     def _check(ok, label):
@@ -639,6 +642,44 @@ def _selftest_score_guard():
             _git_snapshot(fx)
             _check(not _exits(lambda: score_workspace("tmpl-be-count", "baseline", "haiku", fx)),
                    "a fixture cell (git diff only) scores outside the container")
+            # The cell's .git is agent-writable, and git runs commands its config names (review
+            # G-036: a core.fsmonitor ran on host scoring and in the judges' source_text).
+            from tasks import source_text
+            bad = root / "tmpl-be-count__baseline__haiku__1"; bad.mkdir()
+            (bad / "app.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+            _git_snapshot(bad)
+            (bad / "app.py").write_text("def a():\n    return 2\n", encoding="utf-8")
+            (bad / "_claude.json").write_text(json.dumps({"result": "done"}), encoding="utf-8")
+            mark = root / "FSMONITOR_RAN"
+            cfg = bad / ".git" / "config"
+            cfg.write_text(cfg.read_text(encoding="utf-8") + f'[core]\n\tfsmonitor = "touch {mark}; echo"\n', encoding="utf-8")
+            try: r = score_workspace("tmpl-be-count", "baseline", "haiku", bad)
+            except SystemExit as e: r = {"reason": f"exit: {e}"}
+            _check(str(r.get("reason", "")).startswith("refused") and not mark.exists(),
+                   f"a fixture cell whose .git/config names a command is refused, and nothing runs -> {r.get('reason')}")
+            text = source_text(bad, TASKS["tmpl-be-count"])
+            _check(text.startswith("# refused") and not mark.exists(),
+                   "the judges' source_text refuses the same cell, and nothing runs")
+            other = []                               # the other ways to hand git a config the harness never wrote
+            for i, tamper in enumerate(("commondir", "config.worktree", "gitfile")):
+                c = root / f"tmpl-be-count__baseline__haiku__{2 + i}"; c.mkdir(); _git_snapshot(c)
+                if tamper == "gitfile": shutil.rmtree(c / ".git"); (c / ".git").write_text(f"gitdir: {bad / '.git'}\n", encoding="utf-8")
+                else: (c / ".git" / tamper).write_text("../x\n" if tamper == "commondir" else "", encoding="utf-8")
+                if not str(score_workspace("tmpl-be-count", "baseline", "haiku", c).get("reason", "")).startswith("refused"): other.append(tamper)
+            _check(not other and not mark.exists(), f"a .git that is a gitfile or carries commondir/config.worktree is refused ({', '.join(other) or 'all 3'})")
+            # A config git init wrote is still read with the exec-capable settings pinned off, so a
+            # command the host's own config (or one git added later) names never runs either.
+            gcfg = root / "global.gitconfig"
+            gcfg.write_text(f'[core]\n\tfsmonitor = "touch {mark}; echo"\n', encoding="utf-8")
+            prev = os.environ.get("GIT_CONFIG_GLOBAL"); os.environ["GIT_CONFIG_GLOBAL"] = str(gcfg)
+            try:
+                r = score_workspace("tmpl-be-count", "baseline", "haiku", fx)
+                source_text(fx, TASKS["tmpl-be-count"])
+            finally:
+                if prev is None: os.environ.pop("GIT_CONFIG_GLOBAL", None)
+                else: os.environ["GIT_CONFIG_GLOBAL"] = prev
+            _check(r.get("reason") == "git-diff" and not mark.exists(),
+                   "an untouched cell under a global core.fsmonitor scores by git diff, and the monitor never runs")
     finally:
         IN_CONTAINER = saved
     return fails
@@ -812,13 +853,17 @@ def score_workspace(task_id, arm, model, workdir: Path):
     require_container_to_score([task_id])
     meta, result_text = _cell_meta(workdir)
     fixture = bool(TASKS[task_id].get("fixture"))
-    stats = git_diff_stats(workdir) if fixture else code_stats(workdir)
+    refused = fixture and fixture_git_refusal(workdir)          # review G-036: never run git on agent-written config
+    stats = (dict.fromkeys(("files", "src_files", "total_loc", "src_loc", "test_files", "test_loc"), 0) if refused
+             else git_diff_stats(workdir) if fixture else code_stats(workdir))
     # A real-repo ticket answered in the chat instead of a file: count the code the agent delivered
     # there so the comparison isn't a false zero (ponytail's rule, kept for comparability).
-    if fixture and stats["total_loc"] == 0 and result_text:
+    if fixture and not refused and stats["total_loc"] == 0 and result_text:
         t, c = chat_code_loc(result_text)
         stats = {**stats, "total_loc": t, "src_loc": c, "src_files": 1 if t else 0}
-    if fixture:
+    if refused:
+        sc = _fail(refused)
+    elif fixture:
         sc = {"correct": 1 if stats.get("total_loc", 0) > 0 else 0, "safe": 1, "reason": "git-diff"}
     else:
         with _SCORE_LOCK:                              # scorers use process-global sys.path/sys.modules

@@ -35,7 +35,7 @@ Task fields:
   axis, criterion, why : what the task measures, the SPEC §13 line it serves and why it exists;
            set from AXES at the bottom of this file, the single registry of intent
 """
-import hashlib, hmac, importlib, importlib.util, inspect, json, os, py_compile, sqlite3, sys, tempfile
+import functools, hashlib, hmac, importlib, importlib.util, inspect, json, os, py_compile, sqlite3, sys, tempfile
 import re as _re, shutil as _shutil, subprocess as _sp
 from pathlib import Path
 
@@ -818,6 +818,33 @@ def is_delivery(workdir, p):
 # Lockfiles and generated files: never the agent's authored delivery (run.py's LOC and the judges).
 SKIP_DIFF = ("-lock", ".lock", ".gen.ts", "lock.json", "routeTree.gen")
 
+# A fixture cell is read by running git in its own .git, which lives in the agent's workspace, and
+# git runs commands its config names (core.fsmonitor, filter.*, diff.external, textconv): review
+# G-036 saw a core.fsmonitor run on host scoring and in the judges' text. So git reads a cell only
+# when its .git/config is byte-identical to the one `git init` writes here, and every read pins the
+# exec-capable settings off (READ_GIT, DIFF_SAFE), which also covers a command the host's own config
+# names. deferred: byte equality refuses a cell whose filesystem makes git init probe differently
+# (ignorecase, symlinks) or a stamp snapshotted by another git version; compare the parsed config
+# when a real stamp is refused.
+READ_GIT = ("-c", "core.fsmonitor=false")
+DIFF_SAFE = ("--no-ext-diff", "--no-textconv")
+
+@functools.lru_cache(maxsize=1)
+def _fresh_git_config():
+    with tempfile.TemporaryDirectory() as d:
+        _sp.run(["git", "init", "-q", d], capture_output=True)
+        return (Path(d) / ".git" / "config").read_bytes()
+
+def fixture_git_refusal(workdir):
+    """Why git must not run in this fixture cell, or "" when it may (see READ_GIT)."""
+    g = Path(workdir) / ".git"
+    if g.is_symlink() or not g.is_dir(): return "refused: .git is not the directory the harness created"
+    if (g / "commondir").exists() or (g / "config.worktree").exists():
+        return "refused: .git points git at a config the harness did not write"
+    try: same = (g / "config").read_bytes() == _fresh_git_config()
+    except OSError: same = False
+    return "" if same else "refused: .git/config is not the one git init wrote (agent-writable config can name commands git runs)"
+
 def source_text(workdir: Path, task=None):
     """What the LLM judges (judge.py, complete.py) read: the agent's DELIVERY, tests excluded, with
     name headers (review G-012: the whole workspace sent 1.5 MB of untouched template per tmpl-*
@@ -826,11 +853,14 @@ def source_text(workdir: Path, task=None):
     Harness and VCS state is never included (is_delivery); `__init__.py` is code."""
     workdir = Path(workdir)
     if task and task.get("fixture"):
-        _git(workdir, "add", "-A")
-        names = [n for n in _git(workdir, "diff", "--cached", "--name-only", "HEAD").stdout.splitlines()
+        refusal = fixture_git_refusal(workdir)
+        if refusal: return f"# {refusal}\n"
+        _git(workdir, *READ_GIT, "add", "-A")
+        names = [n for n in _git(workdir, *READ_GIT, "diff", *DIFF_SAFE, "--cached", "--name-only", "HEAD").stdout.splitlines()
                  if n and is_delivery(workdir, workdir / n) and not is_test_file(workdir / n, workdir)
                  and not any(k in n for k in SKIP_DIFF) and "node_modules" not in n]
-        return (f"# === git diff vs the seeded base ===\n" + _git(workdir, "diff", "--cached", "HEAD", "--", *names).stdout) if names else ""
+        return (f"# === git diff vs the seeded base ===\n"
+                + _git(workdir, *READ_GIT, "diff", *DIFF_SAFE, "--cached", "HEAD", "--", *names).stdout) if names else ""
     if task is not None:
         changed, new = _touched(workdir, task.get("seed", {}))
         paths = [workdir / f for f in changed + new]
