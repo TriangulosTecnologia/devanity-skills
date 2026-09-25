@@ -20,15 +20,15 @@ FIELD=baseline,ponytail,superpowers,caveman,feature-dev,security-guidance,senior
 # minimal diff on a real repo (size tier, no Bash, comparable to ponytail) — host or container:
 python3 run.py --task tmpl-fe-datepicker,tmpl-fe-colorpicker,tmpl-fe-command,tmpl-fe-dropzone,tmpl-fe-wizard,tmpl-fe-rating,tmpl-be-duplicate,tmpl-be-search,tmpl-be-count,tmpl-be-archive,tmpl-be-bulkdelete,tmpl-be-csv \
   --arms $FIELD --models sonnet --runs 4 --workers 6
-# every other axis — container only (the scorers and the agents execute delivered code):
+# every other axis, in the runbook's stage order (evals/RUNBOOK.md step 4) — container only (the scorers and the agents execute delivered code):
 ./container.sh python3 run.py --task safe-path,critic-email,rate-limit,sql-user,auth-token,csv-sum,todo-null,cache,sec-shell \
   --arms $FIELD --models sonnet --runs 4 --workers 4                                            # safety
+./container.sh python3 run.py --task judge-humanowned,vibe-autonomous-billing,judge-nochange,judge-askable,judge-falsetest,trace-transfer,reuse-slug,reuse-money,conv-exporter,authority-ship \
+  --arms $FIELD --models sonnet --runs 4 --workers 4                                            # authority and judgment
 ./container.sh python3 run.py --task rung2-rename,rung2-typo,rung2-constant \
   --arms $FIELD --models sonnet --runs 4 --workers 4                                            # rung-2 cost
-./container.sh python3 run.py --task judge-nochange,judge-askable,judge-humanowned,judge-falsetest,trace-transfer,reuse-slug,reuse-money,conv-exporter,authority-ship \
-  --arms $FIELD --models sonnet --runs 4 --workers 4                                            # judgment, conventions, authority
-./container.sh python3 run.py --task vibe-app-cli,vibe-app-web,vibe-autonomous-billing,long-3-tickets,long-compact \
-  --arms $FIELD --models sonnet --runs 4 --workers 4                                            # greenfield, autonomy, drift
+./container.sh python3 run.py --task vibe-app-cli,vibe-app-web,long-3-tickets,long-compact \
+  --arms $FIELD --models sonnet --runs 4 --workers 4                                            # greenfield and long horizon
 ./container.sh python3 run.py --task mode-review,mode-review-clean,mode-audit,mode-plan,mode-architect \
   --arms devanity --models sonnet --runs 4 --workers 4                                          # the modes (devanity only)
 ./container.sh python3 run.py --rescore /runs/<stamp>   # 6. recompute metrics offline (the scorers execute delivered code: container; a tmpl-*-only stamp may rescore on the host, where git reads a cell only while its .git/config is the one git init wrote)

@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// The repository's architecture, checked against what is on disk: the deliberate capability, mode and
+// agent sets, retired names and token spellings in what the model loads, canonical repository identity,
+// protocol JSON, the eval registry against SPEC §13 and its two renderings (evals/README.md, the harness
+// README's reference round), the ported harness attribution, and the SPEC §4.2 layout against the tree.
+// Run: node scripts/validate-open.mjs   ·   Test: node --test tests/validate-open.test.mjs
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -88,19 +93,54 @@ export function checkLayout(files, specText, readme) {
   const summary = fenced(String(readme), '## Repository layout', '\n## ');
   if (spec === null) return ['docs/evolution/SPEC.md §4.2 has no layout block'];
   if (summary === null) return ['README.md "Repository layout" has no layout block'];
-  const named = (block, name) => new RegExp(`(^|[\\s/·(])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[\\s/·),])`, 'm').test(block);
-  const basenames = new Set(files.map((f) => f.split('/').pop()));
+  // The block is a tree. A line's leading segments (split on two or more spaces) that look like a
+  // file or directory name are names, the rest is annotation; a first name ending in "/" opens that
+  // directory for the more-indented lines below it, and "evolution/SPEC.md  PLAN.md" shares the
+  // first name's directory. Paths are compared whole: a basename listed elsewhere describes nothing.
+  const isName = (seg) => /^[\w.<>-]+(\/[\w.-]*)*$/.test(seg) && (seg.includes('.') || seg.endsWith('/') || /^[A-Z]+$/.test(seg));
+  const listed = new Set();
+  const dirs = new Set();
+  const stack = [];
+  for (const line of spec.split('\n')) {
+    if (!line.trim()) continue;
+    const indent = line.length - line.trimStart().length;
+    while (stack.length && stack.at(-1).indent >= indent) stack.pop();
+    const base = stack.length ? stack.at(-1).path : '';
+    const names = [];
+    for (const seg of line.trim().split(/\s{2,}/)) { if (!isName(seg)) break; names.push(seg); }
+    const shared = names[0] && !names[0].endsWith('/') && names[0].includes('/') ? names[0].slice(0, names[0].lastIndexOf('/') + 1) : '';
+    names.forEach((name, i) => {
+      const path = base + (i ? shared : '') + name;
+      if (name.endsWith('/')) dirs.add(path); else listed.add(path);
+    });
+    if (names[0]?.endsWith('/')) stack.push({ indent, path: base + names[0] });
+  }
+  const tracked = new Set(files);
   for (const file of files) {
     if (LAYOUT_ENUMERABLE.some((prefix) => file.startsWith(prefix))) continue;
-    if (!named(spec, file.split('/').pop())) errors.push(`docs/evolution/SPEC.md §4.2 does not name the tracked file ${file}`);
+    if (!listed.has(file)) errors.push(`docs/evolution/SPEC.md §4.2 does not name the tracked file ${file}`);
   }
-  for (const [, name] of spec.matchAll(/(?:^|[\s/·(])([\w.-]+\.(?:md|js|mjs|json|py|yml|sh))(?=$|[\s/·),])/gm)) {
-    if (!basenames.has(name)) errors.push(`docs/evolution/SPEC.md §4.2 names ${name}, but no tracked file has that name`);
-  }
+  for (const path of listed) if (!tracked.has(path)) errors.push(`docs/evolution/SPEC.md §4.2 names ${path}, but no tracked file is at that path`);
+  for (const dir of dirs) if (!files.some((f) => f.startsWith(dir))) errors.push(`docs/evolution/SPEC.md §4.2 names ${dir}, but no tracked file is under it`);
+  const named = (block, name) => new RegExp(`(^|[\\s/·(])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=$|[\\s/·),])`, 'm').test(block);
   for (const dir of new Set(files.filter((f) => f.includes('/')).map((f) => f.split('/')[0]))) {
     if (!named(summary, `${dir}/`.replace(/\/$/, ''))) errors.push(`README.md "Repository layout" does not name the top-level directory ${dir}/`);
   }
   return errors;
+}
+
+// The reference round is the fenced block of evals/harness/README.md that sets FIELD: its `--task`
+// lines together name every registry task once and nothing else, or a new task is silently never run.
+export function checkHarnessCommands(registry, harnessReadme) {
+  const round = String(harnessReadme).split('```').find((block) => /^FIELD=/m.test(block));
+  if (!round) return ['evals/harness/README.md has no reference-round block (the fenced block that sets FIELD=)'];
+  const listed = [...round.matchAll(/--task ([\w,-]+)/g)].flatMap((m) => m[1].split(','));
+  const tasks = Object.keys(registry?.tasks ?? {});
+  return [
+    ...tasks.filter((id) => !listed.includes(id)).map((id) => `evals/harness/README.md runs the task ${id} in no --task line`),
+    ...[...new Set(listed)].filter((id) => !tasks.includes(id)).map((id) => `evals/harness/README.md runs ${id} , which is not a registry task`),
+    ...[...new Set(listed)].filter((id) => listed.indexOf(id) !== listed.lastIndexOf(id)).map((id) => `evals/harness/README.md runs ${id} in more than one --task line`),
+  ];
 }
 
 // The registry is Python; read it by running the harness's own printer, never by parsing its source.
@@ -224,6 +264,7 @@ function main() {
   if (loaded.error) fail(loaded.error);
   else for (const e of checkRegistry(loaded.registry, read('docs/evolution/SPEC.md'))) fail(e);
   if (loaded.registry) for (const e of checkReadme(loaded.registry, read('evals/README.md'))) fail(e);
+  if (loaded.registry) for (const e of checkHarnessCommands(loaded.registry, read('evals/harness/README.md'))) fail(e);
   // Outside a git checkout (a `git archive` extract) there is no tracked set to compare; say so.
   const tracked = spawnSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' });
   let layout = 'layout checked against the tree';

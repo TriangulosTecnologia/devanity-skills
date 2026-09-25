@@ -98,3 +98,31 @@ test('a top-level directory the README layout omits fails', () => {
   const errors = checkLayout(['hooks/devanity-guard.js', 'README.md', 'LICENCE', 'tests/x.test.mjs'], layoutSpec, layoutReadme);
   assert.ok(errors.some((e) => e.includes('tests/') && e.includes('README')), errors.join('; '));
 });
+
+// G-003 (C3 audit): a basename is not a path. The same name in another directory, or a file under a
+// directory the block never opens, is not described by the layout.
+test('a file whose basename is listed under another directory fails', () => {
+  const errors = checkLayout(['hooks/devanity-guard.js', 'scripts/devanity-guard.js', 'README.md', 'LICENCE'], layoutSpec,
+    ['## Repository layout', '```text', 'hooks/  h', 'scripts/  s', '```'].join('\n'));
+  assert.ok(errors.some((e) => e.includes('scripts/devanity-guard.js')), errors.join('; '));
+});
+
+test('a nested directory the block names resolves under its parent', () => {
+  const spec = ['### 4.2', '```', 'docs/', '  evolution/SPEC.md  PLAN.md   spec; plan', '  hooks.md                  hooks', 'README.md', '```', '## 5.'].join('\n');
+  const readme = ['## Repository layout', '```text', 'docs/  d', '```'].join('\n');
+  assert.deepEqual(checkLayout(['docs/evolution/SPEC.md', 'docs/evolution/PLAN.md', 'docs/hooks.md', 'README.md'], spec, readme), []);
+  const errors = checkLayout(['docs/evolution/SPEC.md', 'docs/evolution/PLAN.md', 'docs/README.md', 'README.md'], spec, readme);
+  assert.ok(errors.some((e) => e.includes('docs/README.md')), errors.join('; '));
+  assert.ok(errors.some((e) => e.includes('docs/hooks.md') && e.includes('no tracked file')), errors.join('; '));
+});
+
+// G-005 (C3 audit): the reference round runs the harness README's command lines; a task the registry
+// has and no line names is silently never run.
+import { checkHarnessCommands } from '../scripts/validate-open.mjs';
+test('the harness command lines run every registry task and nothing else', () => {
+  const reg = { tasks: { a: {}, b: {} } };
+  const round = (body) => ['```bash', 'FIELD=x', body, '```', 'example: run.py --task a'].join('\n');
+  assert.deepEqual(checkHarnessCommands(reg, round('python3 run.py --task a \\\n./container.sh python3 run.py --task b')), []);
+  const errors = checkHarnessCommands(reg, round('python3 run.py --task a,c'));
+  assert.ok(errors.some((e) => e.includes(' b ')) && errors.some((e) => e.includes(' c ')), errors.join('; '));
+});

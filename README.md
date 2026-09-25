@@ -81,7 +81,7 @@ Every mode reads and writes the same objects:
 
 What is measured, and against which competitor, is the axis table in [`evals/README.md`](evals/README.md); numbers come from [`evals/harness/`](evals/harness/): real headless Claude Code sessions on seeded repositories, scored on the files they leave behind, with deterministic safety checks, judgment traps, rung-2 cost, the modes, vibe and long-horizon tasks, and auditable LLM judges. Nothing in the kernel changes without a number from there.
 
-Repository CI validates the capability's structure (kernel caps, mode routing, each mode's load set, the finding and decision grammars), the deliberate capability and mode set, canonical repository identity, protocol JSON, the eval registry against the SPEC's success criteria, and the attribution of ported harness code.
+What repository CI checks is [`.github/workflows/validate.yml`](.github/workflows/validate.yml): each step is one command, and each command's header says what it validates.
 
 ## Repository layout
 
@@ -96,7 +96,7 @@ evals/               the measured axes, the runbook, the harness, dated results
 AGENTS.md            the kernel for hosts that run no hooks (generated)
 devanity.rules.json  this repository's own rules
 .claude-plugin/      plugin manifest and marketplace
-.github/             CI
+.github/             CI, and the CI job template for consumer repositories
 ```
 
 Every file, one line each: [SPEC §4.2](docs/evolution/SPEC.md#42-estrutura-de-arquivos-alvo).

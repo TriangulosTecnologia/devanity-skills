@@ -63,7 +63,7 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 │    contratos · provas · decisões · adiamentos · false-ready
 │
 └─ HARNESS  evals/harness/  (Claude Code headless; repo real pinado; braços isolados; referências good/bad)
-     12 tarefas de tamanho (ponytail) + 5 armadilhas de julgamento (novas)
+     o registro AXES: eixos e tarefas (evals/README.md)
 ```
 
 ### 4.1 Origem de cada peça
@@ -78,7 +78,7 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 
 ### 4.2 Estrutura de arquivos alvo
 
-Como consolidada em C1 (decisão de 2026-09-25, PLAN "Decisões registradas"): o kernel roteia cada verbo para `modes/<verbo>.md`; cada modo declara na linha `Load:` o que carrega de `reference/`, e cada gramática vive num só arquivo que os modos citam. Este é o único layout detalhado do repositório (o README resume o nível de cima); `validate-open.mjs` falha quando um arquivo rastreado fora de `evals/harness/`, `evals/results/` e `tests/` não aparece aqui pelo nome, ou quando uma entrada da raiz falta no README.
+Como consolidada em C1 (decisão de 2026-09-25, PLAN "Decisões registradas"): o kernel roteia cada verbo para `modes/<verbo>.md`; cada modo declara na linha `Load:` o que carrega de `reference/`, e cada gramática vive num só arquivo que os modos citam. Este é o único layout detalhado do repositório (o README resume o nível de cima); `validate-open.mjs` lê este bloco como árvore (a indentação abre diretórios) e falha quando um arquivo rastreado fora de `evals/harness/`, `evals/results/` e `tests/` não aparece no seu caminho, quando um caminho listado não existe, ou quando um diretório de topo falta no README.
 
 ```
 skills/devanity/
@@ -123,12 +123,15 @@ evals/
   README.md                     os eixos medidos (renderiza AXES; validado)
   RUNBOOK.md                    a rodada de referência F1.13: ordem e regras de parada
   kernel-sentences.md           tabela viva frase do kernel → métrica
-  harness/                      run.py · selftest.py · tasks.py (tarefas e o registro AXES) · judge.py · complete.py · fixture.py · build_plugins.py · container/
+  harness/                      run.py · selftest.py · tasks.py (tarefas e o registro AXES) · judge.py · complete.py · fixture.py · build_plugins.py · container.sh + container/ (a imagem) · arms/devanity-v0/ · LICENSE-ponytail
   results/                      writeups datados, commitados
 AGENTS.md                       kernel sem frontmatter e sem as seções de host, gerado de SKILL.md
 devanity.rules.json             as regras deste próprio repositório (dogfood)
-.claude-plugin/                 plugin.json (manifest) · marketplace.json (`/plugin marketplace add`)
-.github/workflows/              validate.yml (CI) · devanity-rules.example.yml (modelo para o consumidor)
+.claude-plugin/
+  plugin.json  marketplace.json  manifest; marketplace de um plugin (`/plugin marketplace add`)
+.github/workflows/
+  validate.yml                  o CI deste repositório
+  devanity-rules.example.yml    modelo de job para o repositório consumidor (inerte aqui)
 README.md  LICENCE  package.json  .gitignore
 ```
 
