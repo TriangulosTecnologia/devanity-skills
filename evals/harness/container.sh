@@ -2,7 +2,7 @@
 # Host-side wrapper for the devanity harness container (PLAN F0.9, SPEC §9, guardrail 15).
 #
 #   ./container.sh                                  # python3 run.py --selftest inside the container
-#   ./container.sh python3 run.py --arm baseline ... # any harness command; arguments are forwarded
+#   ./container.sh python3 run.py --arms baseline ... # any harness command; arguments are forwarded
 #   DEVANITY_HARNESS_NETWORK=none ./container.sh     # fully offline (the selftest needs no network)
 #
 # Builds the image devanity-harness:local from container/ if it is missing, then runs one disposable

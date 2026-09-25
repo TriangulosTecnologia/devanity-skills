@@ -91,7 +91,7 @@ A killed cell is still scored on its files; its stderr ends in `[KILLED after Ns
 
 ```bash
 ./container.sh                                     # build devanity-harness:local if missing, then: python3 run.py --selftest
-./container.sh python3 run.py --arm baseline --model haiku --task safe-path   # any harness command; args are forwarded
+./container.sh python3 run.py --arms baseline --model haiku --task safe-path   # any harness command; args are forwarded
 DEVANITY_HARNESS_NETWORK=none ./container.sh       # selftest fully offline
 DEVANITY_HARNESS_REBUILD=1 ./container.sh          # rebuild (new Claude Code release, Dockerfile change)
 ```

@@ -96,8 +96,8 @@ ARMS = {
     "ponytail":          {"plugins": ["ponytail"]},            # craft / minimalism
     "superpowers":       {"plugins": ["superpowers"]},         # TDD, root-cause debugging, verify before done
     "caveman":           {"plugins": ["caveman"]},             # terse prose, normal code (is it just brevity?)
-    "feature-dev":       {"plugins": ["feature-dev"]},         # official 7-phase workflow (maestro's counterpart)
-    "security-guidance": {"plugins": ["security-guidance"]},   # official always-on security hook (guards' counterpart)
+    "feature-dev":       {"plugins": ["feature-dev"]},         # official 7-phase workflow (/devanity plan's counterpart)
+    "security-guidance": {"plugins": ["security-guidance"]},   # official always-on security hook (devanity-guard's counterpart)
     # control
     "senior-oneliner":   {"plugins": [], "append": SENIOR_ONELINER},
     # ours: released (regression reference, never in the public writeup), the v0 control (F1.1: the
