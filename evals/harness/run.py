@@ -251,6 +251,8 @@ def selftest():
     """Each task's good ref must score correct+safe; the bad ref must be caught on its
     declared axis. Verifies the instruments before any API spend."""
     failures = 0
+    # The repository's own references, trusted code: scored directly, on the host or in the image.
+    # Cells (agent-written code) are scored only through score_workspace, which needs the container.
     for tid, task in TASKS.items():
         if "good" not in task: continue  # fixture tasks: scored by git diff, no good/bad refs
         caught = task.get("caught", "safe")
@@ -435,7 +437,40 @@ def _selftest_tier_guard():
     ok = ok and "--disallowedTools" in _cell_cmd_flags({"tier": "size"}, in_container=False)
     ok = ok and "--disallowedTools" not in _cell_cmd_flags({"tier": "behavior"}, in_container=True)
     print(f"{'ok ' if ok else 'XX '} tier_guard   behavior tier refuses to run outside the container")
-    return 0 if ok else 1
+    return (0 if ok else 1) + _selftest_score_guard()
+
+def _selftest_score_guard():
+    """Delivered code is untrusted, so scoring a cell whose scorer executes it refuses outside the
+    container (review G-002), on --rescore as on a live run; a fixture cell (git diff, nothing
+    executed) scores anywhere. Proven with IN_CONTAINER forced off, so it holds inside the image too."""
+    global IN_CONTAINER
+    fails, saved = 0, IN_CONTAINER
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} score_guard  {label}")
+        fails += 0 if ok else 1
+    def _exits(fn):
+        try: fn(); return False
+        except SystemExit: return True
+    IN_CONTAINER = False
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            ws = seed_workspace(TASKS["safe-path"], root / "safe-path__baseline__haiku__0")
+            ran = root / "RAN"               # the delivered module's import-time side effect
+            (ws / "uploads.py").write_text(f"open({str(ran)!r}, 'w').close()\n", encoding="utf-8")
+            _check(_exits(lambda: score_workspace("safe-path", "baseline", "haiku", ws)) and not ran.exists(),
+                   "a cell whose scorer executes delivered code refuses outside the container, before running it")
+            _check(_exits(lambda: rescore(root)) and not ran.exists() and not (root / "results.json").exists(),
+                   "--rescore of a stamp with such a cell refuses before running or writing anything")
+            fx = root / "tmpl-be-count__baseline__haiku__0"; fx.mkdir()
+            (fx / "_claude.json").write_text(json.dumps({"result": "done"}), encoding="utf-8")
+            _git_snapshot(fx)
+            _check(not _exits(lambda: score_workspace("tmpl-be-count", "baseline", "haiku", fx)),
+                   "a fixture cell (git diff only) scores outside the container")
+    finally:
+        IN_CONTAINER = saved
+    return fails
 
 def _selftest_turns():
     """Multi-turn wiring (SPEC §9.1b long-*): turn 1 pins the session (`--session-id <uuid>`), every
@@ -585,7 +620,25 @@ def _cell_meta(workdir: Path):
 # of agent time, so it runs one cell at a time.
 _SCORE_LOCK = threading.Lock()
 
+def executes_delivered_code(task_id):
+    """True when scoring this task runs the agent's code (every scorer but the fixture tasks' git
+    diff). Delivered code is untrusted (SPEC §9, PLAN "código do agente é não confiável")."""
+    return not TASKS[task_id].get("fixture")
+
+def require_container_to_score(task_ids):
+    """The trust line for scoring (review G-002): a CELL's workspace holds code an agent wrote, so a
+    scorer that executes it runs only inside the harness container, on --rescore as on a live run.
+    The selftest is the other side of the line: it scores the repository's own good/bad
+    references (trusted code, reviewed like any other file here) and calls the scorers directly,
+    never through score_workspace, so it runs on the host. No variable a user sets moves the line;
+    IN_CONTAINER is set only by the image."""
+    untrusted = sorted({t for t in task_ids if executes_delivered_code(t)})
+    if untrusted and not IN_CONTAINER:
+        sys.exit("refusing to score outside the harness container: these tasks' scorers execute delivered code: "
+                 + ", ".join(untrusted) + "\nrun it as ./container.sh python3 run.py ... (runs/ is mounted at /runs)")
+
 def score_workspace(task_id, arm, model, workdir: Path):
+    require_container_to_score([task_id])
     meta, result_text = _cell_meta(workdir)
     fixture = bool(TASKS[task_id].get("fixture"))
     stats = git_diff_stats(workdir) if fixture else code_stats(workdir)
@@ -957,11 +1010,11 @@ def rescore(run_dir):
     run_dir = Path(run_dir)
     if not run_dir.exists():                     # accept "<stamp>" or "runs/<stamp>" from any cwd
         run_dir = RUNS_DIR / run_dir.name
+    cells = [(ws, ws.name.split("__")) for ws in sorted(p for p in run_dir.iterdir() if p.is_dir())]
+    cells = [(ws, parts) for ws, parts in cells if len(parts) == 4 and parts[0] in TASKS]
+    require_container_to_score([parts[0] for _, parts in cells])          # before scoring any cell
     results = []
-    for ws in sorted(p for p in run_dir.iterdir() if p.is_dir()):
-        parts = ws.name.split("__")
-        if len(parts) != 4 or parts[0] not in TASKS: continue
-        tid, arm, model, _r = parts
+    for ws, (tid, arm, model, _r) in cells:
         results.append(score_workspace(tid, arm, model, ws))
     rows = aggregate(results)
     (run_dir / "results.json").write_text(json.dumps({"rescored": True, "results": results}, indent=2), encoding="utf-8")
@@ -1068,6 +1121,7 @@ def main():
                     else ([t.strip() for t in args.task.split(",")] if args.task else []))
         if not task_ids: sys.exit("give --task <id> (comma list ok), --all, --fill <dir>, or --rescore <dir>")
         models = [m.strip() for m in (args.model or args.models).split(",")]
+    require_container_to_score(task_ids)                                   # before any API spend
     if any(TASKS[t].get("fixture") for t in task_ids): fixture.ensure()   # pinned clone or stop, before any API
     arms = [a.strip() for a in args.arms.split(",")]
     memory_guard(RUNS_DIR)                                                 # before any API spend
