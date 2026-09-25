@@ -173,7 +173,7 @@ def run(run_dir, key):
         cells.append((parts[0], parts[1], parts[2], ws))
     print(f"judging {len(cells)} workspaces with {judge_backend_label()} ...")
     for i, (tid, arm, model, ws) in enumerate(cells, 1):
-        s = parse_score(judge_call(TASKS[tid]["prompt"], source_text(ws), key)) or {"over_engineering": None}
+        s = parse_score(judge_call(TASKS[tid]["prompt"], source_text(ws, TASKS[tid]), key)) or {"over_engineering": None}
         rec = {"task": tid, "arm": arm, "model": model, "over_engineering": s.get("over_engineering"),
                "why": s.get("why", ""), "cite": s.get("cite", "")}
         scored.append(rec)

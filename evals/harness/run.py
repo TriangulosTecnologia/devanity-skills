@@ -33,7 +33,7 @@ import argparse, concurrent.futures, datetime, json, os, re, shutil, signal, sta
 from collections import defaultdict
 from pathlib import Path
 
-from tasks import TASKS, SELFCHECK_DEFS, is_delivery, is_test_file, proof_fields
+from tasks import TASKS, SELFCHECK_DEFS, SKIP_DIFF, is_delivery, is_test_file, proof_fields
 import fixture
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -225,7 +225,6 @@ def _git_snapshot(workdir):
     _git(workdir, "-c", "user.email=bench@local", "-c", "user.name=bench",
          "commit", "-q", "-m", "base", "--no-verify")
 
-_SKIP_DIFF = ("-lock", ".lock", ".gen.ts", "lock.json", "routeTree.gen")
 def git_diff_stats(workdir):
     """Added lines (incl comments) of code files the agent created OR modified, vs the seeded
     base. This is the delivered-code metric and matches the '+N' a PR/diff shows. Tests counted
@@ -239,7 +238,7 @@ def git_diff_stats(workdir):
         added, _deleted, path = parts
         if added == "-": continue                              # binary
         if Path(path).suffix not in CODE_EXT: continue
-        if any(k in path for k in _SKIP_DIFF) or "node_modules" in path: continue
+        if any(k in path for k in SKIP_DIFF) or "node_modules" in path: continue
         n = int(added)
         if is_test_file(Path(workdir) / path, Path(workdir)): test_loc += n; test_files += 1
         else: loc += n; files += 1
@@ -278,6 +277,7 @@ def selftest():
     failures += _selftest_seeded_checks()
     failures += _selftest_remote_excluded()
     failures += _selftest_delivery_rule()
+    failures += _selftest_judged_text()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
 
@@ -325,6 +325,36 @@ def _selftest_delivery_rule():
         ok = got == (len(want) if name == "code_stats" else want)
         print(f"{'ok ' if ok else 'XX '} delivery     {name:13} -> {got}")
         fails += 0 if ok else 1
+    return fails
+
+def _selftest_judged_text():
+    """The LLM judges read what the agent delivered, never the seed it was handed (review G-012: a
+    tmpl-* cell sent 1.5 MB of untouched template, so the completeness judge that defends the LOC
+    criterion was blind): a seeded task sends the changed and new files, a fixture task its git
+    diff against the snapshot base."""
+    from tasks import source_text
+    fails = 0
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} judged_text  {label}")
+        fails += 0 if ok else 1
+    conv = TASKS["conv-exporter"]
+    with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+        untouched = source_text(seed_workspace(conv, Path(a)), conv)
+        good = source_text(seed_workspace(conv, Path(b), conv["good"]), conv)
+    _check(untouched == "", f"an untouched seed sends nothing ({len(untouched)} chars)")
+    _check("md_format.py" in good and "exports/__init__.py" in good and "registry.py" not in good,
+           "a seeded task sends its changed and new files only")
+    with tempfile.TemporaryDirectory() as d:
+        fx = Path(d)
+        (fx / "big.py").write_text("".join(f"KEEP_{i} = {i}\n" for i in range(500)), encoding="utf-8")
+        (fx / "app.py").write_text("def a():\n    return 1\n", encoding="utf-8")
+        _git_snapshot(fx)
+        (fx / "app.py").write_text("def a():\n    return 2\n", encoding="utf-8")
+        (fx / "search.py").write_text("def search(q):\n    return q\n", encoding="utf-8")
+        text = source_text(fx, {"fixture": "x"})
+    _check("search.py" in text and "return 2" in text and "KEEP_" not in text,
+           f"a fixture task sends its git diff, not the template ({len(text)} chars)")
     return fails
 
 def _selftest_remote_excluded():

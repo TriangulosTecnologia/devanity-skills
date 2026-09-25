@@ -815,14 +815,30 @@ def is_delivery(workdir, p):
     text (source_text), run.py's LOC (code_stats) and the sandbox copy all route through it."""
     return not any(_harness_part(x) for x in Path(p).relative_to(workdir).parts)
 
-def source_text(workdir: Path):
-    """Concatenate the agent's source files (tests + artifacts excluded), with name headers: what
-    the LLM judges (judge.py, complete.py) read. A dot or underscore anywhere in the path is
-    harness or VCS state (is_delivery), never the submission; `__init__.py` is code."""
+# Lockfiles and generated files: never the agent's authored delivery (run.py's LOC and the judges).
+SKIP_DIFF = ("-lock", ".lock", ".gen.ts", "lock.json", "routeTree.gen")
+
+def source_text(workdir: Path, task=None):
+    """What the LLM judges (judge.py, complete.py) read: the agent's DELIVERY, tests excluded, with
+    name headers (review G-012: the whole workspace sent 1.5 MB of untouched template per tmpl-*
+    cell). A fixture task sends its `git diff` against the snapshot base run.py committed; a seeded
+    task the files it changed or created (tasks._touched); no task, every delivered file.
+    Harness and VCS state is never included (is_delivery); `__init__.py` is code."""
     workdir = Path(workdir)
+    if task and task.get("fixture"):
+        _git(workdir, "add", "-A")
+        names = [n for n in _git(workdir, "diff", "--cached", "--name-only", "HEAD").stdout.splitlines()
+                 if n and is_delivery(workdir, workdir / n) and not is_test_file(workdir / n, workdir)
+                 and not any(k in n for k in SKIP_DIFF) and "node_modules" not in n]
+        return (f"# === git diff vs the seeded base ===\n" + _git(workdir, "diff", "--cached", "HEAD", "--", *names).stdout) if names else ""
+    if task is not None:
+        changed, new = _touched(workdir, task.get("seed", {}))
+        paths = [workdir / f for f in changed + new]
+    else:
+        paths = sorted(p for p in workdir.rglob("*") if p.is_file() and is_delivery(workdir, p))
     out = []
-    for p in sorted(workdir.rglob("*")):
-        if not p.is_file() or p.suffix == ".pyc" or not is_delivery(workdir, p) or is_test_file(p, workdir): continue
+    for p in paths:
+        if not p.is_file() or p.suffix == ".pyc" or is_test_file(p, workdir): continue
         try: out.append(f"# === {p.relative_to(workdir)} ===\n{p.read_text(encoding='utf-8', errors='ignore')}")
         except Exception: continue
     return "\n\n".join(out)

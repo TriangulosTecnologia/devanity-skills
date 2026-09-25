@@ -115,7 +115,7 @@ def run(run_dir, key):
     print(f"completeness-judging {len(cells)} workspaces with {judge_backend_label()} ...")
     scored = []
     for i, (tid, arm, model, ws) in enumerate(cells, 1):
-        s = parse_complete(judge_call(TASKS[tid]["prompt"], source_text(ws), key, system=RUBRIC)) \
+        s = parse_complete(judge_call(TASKS[tid]["prompt"], source_text(ws, TASKS[tid]), key, system=RUBRIC)) \
             or {SCORE_KEY: None}
         scored.append({"task": tid, "arm": arm, "model": model, SCORE_KEY: s.get(SCORE_KEY),
                        "why": s.get("why", ""), "missing": s.get("missing", "")})
