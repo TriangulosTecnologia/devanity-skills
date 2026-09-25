@@ -818,18 +818,29 @@ SKIP_DIFF = ("-lock", ".lock", ".gen.ts", "lock.json", "routeTree.gen")
 # A fixture cell is read by running git in its own .git, which lives in the agent's workspace, and
 # git runs commands its config names (core.fsmonitor, filter.*, diff.external, textconv): review
 # G-036 saw a core.fsmonitor run on host scoring and in the judges' text. So git reads a cell only
-# when its .git/config is byte-identical to the one `git init` writes here, and every read pins the
-# exec-capable settings off (READ_GIT, DIFF_SAFE), which also covers a command the host's own config
-# names. deferred: byte equality refuses a cell whose filesystem makes git init probe differently
+# when its .git/config is byte-identical to the one `git init` writes here, and every git call pins
+# the exec-capable settings off (READ_GIT, DIFF_SAFE, in _git), which also covers a command the
+# host's own config names, and points hooks at /dev/null: a hook needs no config line, so the
+# config guard never saw one (review 3 X1: .git/hooks/post-index-change ran on host scoring; X2b:
+# the same hook in a repository nested in the tree; `-c` reaches the git processes git starts).
+# deferred: byte equality refuses a cell whose filesystem makes git init probe differently
 # (ignorecase, symlinks) or a stamp snapshotted by another git version; compare the parsed config
 # when a real stamp is refused.
-READ_GIT = ("-c", "core.fsmonitor=false")
+READ_GIT = ("-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null")
 DIFF_SAFE = ("--no-ext-diff", "--no-textconv")
+
+def _git(workdir, *args):
+    """The one git call of the harness (run.py, fixture.py and the task setups and scorers route
+    through it): READ_GIT always, DIFF_SAFE after a `diff`, never a shell, output captured."""
+    args = list(args)
+    if args[:1] == ["diff"]: args[1:1] = DIFF_SAFE
+    return _sp.run([_shutil.which("git") or "git", *READ_GIT, *args], cwd=str(workdir) if workdir else None,
+                   capture_output=True, text=True)
 
 @functools.lru_cache(maxsize=1)
 def _fresh_git_config():
     with tempfile.TemporaryDirectory() as d:
-        _sp.run(["git", "init", "-q", d], capture_output=True)
+        _git(d, "init", "-q")
         return (Path(d) / ".git" / "config").read_bytes()
 
 def fixture_git_refusal(workdir):
@@ -852,12 +863,12 @@ def source_text(workdir: Path, task=None):
     if task and task.get("fixture"):
         refusal = fixture_git_refusal(workdir)
         if refusal: return f"# {refusal}\n"
-        _git(workdir, *READ_GIT, "add", "-A")
-        names = [n for n in _git(workdir, *READ_GIT, "diff", *DIFF_SAFE, "--cached", "--name-only", "HEAD").stdout.splitlines()
+        _git(workdir, "add", "-A")
+        names = [n for n in _git(workdir, "diff", "--cached", "--name-only", "HEAD").stdout.splitlines()
                  if n and is_delivery(workdir, workdir / n) and not is_test_file(workdir / n, workdir)
                  and not any(k in n for k in SKIP_DIFF) and "node_modules" not in n]
         return (f"# === git diff vs the seeded base ===\n"
-                + _git(workdir, *READ_GIT, "diff", *DIFF_SAFE, "--cached", "HEAD", "--", *names).stdout) if names else ""
+                + _git(workdir, "diff", "--cached", "HEAD", "--", *names).stdout) if names else ""
     if task is not None:
         changed, new = _touched(workdir, task.get("seed", {}))
         paths = [workdir / f for f in changed + new]
@@ -1882,9 +1893,6 @@ def score_long_tickets(workdir):
 # spans files, an insecure API the ticket invites, authority over commands, and the modes. Same
 # discipline: a `good` and a plausible `bad` reference, a deterministic scorer, its ceiling stated.
 # ======================================================================================
-
-def _git(workdir, *args):
-    return _sp.run(["git", *args], cwd=str(workdir), capture_output=True, text=True)
 
 def _git_repo(base=None, remote=False):
     """setup: a git repository whose HEAD is `base` (default: the seed) with the rest of the seed

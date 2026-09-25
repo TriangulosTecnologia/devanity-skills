@@ -12,17 +12,19 @@ another commit may carry local work.
 
 Library use (run.py, before any API spend):  fixture.ensure()  -> Path, or SystemExit with instructions.
 """
-import argparse, os, shutil, subprocess, sys
+import argparse, os, shutil, sys
 from pathlib import Path
+
+import tasks
 
 REPO_URL = "https://github.com/fastapi/full-stack-fastapi-template"
 PINNED = "cd83fc1"                                    # same commit as ponytail's runs; comparability
 DEFAULT_DIR = Path(__file__).resolve().parent / "fixtures" / "full-stack-fastapi-template"
 
 def _git(*args, cwd=None):
-    """Never shell=True, always captured: the output feeds messages, the user never sees git noise."""
-    return subprocess.run([shutil.which("git") or "git", *args], cwd=str(cwd) if cwd else None,
-                          capture_output=True, text=True)
+    """tasks._git, the harness's one git call (no shell, output captured, hooks and exec-capable
+    settings off): the output feeds messages, the user never sees git noise."""
+    return tasks._git(cwd, *args)
 
 def resolve() -> Path:
     """DEVANITY_TMPL (the same override tasks.py honours) wins; else the gitignored default under fixtures/."""

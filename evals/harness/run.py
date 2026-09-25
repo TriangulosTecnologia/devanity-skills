@@ -38,8 +38,8 @@ import argparse, concurrent.futures, datetime, json, os, re, shutil, signal, sta
 from collections import defaultdict
 from pathlib import Path
 
-from tasks import (TASKS, SELFCHECK_DEFS, SKIP_DIFF, READ_GIT, DIFF_SAFE, is_delivery, is_test_file, proof_fields,
-                   fixture_git_refusal, _fail)
+from tasks import (TASKS, SELFCHECK_DEFS, SKIP_DIFF, is_delivery, is_test_file, proof_fields,
+                   fixture_git_refusal, _fail, _git)
 import fixture
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -221,10 +221,6 @@ def code_stats(workdir: Path):
     return {"files": len(files), "src_files": len(src), "total_loc": total, "src_loc": code,
             "test_files": len(tst), "test_loc": sum(_count(p) for p in tst) + sc_test}
 
-def _git(workdir, *args):
-    return subprocess.run([shutil.which("git") or "git", *args], cwd=str(workdir),
-                          capture_output=True, text=True)
-
 def _git_snapshot(workdir):
     """Commit the seeded repo so we can diff exactly what the agent changes."""
     _git(workdir, "init", "-q")
@@ -236,9 +232,9 @@ def git_diff_stats(workdir):
     """Added lines (incl comments) of code files the agent created OR modified, vs the seeded
     base. This is the delivered-code metric and matches the '+N' a PR/diff shows. Tests counted
     separately; lockfiles/generated files skipped. Call it only on a cell fixture_git_refusal
-    passes; the exec-capable git settings are pinned off here too (tasks.READ_GIT)."""
-    _git(workdir, *READ_GIT, "add", "-A")
-    out = _git(workdir, *READ_GIT, "diff", *DIFF_SAFE, "--cached", "--numstat", "HEAD").stdout
+    passes; tasks._git pins the exec-capable git settings and hooks off on every call."""
+    _git(workdir, "add", "-A")
+    out = _git(workdir, "diff", "--cached", "--numstat", "HEAD").stdout
     loc = files = test_loc = test_files = 0
     for line in out.splitlines():
         parts = line.split("\t")
@@ -696,6 +692,27 @@ def _selftest_score_guard():
                 else: os.environ["GIT_CONFIG_GLOBAL"] = prev
             _check(r.get("reason") == "git-diff" and r.get("total_loc") == 2 and "return len(xs)" in text and not mark.exists(),
                    f"an untouched .git under a global core.fsmonitor: the diff is read (total_loc={r.get('total_loc')}), the monitor never runs")
+            # A hook is a command git runs with no config line at all, so the config guard never
+            # sees it (review 3 X1: .git/hooks/post-index-change; X2b: the same hook in a repository
+            # the agent nested in its tree). Every host git call runs with core.hooksPath=/dev/null.
+            hooked = []
+            for case in ("X1 .git/hooks", "X2b nested repo's hooks"):
+                c = root / f"tmpl-be-count__baseline__haiku__{8 + len(hooked)}"; c.mkdir()
+                (c / "app.py").write_text("def a():\n    return 1\n", encoding="utf-8"); _git_snapshot(c)
+                (c / "app.py").write_text("def a():\n    return 2\n", encoding="utf-8")
+                (c / "_claude.json").write_text(json.dumps({"result": "done"}), encoding="utf-8")
+                repo = c
+                if case.startswith("X2b"):
+                    repo = c / "sub"; repo.mkdir(); (repo / "x.py").write_text("x = 1\n", encoding="utf-8")
+                    _git_snapshot(repo); (repo / "x.py").write_text("x = 2\n", encoding="utf-8")
+                hk = repo / ".git" / "hooks" / "post-index-change"; hk.parent.mkdir(exist_ok=True)
+                ran = root / f"HOOK_RAN_{len(hooked)}"
+                hk.write_text(f"#!/bin/sh\ntouch {ran}\n", encoding="utf-8"); hk.chmod(0o755)
+                r = score_workspace("tmpl-be-count", "baseline", "haiku", c)
+                text = source_text(c, TASKS["tmpl-be-count"])
+                hooked.append((case, r.get("reason") == "git-diff" and "return 2" in text and not ran.exists(), ran.exists()))
+            for case, ok, ran in hooked:
+                _check(ok, f"{case}: a hook the agent wrote never runs, and the diff is still read (hook ran={ran})")
         # In the image each cell is scored in its own process: whatever delivered code does to the
         # interpreter (exit, interrupt, hang, sys.path, sys.modules) ends with its cell (review G-001,
         # G-038, G-046; review 3 E1, E2, N9). The refs here are this file's own code.
