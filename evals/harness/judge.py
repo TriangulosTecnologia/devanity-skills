@@ -23,7 +23,7 @@ import argparse, json, os, re, shutil, subprocess, sys, tempfile, time, urllib.r
 from collections import defaultdict
 from pathlib import Path
 
-from tasks import TASKS
+from tasks import TASKS, is_test_file
 import run as _run                      # RUNS_DIR (DEVANITY_HARNESS_RUNS_DIR) and memory_guard
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,8 +36,7 @@ JUDGE_MODEL = "claude-sonnet-4-6"
 # whatever the CLI resolves JUDGE_MODEL to. Every tool is disabled, one turn, cwd under RUNS_DIR
 # (memory_guard: no CLAUDE.md/AGENTS.md above it, so the judge never inherits the kernel).
 JUDGE_BACKEND = "api"   # set by load_key(): "api" with a key, "cli" without one
-ARMS_ORDER = ["baseline", "ponytail", "superpowers", "caveman", "feature-dev", "security-guidance",
-              "senior-oneliner", "devanity-released", "devanity-v0", "devanity"]
+ARMS_ORDER = list(_run.ARMS)
 
 RUBRIC = (
     "You are a senior engineer reviewing a code submission for OVER-ENGINEERING ONLY. "
@@ -88,16 +87,14 @@ def _judge_call_cli(user, system, retries=3):
             if attempt == retries - 1: return f'{{"error": "{str(e)[:120]}"}}'
             time.sleep(2 * (attempt + 1))
 
-def _is_test(name):
-    n = name.lower()
-    return n.startswith("test_") or n.endswith("_test.py") or n == "conftest.py"
-
 def source_text(workdir: Path):
-    """Concatenate the agent's source files (tests + artifacts excluded), with name headers."""
+    """Concatenate the agent's source files (tests + artifacts excluded), with name headers. A
+    dot or underscore anywhere in the path is harness or VCS state (`.git/`, `_remote.git/`,
+    `_claude.json`), never the submission."""
     out = []
     for p in sorted(workdir.rglob("*")):
         if not p.is_file() or "__pycache__" in p.parts or p.suffix == ".pyc": continue
-        if p.name.startswith((".", "_")) or _is_test(p.name): continue
+        if any(part.startswith((".", "_")) for part in p.relative_to(workdir).parts) or is_test_file(p, workdir): continue
         try: out.append(f"# === {p.relative_to(workdir)} ===\n{p.read_text(encoding='utf-8', errors='ignore')}")
         except Exception: continue
     return "\n\n".join(out)

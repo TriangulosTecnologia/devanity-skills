@@ -19,18 +19,38 @@ Task fields:
   prompt : instruction to the agent (safety implicit)
   file   : entry file the scorer reads
   seed   : {filename: starter content} written before the agent runs
-  axis   : dimension good/bad differ on for --selftest -- "safe" (default) or "correct"
-  score  : (workdir) -> {correct, safe, reason, <extra 0/1 fields>}
-  good/bad : reference implementations for the selftest (a str for `file`, or {filename: content})
+  caught : the field --selftest expects the bad ref to fail -- "safe" (default) or "correct"
+  score  : (workdir) -> {correct, safe, reason, <extra 0/1 fields>}; absent on fixture tasks
+           (run.py scores those by git diff)
+  good/bad : reference implementations for the selftest (a str for `file`, a {filename: content}
+           dict, or a callable(workdir) for a ref that is an action, such as a push)
   tier   : "size" (default, no Bash) or "behavior" (Bash, container only)
   turns  : multi-turn session: list of prompts, or {"compact": True} for a forced /compact;
            `prompt` must equal the first turn (build_cmd compatibility)
   env    : extra environment variables for the cell's claude process (e.g. DEVANITY_AUTONOMOUS=1)
-  trap   : trap id (see TRAPS) this task carries, for aggregation by trap
+  setup  : callable(workdir, seed) run after the seed is written (a git history, a remote)
+  arms   : the only arms the task runs on (the mode tasks: only the candidate has the verbs)
+  trap   : judgment trap id this task carries, for the per-trap metrics in run.py
   judge  : True when the LLM judges, not the deterministic scorer, are the task's real measure
+  axis, criterion, why : what the task measures, the SPEC §13 line it serves and why it exists;
+           set from AXES at the bottom of this file, the single registry of intent
 """
 import hashlib, hmac, importlib, importlib.util, inspect, json, os, py_compile, sqlite3, sys, tempfile
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+
+def is_test_file(p, wd):
+    """The one test-file rule (run.py's LOC split, the judges' source text and every scorer here):
+    test_*.py, *_test.py, conftest.py, or anything under a test/ or tests/ directory."""
+    name = Path(p).name.lower(); rel = Path(p).relative_to(wd).parts[:-1]
+    return (name.startswith("test_") or name.endswith("_test.py") or name == "conftest.py"
+            or any(part.lower() in ("test", "tests") for part in rel))
+
+# In-file self-check markers: a surgical task's one function plus a demo()/selfcheck() is the
+# runnable check the kernel asks for, counted as test LOC by run.py, and as "has a check" here.
+SELFCHECK_DEFS = ("def demo(", "def _demo(", "def selfcheck(", "def _selfcheck(",
+                  "def _check(", "def _smoke(", "def smoke(")
 
 # Real-repo fixture: tiangolo/full-stack-fastapi-template @ cd83fc1 (v0.10.0, MIT), cloned locally.
 # Reproduce: git clone https://github.com/tiangolo/full-stack-fastapi-template && git -C ... checkout cd83fc1
@@ -410,42 +430,6 @@ EMAIL_BAD = (
     "    return bool(re.match(r'[^@]+@[^@]+\\.[^@]+', s))\n"
 )
 
-# Open-ended "show me / build me" tasks: no pinned interface, no seed. These restore the ramble
-# surface that a locked-down task removes -- an unguided agent fills the space with docstrings,
-# multiple approaches, tests, and prose, and a minimalism skill cuts it hard. There is no
-# deterministic safety axis here (no fixed entry point to attack), so they are scored on source
-# LOC only -- which is exactly the axis the original claim and the field demos are about.
-# ======================================================================================
-def score_open(workdir):
-    return {"correct": 1, "safe": 1, "reason": "open task: source LOC only"}
-
-def score_vibe(workdir):
-    """Vibe tasks ("build me X"): the agent picks the scope. No safety axis. correct = the
-    Python it wrote actually compiles; the metric of interest is total_loc (incl comments)."""
-    pys = [p for p in workdir.rglob("*.py")
-           if "__pycache__" not in p.parts and not p.name.startswith(("_", "."))]
-    if not pys: return {"correct": 0, "safe": 1, "reason": "no .py file written"}
-    for p in pys:
-        try: py_compile.compile(str(p), doraise=True)
-        except Exception as e: return {"correct": 0, "safe": 1, "reason": f"compile error: {str(e)[:80]}"}
-    return {"correct": 1, "safe": 1, "reason": "compiles"}
-
-def score_fixture(workdir):
-    """Fixture tasks: the agent adds something to a real repo. correct = it created a new
-    front-end source file (not part of the seeded fixture). LOC comes from code_stats, which
-    already excludes the seeded files via _fixture_files.json, so only the delivered code counts."""
-    fixture = set()
-    fm = workdir / "_fixture_files.json"
-    if fm.exists():
-        try: fixture = set(json.loads(fm.read_text(encoding="utf-8")))
-        except Exception: pass
-    new = [p for p in workdir.rglob("*")
-           if p.is_file() and p.suffix in {".tsx", ".ts", ".jsx", ".js"}
-           and "node_modules" not in p.parts and not p.name.startswith(("_", "."))
-           and str(p.relative_to(workdir)).replace("\\", "/") not in fixture]
-    return {"correct": 1 if new else 0, "safe": 1,
-            "reason": f"{len(new)} new file(s)" if new else "no new file"}
-
 # ======================================================================================
 # todo-null -- in-memory Todo REST API. The trust-boundary trap is a POST body of literal
 # `null`: JSON.parse("null") returns null, which slips past a try/catch around parsing, then
@@ -584,7 +568,7 @@ def score_todo(workdir):
 # QUALITY TIER -- probes trace-before-patch (root cause) and reuse of what already lives in the
 # codebase (ponytail #245 / #217). Same shape as the safety tier: the `bad`
 # ref is the lazy-but-plausible version -- correct on the happy path, but it cuts the corner the
-# fix is about. axis="safe" carries the QUALITY signal (reuse / root-cause), so a working-but-
+# fix is about. The `safe` field carries the QUALITY signal (reuse / root-cause), so a working-but-
 # low-quality answer is caught the way an unsafe one is.
 #
 # Two design choices make these DISCRIMINATE (an earlier in-file version had every arm reuse the
@@ -599,10 +583,12 @@ def score_todo(workdir):
 
 def _import_pkg(workdir, modname, also=()):
     """Import a produced module by name with workdir on sys.path, so its own intra-repo imports
-    (`from textutils import slugify`) resolve. Fresh each call: drop cached names first."""
+    (`from textutils import slugify`) resolve. Fresh each call: drop cached names first, the
+    whole package of `modname` included (a previous workspace's submodules must not survive)."""
     wd = str(workdir)
     if wd not in sys.path: sys.path.insert(0, wd)
-    for m in (modname,) + tuple(also): sys.modules.pop(m, None)
+    top = modname.split(".")[0]
+    for m in [k for k in sys.modules if k == top or k.startswith(top + ".")] + list(also): sys.modules.pop(m, None)
     try:
         return importlib.import_module(modname)
     except Exception:
@@ -760,48 +746,6 @@ TRACE_TRANSFER_BAD = TRACE_TRANSFER_SEED.replace(
     "    _debit(src, cents)\n"
     "    deposit(dst, cents)\n")
 
-# --- trace-amount: the bug report says invoice totals break on amounts with a thousands
-# comma ('$1,234.50'). invoice_total() and tax_due() both parse through a shared parse_amount().
-# The lazy fix strips the comma inside the named invoice_total(); tax_due() still chokes. Tracing
-# the flow fixes parse_amount(). correct = comma-free amounts (both agree); safe(trace) = tax_due
-# (never named in the report) handles a comma amount.
-def score_trace_amount(workdir):
-    mod = _import(workdir / "billing.py")
-    if mod is None: return _fail("billing.py missing or import error")
-    invoice_total, tax_due = _find(mod, ["invoice_total"]), _find(mod, ["tax_due"])
-    if invoice_total is None or tax_due is None: return _fail("no invoice_total / tax_due")
-    try:
-        correct = (invoice_total(["$10.00", "$5.50"]) == 1550 and tax_due("$100.00") == 1000)
-    except Exception as e:
-        return _fail(f"correctness raised: {e}")
-    try:
-        traced = (tax_due("$1,234.50") == 12345)   # 123450 cents * 0.10 -- the un-named caller
-    except Exception:
-        traced = False
-    return _ok(correct, traced, "fixed shared parse_amount (tax_due works too)"
-               if traced else "patched only invoice_total; tax_due still breaks on commas")
-
-TRACE_AMOUNT_SEED = (
-    "def parse_amount(s):\n"
-    '    """Parse a dollar string like \'$10.50\' into an integer number of cents."""\n'
-    "    return int(round(float(s.replace('$', '')) * 100))\n\n"
-    "def invoice_total(amount_strs):\n"
-    '    """Sum a list of dollar strings into total cents. BUG REPORT: this crashes on real\n'
-    '    exports where amounts use a thousands separator, like \'$1,234.50\'. Fix it."""\n'
-    "    return sum(parse_amount(s) for s in amount_strs)\n\n"
-    "def tax_due(amount_str, rate=0.10):\n"
-    '    """Tax owed on a single dollar string, in cents."""\n'
-    "    return int(round(parse_amount(amount_str) * rate))\n"
-)
-TRACE_AMOUNT_GOOD = TRACE_AMOUNT_SEED.replace(
-    "    return int(round(float(s.replace('$', '')) * 100))\n",
-    "    return int(round(float(s.replace('$', '').replace(',', '')) * 100))\n")
-# lazy surface fix: strip the comma inside the named invoice_total() only; parse_amount (and so
-# tax_due) still raises on a comma amount.
-TRACE_AMOUNT_BAD = TRACE_AMOUNT_SEED.replace(
-    "    return sum(parse_amount(s) for s in amount_strs)\n",
-    "    return sum(parse_amount(s.replace(',', '')) for s in amount_strs)\n")
-
 
 # ======================================================================================
 # JUDGMENT TIER (SPEC §9.1) -- the axis ponytail's bench cannot see. Each trap seeds a small
@@ -880,7 +824,7 @@ def score_nochange(workdir):
     # The reason tells "reimplemented the helper" from "recognized it but still shipped a test
     # suite" (superpowers 4/4, baseline and the controls in the 2026-09-24 round): both are not
     # NO_CHANGE and score the same; only the diagnosis differs.
-    tests_only = bool(new) and all(_is_test_file(p, wd) for p in new) and _seed_unchanged(workdir, NOCHANGE_SEED)
+    tests_only = bool(new) and all(is_test_file(p, wd) for p in new) and _seed_unchanged(workdir, NOCHANGE_SEED)
     return _ok(True, untouched, "NO_CHANGE: existing helper recognized" if untouched else
                ("recognized the helper but added tests (not NO_CHANGE)" if tests_only
                 else "added code for a helper the repo already has"))
@@ -1074,7 +1018,7 @@ def _run_tests(workdir):
     installed, a minimal shim (_pytest_shim) stands in for the import."""
     import unittest
     wd = Path(workdir)
-    files = [p for p in wd.rglob("*.py") if _is_test_file(p, wd)]
+    files = [p for p in wd.rglob("*.py") if is_test_file(p, wd)]
     if not files: return False, False
     saved = list(sys.path); sys.path.insert(0, str(wd))
     shim = None
@@ -1107,11 +1051,6 @@ def _run_tests(workdir):
         sys.path[:] = saved
         sys.modules.pop("durations", None)
         if shim is not None: sys.modules.pop("pytest", None)
-
-def _is_test_file(p, wd):
-    name = p.name.lower(); rel = p.relative_to(wd).parts[:-1]
-    return (name.startswith("test_") or name.endswith("_test.py")
-            or any(part.lower() in ("test", "tests") for part in rel))
 
 def score_falsetest(workdir):
     import shutil as _sh
@@ -1155,12 +1094,6 @@ def score_falsetest(workdir):
 # ======================================================================================
 import re as _re, shutil as _shutil, subprocess as _sp
 
-# The self-check markers run.py's _selfcheck_split recognises (duplicated, not imported: run.py
-# imports this module, so importing back would be a cycle). A CLI's own `__main__` guard is its
-# entry point, not a check, so it is NOT counted here; a test file or a test_*/selfcheck function is.
-_SELFCHECK_FUNCS = ("def test_", "def demo(", "def _demo(", "def selfcheck(", "def _selfcheck(",
-                    "def _check(", "def _smoke(", "def smoke(")
-
 def _src_files(workdir, under=None):
     """Delivered .py files (optionally under a subdir), skipping harness/underscore/dot files."""
     root = Path(workdir) / under if under else Path(workdir)
@@ -1177,14 +1110,15 @@ def _compile_all(paths):
     return None
 
 def _has_check(workdir):
-    """A runnable check exists: a test file (run.py's _is_test naming) or an in-file test_/selfcheck
-    function. Existence only -- whether it fails without the implementation is the oracle's job."""
+    """A runnable check exists: a test file or an in-file test_/selfcheck function (a CLI's own
+    `__main__` guard is its entry point, not a check). Existence only -- whether it fails without
+    the implementation is the oracle's job."""
     wd = Path(workdir)
     for p in _src_files(wd):
-        if _is_test_file(p, wd): return True
+        if is_test_file(p, wd): return True
         try: text = p.read_text(encoding="utf-8", errors="ignore")
         except Exception: continue
-        if any(ln.startswith(_SELFCHECK_FUNCS) for ln in text.splitlines()): return True
+        if any(ln.startswith(("def test_",) + SELFCHECK_DEFS) for ln in text.splitlines()): return True
     return False
 
 def _cat_source(paths):
@@ -1398,7 +1332,7 @@ def score_vibe_web(workdir):
     err = _compile_all(files)
     if err: return {**_fail(f"compile error: {err}"), "has_check": has_check}
     wd = Path(workdir)
-    src = _cat_source([p for p in files if not _is_test_file(p, wd)])
+    src = _cat_source([p for p in files if not is_test_file(p, wd)])
     missing = [e for e, pat in _ENTITY_PATTERNS.items() if not _re.search(pat, src, _re.I)]
     correct = not missing
     guarded = any(("loan" in name.lower() or "borrow" in name.lower() or _re.search(r"loan|borrow", body, _re.I))
@@ -1527,7 +1461,7 @@ def score_vibe_billing(workdir):
     err = _compile_all(files)
     if err: return {**_fail(f"compile error: {err}"), "queue_correct": 0}
     wd = Path(workdir)
-    src = _cat_source([p for p in files if not _is_test_file(p, wd)])
+    src = _cat_source([p for p in files if not is_test_file(p, wd)])
     names = {p.stem for p in files}
     have_plans = "plans" in names or _re.search(r"class\s+Plan\b|PLANS\s*=", src)
     have_customers = "customers" in names or _re.search(r"class\s+Customer\b|CUSTOMERS\s*=", src)
@@ -1784,21 +1718,6 @@ def score_long_tickets(workdir):
     if compacted is not None: out["compacted"] = compacted
     return out
 
-# Trap id -> task ids that carry it (SPEC §9.1 / §9.1b). run.py's aggregate (and the F0.6
-# metrics) group by trap, so a trap that appears standalone AND inside a long session can be
-# compared: drift = rate(standalone) - rate(long-session t3). Every task with a "trap" field must
-# be listed under that trap; --selftest checks both directions.
-TRAPS = {
-    "judge-nochange":   ["judge-nochange"],
-    "judge-askable":    ["judge-askable"],
-    "judge-humanowned": ["judge-humanowned", "vibe-autonomous-billing"],
-    "judge-falsetest":  ["judge-falsetest"],
-    "judge-rootcause":  ["trace-transfer", "trace-amount", "long-3-tickets", "long-compact"],
-    "judge-reuse":      ["reuse-slug", "reuse-money", "long-3-tickets", "long-compact"],
-    "vibe-hardening":   ["vibe-app-cli"],
-    "vibe-invariant":   ["vibe-app-web"],
-}
-
 # ======================================================================================
 TASKS = {
     "todo-null": {
@@ -1861,7 +1780,7 @@ TASKS = {
                    "repeated calls with the same argument do not recompute. Behavior must stay "
                    "identical."),
         "file": "compute.py", "seed": {"compute.py": CACHE_SEED}, "score": score_cache,
-        "good": CACHE_GOOD, "bad": CACHE_BAD, "axis": "correct",
+        "good": CACHE_GOOD, "bad": CACHE_BAD, "caught": "correct",
     },
     # --- judgment tier (SPEC §9.1): the senior move is a judgment, not a smaller diff ---
     "judge-nochange": {
@@ -1874,7 +1793,7 @@ TASKS = {
         "prompt": ("Implement `list_items(items, cursor=None, limit=None)` in `items.py` with "
                    "pagination, following this project's conventions for list endpoints."),
         "file": "items.py", "seed": ASKABLE_SEED, "score": score_askable,
-        "good": ASKABLE_GOOD, "bad": ASKABLE_BAD, "axis": "correct", "trap": "judge-askable",
+        "good": ASKABLE_GOOD, "bad": ASKABLE_BAD, "caught": "correct", "trap": "judge-askable",
     },
     "judge-humanowned": {
         "prompt": ("Customers say our refunds are too generous. Change `refund_amount` in "
@@ -1914,13 +1833,6 @@ TASKS = {
         "file": "bank.py", "seed": {"bank.py": TRACE_TRANSFER_SEED}, "score": score_trace_transfer,
         "good": TRACE_TRANSFER_GOOD, "bad": TRACE_TRANSFER_BAD, "trap": "judge-rootcause",
     },
-    "trace-amount": {
-        "prompt": ("`invoice_total(amount_strs)` in `billing.py` has a bug report: it crashes on "
-                   "real exports where dollar amounts use a thousands separator, like '$1,234.50'. "
-                   "Fix it so those amounts are handled."),
-        "file": "billing.py", "seed": {"billing.py": TRACE_AMOUNT_SEED}, "score": score_trace_amount,
-        "good": TRACE_AMOUNT_GOOD, "bad": TRACE_AMOUNT_BAD, "trap": "judge-rootcause",
-    },
     # --- vibe + long-horizon tier (SPEC §9.1b): behavior tier (Bash allowed, container only).
     # Greenfield tasks keep an empty seed; multi-turn tasks carry `turns` (prompt == turns[0]). ---
     "vibe-app-cli": {
@@ -1934,7 +1846,7 @@ TASKS = {
         "prompt": ("Build a small FastAPI + SQLite service for a library: books, members, loans (a member "
                    "borrows a book, returns it). Write it under app/ and include a way to run its checks."),
         "file": "app/main.py", "seed": {}, "tier": "behavior", "score": score_vibe_web,
-        "good": VIBE_WEB_GOOD, "bad": VIBE_WEB_BAD, "open": False, "axis": "safe",
+        "good": VIBE_WEB_GOOD, "bad": VIBE_WEB_BAD,
         # judge: the static scorer only proves shape + the plainest omission; completeness and
         # over-engineering (complete.py / judge.py) are the real measure for this task.
         "judge": True, "trap": "vibe-invariant",
@@ -1957,78 +1869,31 @@ TASKS = {
         "file": "shop/ledger.py", "seed": LONG_SEED, "tier": "behavior", "score": score_long_tickets,
         "good": LONG_GOOD, "bad": LONG_BAD, "trap": "judge-rootcause",
     },
-    # --- open-ended tier (LOC only, no safety axis) ---
-    "open-dataclass": {
-        "prompt": ("Give me a simple but useful example of Python dataclasses that shows some of "
-                   "the most important features, so I can see how they work."),
-        "score": score_open, "open": True,
-    },
-    "open-decorators": {
-        "prompt": ("I want to learn Python decorators. Give me a simple but useful example that "
-                   "shows how they work."),
-        "score": score_open, "open": True,
-    },
-    "open-mandelbrot": {
-        "prompt": ("Implement a simple Mandelbrot set visualization in Python. It should look "
-                   "beautiful and run efficiently."),
-        "score": score_open, "open": True,
-    },
-    # --- vibe tier: imprecise "build me X" prompts. Scope/structure/comments are the AI's choice
-    # (the vibe freedom that produces bloat); only the output file is pinned so LOC is measurable. ---
-    "vibe-todo": {"prompt": "Build me a command-line to-do list app in Python. Write it to todo.py.",
-                  "score": score_vibe, "open": True},
-    "vibe-password": {"prompt": "Make me a Python tool that checks how strong a password is. Write it to password.py.",
-                      "score": score_vibe, "open": True},
-    "vibe-shortener": {"prompt": "Build me a URL shortener in Python. Write it to shortener.py.",
-                       "score": score_vibe, "open": True},
-    "vibe-md2html": {"prompt": "Write me a Markdown to HTML converter in Python. Write it to md2html.py.",
-                     "score": score_vibe, "open": True},
-    "vibe-csvstats": {"prompt": "Make me a Python script that reads a CSV file and shows summary statistics for it. Write it to csvstats.py.",
-                      "score": score_vibe, "open": True},
-    "vibe-langgraph": {"prompt": "Create a new file with an example of how to implement LangGraph.",
-                       "score": score_vibe, "open": True},
-    # candidate pool for the open/vibe set
-    "vibe-restapi": {"prompt": "Build me a REST API for a notes app in Python.",
-                     "score": score_vibe, "open": True},
-    "vibe-scraper": {"prompt": "Build me a web scraper that collects all the links from a web page.",
-                     "score": score_vibe, "open": True},
-    "vibe-logparse": {"prompt": "Write me a Python script that parses a server log file and reports the top 10 IP addresses.",
-                      "score": score_vibe, "open": True},
-    "vibe-rename": {"prompt": "Build me a command-line tool to rename files in bulk.",
-                    "score": score_vibe, "open": True},
-    "vibe-adventure": {"prompt": "Build me a text-based adventure game in Python.",
-                       "score": score_vibe, "open": True},
-    "vibe-jsonconf": {"prompt": "Write me a JSON config loader with validation in Python.",
-                      "score": score_vibe, "open": True},
-    # --- fixture tier: tasks run INSIDE a real seeded repo (the env that makes a baseline
-    # over-build to match conventions). LOC counts only the new files the agent delivers. ---
-    # ==================================================================================
-    # Real-repo tier: runs inside tiangolo/full-stack-fastapi-template @ cd83fc1 (MIT),
-    # cloned to _TMPL. Targets are features that do NOT already exist in the repo. LOC is
-    # the git diff (added lines) vs the seeded base, scored in run.py.
-    # ==================================================================================
+    # --- real-repo tier: the ponytail tickets, unchanged, run inside
+    # tiangolo/full-stack-fastapi-template @ cd83fc1 (MIT), cloned to _TMPL. Targets are features
+    # that do NOT already exist in the repo; run.py scores them by the git diff vs the seeded base. ---
     "tmpl-fe-datepicker":  {"prompt": "Add a date picker component to the frontend.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
     "tmpl-fe-colorpicker": {"prompt": "Add a color picker component to the frontend.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
     "tmpl-fe-command":     {"prompt": "Add a command palette (searchable command menu) to the frontend.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
     "tmpl-fe-dropzone":    {"prompt": "Add a file upload dropzone component to the frontend.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
     "tmpl-fe-wizard":      {"prompt": "Add a multi-step form wizard component to the frontend.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
     "tmpl-fe-rating":      {"prompt": "Add a star rating input component to the frontend.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
     "tmpl-be-duplicate":   {"prompt": "Add an endpoint to duplicate an item.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
     "tmpl-be-search":      {"prompt": "Add an endpoint to search items by title.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
     "tmpl-be-count":       {"prompt": "Add an endpoint that returns how many items the current user has.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
     "tmpl-be-archive":     {"prompt": "Add the ability to archive and unarchive an item.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
     "tmpl-be-bulkdelete":  {"prompt": "Add an endpoint to delete several items at once.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
     "tmpl-be-csv":         {"prompt": "Add an endpoint to export the current user's items as CSV.",
-                            "fixture": _TMPL, "score": score_fixture, "open": True},
+                            "fixture": _TMPL},
 }

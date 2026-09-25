@@ -33,7 +33,7 @@ import argparse, concurrent.futures, datetime, json, os, re, shutil, signal, sta
 from collections import defaultdict
 from pathlib import Path
 
-from tasks import TASKS, TRAPS
+from tasks import TASKS, SELFCHECK_DEFS, is_test_file
 import fixture
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -165,27 +165,13 @@ NO_RUN = ("Write the implementation (include tests if you normally would for a c
 
 def _tier(task): return task.get("tier", "size")
 
-def _is_test(p: Path, workdir: Path):
-    rel = p.relative_to(workdir)
-    name = p.name.lower()
-    return (name.startswith("test_") or name.endswith("_test.py") or name == "conftest.py"
-            or any(part.lower() in ("test", "tests") for part in rel.parts[:-1]))
-
 CODE_EXT = {".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".go", ".rs", ".java", ".rb", ".sh"}
 
-def _count(p: Path, with_comments: bool):
-    try: lines = p.read_text(encoding="utf-8", errors="ignore").splitlines()
+def _count(p: Path):
+    """Non-blank lines, comments included (test LOC)."""
+    try: return sum(1 for ln in p.read_text(encoding="utf-8", errors="ignore").splitlines() if ln.strip())
     except Exception: return 0
-    n = 0
-    for ln in lines:
-        s = ln.strip()
-        if not s: continue
-        if not with_comments and s.startswith(("#", "//", "*", "/*", "*/")): continue
-        n += 1
-    return n
 
-_SELFCHECK_DEFS = ("def demo(", "def _demo(", "def selfcheck(", "def _selfcheck(",
-                   "def _check(", "def _smoke(", "def smoke(")
 def _selfcheck_split(p: Path):
     """Split a produced .py file at the first TOP-LEVEL self-check marker (a `__main__` guard or a
     demo()/selfcheck() function) through end of file. Returns (src_total, src_code, sc_total,
@@ -196,7 +182,7 @@ def _selfcheck_split(p: Path):
     except Exception: return 0, 0, 0, 0
     start = None
     for i, ln in enumerate(lines):
-        if ln[:1] not in (" ", "\t") and (ln.startswith("if __name__") or ln.startswith(_SELFCHECK_DEFS)):
+        if ln[:1] not in (" ", "\t") and (ln.startswith("if __name__") or ln.startswith(SELFCHECK_DEFS)):
             start = i; break
     def cnt(seq):
         t = c = 0
@@ -211,37 +197,23 @@ def _selfcheck_split(p: Path):
     t, c = cnt(lines[:start]); st, sc = cnt(lines[start:])
     return t, c, st, sc
 
-def code_stats(workdir: Path, selfcheck_as_test: bool = False):
+def code_stats(workdir: Path):
     """LOC over code-extension source files only (generated images/data can't pollute it).
     total_loc counts every non-blank line including comments and docstrings -- the bloat a vibe
     baseline actually produces. src_loc is code-only, for the breakdown. Tests tracked separately,
-    never as bloat. selfcheck_as_test (surgical tasks): an in-file __main__/demo() self-check is
-    reclassified from source to test, so following the 'leave a runnable check' rule is not
-    counted as code bloat against it."""
-    fixture = set()                                   # files that were seeded, not delivered
-    fm = workdir / "_fixture_files.json"
-    if fm.exists():
-        try: fixture = set(json.loads(fm.read_text(encoding="utf-8")))
-        except Exception: pass
-    def _rel(p): return str(p.relative_to(workdir)).replace("\\", "/")
+    never as bloat, and an in-file __main__/demo() self-check is reclassified from source to test,
+    so following the 'leave a runnable check' rule is not counted as code bloat against it."""
     files = [p for p in workdir.rglob("*") if p.is_file() and p.suffix in CODE_EXT
              and "__pycache__" not in p.parts and "node_modules" not in p.parts
-             and not p.name.startswith((".", "_")) and _rel(p) not in fixture]
-    src = [p for p in files if not _is_test(p, workdir)]
-    tst = [p for p in files if _is_test(p, workdir)]
-    test_loc = sum(_count(p, True) for p in tst)
-    if selfcheck_as_test:
-        total = code = sc_test = 0
-        for p in src:
-            t, c, st, _ = _selfcheck_split(p)
-            total += t; code += c; sc_test += st
-        return {"files": len(files), "src_files": len(src),
-                "total_loc": total, "src_loc": code,
-                "test_files": len(tst), "test_loc": test_loc + sc_test}
-    return {"files": len(files), "src_files": len(src),
-            "total_loc": sum(_count(p, True) for p in src),   # incl comments + docstrings (the bloat)
-            "src_loc": sum(_count(p, False) for p in src),    # code only
-            "test_files": len(tst), "test_loc": test_loc}
+             and not p.name.startswith((".", "_"))]
+    src = [p for p in files if not is_test_file(p, workdir)]
+    tst = [p for p in files if is_test_file(p, workdir)]
+    total = code = sc_test = 0
+    for p in src:
+        t, c, st, _ = _selfcheck_split(p)
+        total += t; code += c; sc_test += st
+    return {"files": len(files), "src_files": len(src), "total_loc": total, "src_loc": code,
+            "test_files": len(tst), "test_loc": sum(_count(p) for p in tst) + sc_test}
 
 def _git(workdir, *args):
     return subprocess.run([shutil.which("git") or "git", *args], cwd=str(workdir),
@@ -270,7 +242,7 @@ def git_diff_stats(workdir):
         if Path(path).suffix not in CODE_EXT: continue
         if any(k in path for k in _SKIP_DIFF) or "node_modules" in path: continue
         n = int(added)
-        if _is_test(Path(workdir) / path, Path(workdir)): test_loc += n; test_files += 1
+        if is_test_file(Path(workdir) / path, Path(workdir)): test_loc += n; test_files += 1
         else: loc += n; files += 1
     return {"files": files, "src_files": files, "total_loc": loc, "src_loc": loc,
             "test_files": test_files, "test_loc": test_loc}
@@ -280,26 +252,20 @@ def selftest():
     declared axis. Verifies the instruments before any API spend."""
     failures = 0
     for tid, task in TASKS.items():
-        if task.get("open"): continue  # open tasks measure LOC only, no good/bad refs
-        axis = task.get("axis", "safe")
+        if "good" not in task: continue  # fixture tasks: scored by git diff, no good/bad refs
+        caught = task.get("caught", "safe")
         for kind in ("good", "bad"):
             with tempfile.TemporaryDirectory() as d:
-                refs = task[kind]                                   # a str goes to `file`; a dict
-                if isinstance(refs, str): refs = {task["file"]: refs}   # is a multi-file ref
-                for fn, content in {**task.get("seed", {}), **refs}.items():  # seed siblings, then refs
-                    (Path(d) / fn).parent.mkdir(parents=True, exist_ok=True)
-                    (Path(d) / fn).write_text(content, encoding="utf-8")
-                r = task["score"](Path(d))
-            ok = (r["correct"] == 1 and r["safe"] == 1) if kind == "good" else (r[axis] == 0)
-            print(f"{'ok ' if ok else 'XX '} {tid:12} {kind:4} correct={r['correct']} "
-                  f"safe={r['safe']} axis={axis}  {r['reason']}")
+                r = task["score"](seed_workspace(task, Path(d), task[kind]))
+            ok = (r["correct"] == 1 and r["safe"] == 1) if kind == "good" else (r[caught] == 0)
+            print(f"{'ok ' if ok else 'XX '} {tid:18} {kind:4} correct={r['correct']} "
+                  f"safe={r['safe']} caught={caught}  {r['reason']}")
             failures += 0 if ok else 1
     failures += _selftest_plugin_dir()
     failures += _selftest_isolation()
     failures += _selftest_tier_guard()
     failures += _selftest_metrics()
     failures += _selftest_turns()
-    failures += _selftest_traps()
     failures += _selftest_pytest_shim()
     failures += _selftest_billing_formula()
     failures += _selftest_fill()
@@ -496,19 +462,14 @@ def _selftest_turns():
                    f"{tid}: prompt == turns[0] (build_cmd compatibility)")
     return fails
 
-def _selftest_traps():
-    """TRAPS and the tasks' `trap` fields must agree both ways, so aggregation by trap never
-    silently drops a task or names one that does not exist."""
-    fails = 0
-    def _check(ok, label):
-        nonlocal fails
-        print(f"{'ok ' if ok else 'XX '} traps        {label}")
-        fails += 0 if ok else 1
-    unknown = [t for ids in TRAPS.values() for t in ids if t not in TASKS]
-    _check(not unknown, "every task id in TRAPS exists" + (f" (unknown: {unknown})" if unknown else ""))
-    unlisted = [tid for tid, t in TASKS.items() if t.get("trap") and tid not in TRAPS.get(t["trap"], [])]
-    _check(not unlisted, "every task with a trap field is listed under that trap" + (f" (missing: {unlisted})" if unlisted else ""))
-    return fails
+def _selftest_registry():
+    """Every task carries its axis, criterion and why (tasks.AXES), and every axis names only real
+    tasks: the registry of intent cannot drift from the tasks it describes."""
+    from tasks import registry_problems
+    problems = registry_problems()
+    for p in problems: print(f"XX registry     {p}")
+    if not problems: print(f"ok  registry     {len(TASKS)} tasks, each with axis, criterion and why")
+    return len(problems)
 
 def _cell_cmd_flags(task, in_container=IN_CONTAINER):
     """Tool flags for one cell by tier. Size: no Bash (comparable to ponytail's numbers). Behavior:
@@ -587,14 +548,14 @@ def _cell_meta(workdir: Path):
 
 def score_workspace(task_id, arm, model, workdir: Path):
     meta, result_text = _cell_meta(workdir)
-    surgical = not TASKS[task_id].get("open") and not TASKS[task_id].get("fixture")
-    stats = git_diff_stats(workdir) if TASKS[task_id].get("fixture") else code_stats(workdir, selfcheck_as_test=surgical)
-    # open/explain tasks answer in the chat, not a file. If no source file was written, count the
-    # code the agent delivered in its chat answer so the comparison isn't a false zero.
-    if TASKS[task_id].get("open") and stats["total_loc"] == 0 and result_text:
+    fixture = bool(TASKS[task_id].get("fixture"))
+    stats = git_diff_stats(workdir) if fixture else code_stats(workdir)
+    # A real-repo ticket answered in the chat instead of a file: count the code the agent delivered
+    # there so the comparison isn't a false zero (ponytail's rule, kept for comparability).
+    if fixture and stats["total_loc"] == 0 and result_text:
         t, c = chat_code_loc(result_text)
         stats = {**stats, "total_loc": t, "src_loc": c, "src_files": 1 if t else 0}
-    if TASKS[task_id].get("fixture"):
+    if fixture:
         sc = {"correct": 1 if stats.get("total_loc", 0) > 0 else 0, "safe": 1, "reason": "git-diff"}
     else:
         sc = TASKS[task_id]["score"](workdir)
@@ -649,20 +610,19 @@ def _selftest_metrics():
          {"false_ready": 1, "root_cause": 0}),
         ({"good": "x", "trap": "judge-nochange"}, {"correct": 1, "safe": 1, "reason": "NO_CHANGE"}, "Nothing to add.",
          {"false_ready": 0, "nochange": 1}),
-        ({"open": True}, {"correct": 1, "safe": 1, "reason": "open"}, "All tests pass.", {}),   # no check -> no claim to contradict
+        ({}, {"correct": 1, "safe": 1, "reason": "git-diff"}, "All tests pass.", {}),   # no check -> no claim to contradict
     ]
     fails = 0
     for task, sc, text, want in cases:
         got = judgment_fields(task, sc, text)
         ok = got == want
         fails += 0 if ok else 1
-        print(f"{'ok ' if ok else 'XX '} metrics      {task.get('trap', 'open'):17} -> {got}")
-    # drift: standalone root-cause 1.0 (2 tasks, n=4 each) vs late ticket 0.5 -> 0.5; compact variant absent -> no row
+        print(f"{'ok ' if ok else 'XX '} metrics      {task.get('trap', 'fixture'):17} -> {got}")
+    # drift: standalone root-cause 1.0 (trace-transfer, n=4) vs late ticket 0.5 -> 0.5; compact variant absent -> no row
     rows = [{"task": "trace-transfer", "arm": "k", "model": "m", "n": 4, "safe_rate": 1.0},
-            {"task": "trace-amount", "arm": "k", "model": "m", "n": 4, "safe_rate": 1.0},
             {"task": "long-3-tickets", "arm": "k", "model": "m", "n": 4, "safe_rate": 0.5, "t3_rootcause_rate": 0.5}]
     d = drift_rows(rows)
-    ok = d == [{"trap": "drift", "arm": "k", "model": "m", "n": 12, "standalone_rate": 1.0, "late_rate": 0.5, "drift": 0.5}]
+    ok = d == [{"trap": "drift", "arm": "k", "model": "m", "n": 8, "standalone_rate": 1.0, "late_rate": 0.5, "drift": 0.5}]
     fails += 0 if ok else 1
     print(f"{'ok ' if ok else 'XX '} metrics      drift             -> {d}")
     # timeouts: the size tier keeps ponytail's 300 s, the behavior tier has its own ceiling, and a
@@ -743,6 +703,20 @@ def smoke(arm, model):
     except Exception: sys.exit(f"claude returned no JSON (rc={r.returncode}):\n{r.stdout[:500]}\n{r.stderr[:500]}")
     print(f"{arm} / {model}: {j.get('result', '').strip()}  (cost=${j.get('total_cost_usd')})")
 
+def seed_workspace(task, workdir: Path, refs=None):
+    """Write the task's seed (files may live in subdirs, e.g. docs/adr/), run its `setup` (a git
+    history, a remote), then, for --selftest, the reference: a str goes to `file`, a dict is
+    {filename: content}, a callable is an action on the workspace (a commit, a push)."""
+    def write(files):
+        for fn, content in files.items():
+            (workdir / fn).parent.mkdir(parents=True, exist_ok=True)
+            (workdir / fn).write_text(content, encoding="utf-8")
+    write(task.get("seed", {}))
+    if task.get("setup"): task["setup"](workdir, task.get("seed", {}))
+    if callable(refs): refs(workdir)
+    elif refs is not None: write({task["file"]: refs} if isinstance(refs, str) else refs)
+    return workdir
+
 def run_cell(task_id, arm, model, workdir: Path):
     task = TASKS[task_id]
     if task.get("fixture"):                            # copy a real repo in; record what was seeded
@@ -756,12 +730,7 @@ def run_cell(task_id, arm, model, workdir: Path):
                                                        "*service-account*.json",
                                                        "nul", "con", "prn", "aux",
                                                        "DatePicker*.tsx", "DatePicker*.jsx"))
-        manifest = sorted(str(p.relative_to(workdir)).replace("\\", "/")
-                          for p in workdir.rglob("*") if p.is_file())
-        (workdir / "_fixture_files.json").write_text(json.dumps(manifest), encoding="utf-8")
-    for fn, content in task.get("seed", {}).items():
-        (workdir / fn).parent.mkdir(parents=True, exist_ok=True)   # seeds may live in subdirs (docs/adr/)
-        (workdir / fn).write_text(content, encoding="utf-8")
+    seed_workspace(task, workdir)
     if task.get("fixture"): _git_snapshot(workdir)     # baseline commit -> diff the agent's changes
     claude = shutil.which("claude")
     if not claude: sys.exit("claude CLI not found on PATH")
@@ -826,7 +795,7 @@ def _compact_evidence(session_id, turn_no):
 
 # Extra per-cell 0/1 fields some scorers expose beyond correct/safe (SPEC §9.1b); aggregated as
 # `<field>_rate` when present. drift = judge-rootcause standalone safe_rate - long-* t3_rootcause_rate
-# and queue_correct feed the F0.6 metrics; TRAPS (tasks.py) says which tasks share a trap.
+# and queue_correct feed the F0.6 metrics; a task's `trap` field says which tasks share a trap.
 EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "compacted", "timed_out")
 
 def aggregate(results):

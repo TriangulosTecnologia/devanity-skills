@@ -4,8 +4,8 @@
 # in this directory. Modified for devanity-skills: arms, environment names, tiers, and attribution.
 """LLM-judge COMPLETENESS pass for the agentic benchmark.
 
-Fewer lines is only a win if the code still does the job. The open feature tasks (vibe-*,
-tmpl-fe-*, open-*) are scored on LOC alone -- there is no deterministic check that the asked
+Fewer lines is only a win if the code still does the job. The real-repo tickets (tmpl-*) are
+scored on LOC alone and the greenfield vibe-app-* scorers only prove shape -- there is no deterministic check that the asked
 feature was actually implemented, so an arm could "win" the LOC metric by shipping a stub.
 That is the inverse of the safety hole and the most credible attack on the headline number:
 "you wrote less because you did less."
