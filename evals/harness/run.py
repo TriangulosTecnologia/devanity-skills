@@ -276,8 +276,28 @@ def selftest():
     failures += _selftest_kill()
     failures += _selftest_cross_cell()
     failures += _selftest_probes()
+    failures += _selftest_seeded_checks()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
+
+def _selftest_seeded_checks():
+    """A mode task that reads a repository's verification must seed one the mode can run in the
+    image (stdlib only, no pytest): a Makefile `test:` recipe that runs >= 1 test and passes on the
+    seed (review G-013: without it, a faithful review of the clean diff must raise "no focused
+    check" and scores as a false block). Trusted seed code, so it runs on the host too."""
+    fails = 0
+    for tid in ("mode-review", "mode-review-clean", "mode-audit"):
+        with tempfile.TemporaryDirectory() as d:
+            ws = seed_workspace(TASKS[tid], Path(d))
+            mk = ws / "Makefile"
+            recipe = next((ln.strip() for ln in mk.read_text(encoding="utf-8").split("test:", 1)[1].splitlines() if ln.startswith("\t")), "") if mk.exists() else ""
+            r = subprocess.run(["sh", "-c", recipe], cwd=ws, capture_output=True, text=True, timeout=60) if recipe else None
+            m = re.search(r"Ran (\d+) tests?", (r.stderr + r.stdout) if r else "")
+        ok = bool(r) and r.returncode == 0 and bool(m) and int(m.group(1)) >= 1
+        print(f"{'ok ' if ok else 'XX '} seeded_check {tid:17} {recipe or 'no Makefile test recipe'} -> "
+              f"{('rc=' + str(r.returncode) + ', ' + (m.group(0) if m else 'no test ran')) if r else 'nothing to run'}")
+        fails += 0 if ok else 1
+    return fails
 
 def _selftest_probes():
     """The review's counter-examples (tasks.PROBES): each seeds its task, writes the probe's files
