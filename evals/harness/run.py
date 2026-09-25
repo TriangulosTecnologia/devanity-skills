@@ -29,7 +29,7 @@ Two execution tiers (SPEC §9): "size" tasks run with Bash disallowed, for direc
 with ponytail's published numbers; "behavior" tasks allow Bash and therefore only run inside a
 disposable container (DEVANITY_HARNESS_CONTAINER=1), because the agent executes code it wrote.
 """
-import argparse, concurrent.futures, datetime, json, os, re, shutil, signal, statistics, subprocess, sys, tempfile, uuid
+import argparse, concurrent.futures, datetime, json, os, re, shutil, signal, statistics, subprocess, sys, tempfile, threading, uuid
 from collections import defaultdict
 from pathlib import Path
 
@@ -272,8 +272,29 @@ def selftest():
     failures += _selftest_fill()
     failures += _selftest_memory_guard()
     failures += _selftest_kill()
+    failures += _selftest_cross_cell()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
+
+def _selftest_cross_cell():
+    """Scoring one cell must never see another cell's code (review G-001): after a good cell is
+    scored, a cell that deleted the module scores _fail, exactly as it would in a fresh process.
+    --rescore walks cells sorted by name, so the neighbour is another arm on the same task."""
+    fails = 0
+    cases = (("reuse-slug", {"articles.py": None}), ("judge-askable", {"items.py": None, "src/items.py": TASKS["judge-askable"]["bad"]}))
+    for tid, later in cases:
+        task = TASKS[tid]
+        with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+            task["score"](seed_workspace(task, Path(a), task["good"]))
+            wb = seed_workspace(task, Path(b))
+            for fn, content in later.items():
+                if content is None: (wb / fn).unlink()
+                else: (wb / fn).parent.mkdir(parents=True, exist_ok=True); (wb / fn).write_text(content, encoding="utf-8")
+            r = task["score"](wb)
+        ok = r["correct"] == 0 and r["safe"] == 0
+        print(f"{'ok ' if ok else 'XX '} cross_cell   {tid:14} module gone after a good cell -> {r['reason']}")
+        fails += 0 if ok else 1
+    return fails
 
 def _selftest_memory_guard():
     """A cell cwd with a CLAUDE.md or AGENTS.md in any ancestor is contamination of every arm and
@@ -558,6 +579,12 @@ def _cell_meta(workdir: Path):
     meta["final_chars"] = len(result_text or "")        # answer length: caveman's axis, the rung-2 cost
     return meta, result_text
 
+# Live cells finish on ThreadPoolExecutor workers; the scorers import delivered modules through
+# the process-global sys.path and sys.modules (tasks._import_pkg, the pytest shim), so two cells
+# scored at once could read each other's code (review G-001). Scoring is seconds against minutes
+# of agent time, so it runs one cell at a time.
+_SCORE_LOCK = threading.Lock()
+
 def score_workspace(task_id, arm, model, workdir: Path):
     meta, result_text = _cell_meta(workdir)
     fixture = bool(TASKS[task_id].get("fixture"))
@@ -570,7 +597,8 @@ def score_workspace(task_id, arm, model, workdir: Path):
     if fixture:
         sc = {"correct": 1 if stats.get("total_loc", 0) > 0 else 0, "safe": 1, "reason": "git-diff"}
     else:
-        sc = TASKS[task_id]["score"](workdir)
+        with _SCORE_LOCK:                              # scorers use process-global sys.path/sys.modules
+            sc = TASKS[task_id]["score"](workdir)
     return {"task": task_id, "arm": arm, "model": model, **sc, **stats, **meta,
             **judgment_fields(TASKS[task_id], sc, result_text)}
 

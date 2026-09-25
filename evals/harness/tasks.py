@@ -609,12 +609,21 @@ def score_todo(workdir):
 #    (repair the shared helper) gets right.
 # ======================================================================================
 
+_pkg_path = []   # the one workspace _import_pkg has put on sys.path (at most one entry)
+
 def _import_pkg(workdir, modname, also=()):
     """Import a produced module by name with workdir on sys.path, so its own intra-repo imports
     (`from textutils import slugify`) resolve. Fresh each call: drop cached names first, the
-    whole package of `modname` included (a previous workspace's submodules must not survive)."""
+    whole package of `modname` included (a previous workspace's submodules must not survive),
+    and the previous workspace's sys.path entry (review G-001: a cell that deleted its module
+    was scored with the last cell's). The current entry stays until the next call, so an import
+    inside a delivered function still resolves while the scorer calls it. Not thread-safe:
+    run.py serializes scoring (_SCORE_LOCK)."""
     wd = str(workdir)
-    if wd not in sys.path: sys.path.insert(0, wd)
+    while _pkg_path:
+        old = _pkg_path.pop()
+        while old in sys.path: sys.path.remove(old)
+    if wd not in sys.path: sys.path.insert(0, wd); _pkg_path.append(wd)
     top = modname.split(".")[0]
     for m in [k for k in sys.modules if k == top or k.startswith(top + ".")] + list(also): sys.modules.pop(m, None)
     try:
