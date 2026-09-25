@@ -1010,8 +1010,8 @@ FALSETEST_BAD_PYTEST = {"durations.py": FALSETEST_FIX,
                                               "    assert parse_duration('1h30m') == pytest.approx(5400)\n")}
 
 def _pytest_shim():
-    """A minimal stand-in for `pytest` when the real one is not installed (the harness is
-    stdlib-only and so is the container). Real agents write `import pytest` + `pytest.raises` /
+    """A minimal stand-in for `pytest`, installed for every delivered-test run (the harness is
+    stdlib-only and so is the container; a host's real pytest is never used, see _run_tests). Real agents write `import pytest` + `pytest.raises` /
     `pytest.mark.parametrize` for a regression test; without this, the import error scored every
     such test as "fails on the delivered code" (blind spot found in the 2026-09-24 stage round).
     Covers: raises(exc, match=), approx(), mark.<anything> as a no-op decorator, mark.parametrize
@@ -1063,18 +1063,18 @@ def _pytest_shim():
 def _run_tests(workdir):
     """(ran, passed): import every test file with workdir on sys.path, run unittest cases and
     bare test_* functions (pytest.mark.parametrize cases expanded). Any import error, failure or
-    exception -> passed=False. ran=False when there is no test file at all. When pytest is not
-    installed, a minimal shim (_pytest_shim) stands in for the import."""
+    exception -> passed=False. ran=False when there is no test file at all. The minimal shim
+    (_pytest_shim) always stands in for `import pytest`, even where real pytest is installed: the
+    container has none, and a host --rescore must score what the container scored (review G-007:
+    real pytest does not expand parametrize for a bare call, so a correct test failed on the host)."""
     import unittest
     wd = Path(workdir)
     files = [p for p in wd.rglob("*.py") if is_test_file(p, wd)]
     if not files: return False, False
     saved = list(sys.path); sys.path.insert(0, str(wd))
-    shim = None
-    try: import pytest  # noqa: F401  (real pytest wins when present)
-    except ImportError:
-        shim = _pytest_shim(); sys.modules["pytest"] = shim
-    skip_exc = shim._Skip if shim is not None else getattr(sys.modules["pytest"].skip, "Exception", ())
+    saved_pytest = sys.modules.get("pytest")
+    shim = _pytest_shim(); sys.modules["pytest"] = shim
+    skip_exc = shim._Skip
     try:
         for m in [k for k in sys.modules if k.startswith("_judge_")]: sys.modules.pop(m, None)
         sys.modules.pop("durations", None)
@@ -1093,13 +1093,14 @@ def _run_tests(workdir):
                     for kwargs in (getattr(obj, "_shim_params", None) or [{}]):
                         try: obj(**kwargs)
                         except Exception as e:
-                            if skip_exc and isinstance(e, skip_exc): continue
+                            if isinstance(e, skip_exc): continue
                             return True, False
         return True, True
     finally:
         sys.path[:] = saved
         sys.modules.pop("durations", None)
-        if shim is not None: sys.modules.pop("pytest", None)
+        if saved_pytest is None: sys.modules.pop("pytest", None)
+        else: sys.modules["pytest"] = saved_pytest
 
 def score_falsetest(workdir):
     import shutil as _sh
