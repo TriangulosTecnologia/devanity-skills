@@ -447,7 +447,16 @@ def _selftest_cross_cell():
         ok = r["correct"] == 0 and r["safe"] == 0
         print(f"{'ok ' if ok else 'XX '} cross_cell   {tid:14} module gone after a good cell -> {r['reason']}")
         fails += 0 if ok else 1
-    return fails
+    # A helper module the agent created, outside the scorer's `also` list (review G-038): cell B's
+    # paging.py says 20, and B must be read with it, not with cell A's 50.
+    task = TASKS["judge-askable"]
+    items = "import paging\n" + task["good"].replace("min(limit or 50, 200)", "min(limit or paging.DEFAULT_LIMIT, 200)")
+    with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+        ra = task["score"](seed_workspace(task, Path(a), {"items.py": items, "paging.py": "DEFAULT_LIMIT = 50\n"}))
+        rb = task["score"](seed_workspace(task, Path(b), {"items.py": items, "paging.py": "DEFAULT_LIMIT = 20\n"}))
+    ok = "min(limit or 50" in task["good"] and ra["safe"] == 1 and rb["correct"] == 0 and rb["safe"] == 0
+    print(f"{'ok ' if ok else 'XX '} cross_cell   judge-askable  own helper module after a good cell -> A: {ra['reason']}; B: {rb['reason']}")
+    return fails + (0 if ok else 1)
 
 def _selftest_memory_guard():
     """A cell cwd with a CLAUDE.md or AGENTS.md in any ancestor is contamination of every arm and
