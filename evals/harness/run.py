@@ -398,6 +398,10 @@ def _selftest_isolation():
            "senior-oneliner is the one-sentence control plus the same NO_RUN, nothing else")
     _check(all(not spec.get("append") for a, spec in ARMS.items() if a != "senior-oneliner"),
            "no plugin arm appends anything to the system prompt")
+    modes = [t for t, spec in TASKS.items() if spec.get("arms")]
+    _check(bool(modes) and {c[1] for c in plan_cells(modes, list(ARMS), ["haiku"], 1)} == {"devanity"}
+           and {c[1] for c in plan_cells(["cache"], list(ARMS), ["haiku"], 1)} == set(ARMS),
+           f"the {len(modes)} mode tasks plan cells for devanity only; other tasks for every arm")
     return fails
 
 def _selftest_tier_guard():
@@ -470,6 +474,12 @@ def _selftest_registry():
     for p in problems: print(f"XX registry     {p}")
     if not problems: print(f"ok  registry     {len(TASKS)} tasks, each with axis, criterion and why")
     return len(problems)
+
+def plan_cells(task_ids, arms, models, runs):
+    """(task, arm, model, run) for every requested cell a task allows: a task with `arms` (the mode
+    tasks: only the candidate has the verbs) runs on those arms alone, never as a silent baseline."""
+    return [(t, a, m, r) for t in task_ids for m in models for a in arms for r in range(runs)
+            if a in TASKS[t].get("arms", arms)]
 
 def _cell_cmd_flags(task, in_container=IN_CONTAINER):
     """Tool flags for one cell by tier. Size: no Bash (comparable to ponytail's numbers). Behavior:
@@ -544,6 +554,7 @@ def _cell_meta(workdir: Path):
     err_files = sorted(workdir.glob("_claude*.stderr.txt")) or [workdir / "_claude.stderr.txt"]
     meta["timed_out"] = int(any("[KILLED after" in f.read_text(encoding="utf-8", errors="ignore")
                                 for f in err_files if f.exists()))
+    meta["final_chars"] = len(result_text or "")        # answer length: caveman's axis, the rung-2 cost
     return meta, result_text
 
 def score_workspace(task_id, arm, model, workdir: Path):
@@ -836,6 +847,8 @@ def aggregate(results):
                                            if any(c.get("out_tokens") is not None for c in cells) else None),
                      "time_s_mean": (round(statistics.mean([c["duration_ms"] / 1000 for c in cells if c.get("duration_ms") is not None]), 1)
                                      if any(c.get("duration_ms") is not None for c in cells) else None),
+                     "final_chars_mean": (round(statistics.mean([c["final_chars"] for c in cells if c.get("final_chars") is not None]))
+                                          if any(c.get("final_chars") is not None for c in cells) else None),
                      **{k + "_rate": _rate(cells, k) for k in JUDGMENT_KEYS}})
     return rows
 
@@ -891,12 +904,13 @@ def print_table(rows):
     for r in rows: by[(r["task"], r["model"])].append(r)
     for (task, model), rs in sorted(by.items()):
         print(f"\n=== {task}  ({model}, n={rs[0]['n']}) ===")
-        print(f"  {'arm':16} {'wrote%':>7} {'correct':>8} {'LOC':>7} {'tot_tok':>9} {'$/run':>8} {'time_s':>7}")
+        print(f"  {'arm':16} {'wrote%':>7} {'correct':>8} {'safe':>6} {'LOC':>7} {'tot_tok':>9} {'chars':>6} {'$/run':>8} {'time_s':>7}")
         for r in sorted(rs, key=lambda x: x["arm"]):
             c = ("$" + format(r["cost_mean"], ".4f")) if r["cost_mean"] is not None else "-"
             tt = r.get("total_tokens_mean"); t = r.get("time_s_mean")
-            print(f"  {r['arm']:16} {r.get('wrote_file_rate', 1.0):>7} {r['correct_rate']:>8} "
-                  f"{r['total_loc_median']:>7} {(tt if tt is not None else '-'):>9} {c:>8} "
+            fc = r.get("final_chars_mean")
+            print(f"  {r['arm']:16} {r.get('wrote_file_rate', 1.0):>7} {r['correct_rate']:>8} {r['safe_rate']:>6} "
+                  f"{r['total_loc_median']:>7} {(tt if tt is not None else '-'):>9} {(fc if fc is not None else '-'):>6} {c:>8} "
                   f"{(t if t is not None else '-'):>7}")
     traps = trap_summary(rows)
     if traps:
@@ -1038,8 +1052,10 @@ def main():
         cells = [(tid, arm, model, r) for tid, arm, model, r, ws, why in failed]
         print(f"filling {len(cells)} failed cells of {src} into {out_dir} (originals kept under {keep})", flush=True)
     else:
-        cells = [(tid, arm, model, r)
-                 for tid in task_ids for model in models for arm in arms for r in range(args.runs)]
+        cells = plan_cells(task_ids, arms, models, args.runs)
+        skipped = sorted({(t, a) for t in task_ids for a in arms} - {(c[0], c[1]) for c in cells})
+        if skipped: print(f"skipping {len(skipped)} (task, arm) pairs outside a task's `arms`: "
+                          + ", ".join(f"{t}/{a}" for t, a in skipped[:6]) + (" ..." if len(skipped) > 6 else ""))
     total = len(cells)
     results, done = [], 0
 
