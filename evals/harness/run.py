@@ -302,6 +302,7 @@ def selftest():
     failures += _selftest_traps()
     failures += _selftest_pytest_shim()
     failures += _selftest_billing_formula()
+    failures += _selftest_fill()
     failures += _selftest_memory_guard()
     failures += _selftest_kill()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
@@ -733,7 +734,7 @@ SMOKE_PROMPT = ("Reply with only the words ACTIVE: followed by the names of any 
 def smoke(arm, model):
     claude = shutil.which("claude")
     if not claude: sys.exit("claude CLI not found on PATH")
-    cmd = build_cmd({"prompt": SMOKE_PROMPT, "tier": "size"}, arm, model, claude)
+    cmd = build_cmd({"prompt": SMOKE_PROMPT, "tier": "size"}, arm, model, claude, session_id=str(uuid.uuid4()))
     memory_guard(RUNS_DIR); RUNS_DIR.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=RUNS_DIR) as d:   # same cwd conditions as a real cell
         print("argv:", " ".join(cmd), "\n", flush=True)
@@ -766,8 +767,11 @@ def run_cell(task_id, arm, model, workdir: Path):
     if not claude: sys.exit("claude CLI not found on PATH")
     env = cell_env(task)
     turns = task.get("turns")
-    if not turns:                                      # single turn: argv and file layout unchanged
-        _run_turn(build_cmd(task, arm, model, claude), workdir, env,
+    if not turns:                                      # single turn: file layout unchanged; the session id is
+        # pinned so a `claude -p` launched from inside a Claude Code session can never inherit or
+        # resume another session's transcript (runbook note; one unexplained host smoke on
+        # 2026-09-25 answered with a kernel it was not given, at 4x the usual cost).
+        _run_turn(build_cmd(task, arm, model, claude, session_id=str(uuid.uuid4())), workdir, env,
                   workdir / "_claude.json", workdir / "_claude.stderr.txt", timeout=cell_timeout(task))
         return score_workspace(task_id, arm, model, workdir)
     # Multi-turn (SPEC §9.1b): one claude session, one workdir, N sequential prompts. Turn 1 pins
@@ -944,6 +948,62 @@ def rescore(run_dir):
     print_table(rows)
     print(f"\nrescored {len(results)} cells from {run_dir}")
 
+# A cell that ended in an error instead of an agent run: no JSON, an is_error record, or the
+# subscription's usage-limit text with no turns spent. `--fill <dir>` re-runs exactly those cells
+# into a fresh stamp and moves the failed workspaces to <dir>/_failed/ (kept, never scored: their
+# names no longer parse as cells). Written for the 2026-09-24 round, where the 5-hour window of
+# the subscription cut stages 2 and 3 mid-run.
+_LIMIT_RE = re.compile(r"(hit your (session|usage) limit|usage limit|rate.?limit|overloaded|429|api error)", re.I)
+
+def cell_failed(ws: Path):
+    """Reason string when the workspace holds no completed agent run, else None."""
+    files = _turn_files(ws) or [ws / "_claude.json"]
+    for f in files:
+        if not f.exists() or f.stat().st_size == 0: return "no output"
+        try: j = json.loads(f.read_text(encoding="utf-8"))
+        except Exception: return "unparseable output"
+        if not isinstance(j, dict): return "unparseable output"
+        if j.get("error") or j.get("is_error"): return f"error: {str(j.get('result') or j.get('error'))[:80]}"
+        if (j.get("num_turns") or 0) <= 1 and not j.get("total_cost_usd") and _LIMIT_RE.search(str(j.get("result", ""))):
+            return f"limit: {str(j.get('result'))[:80]}"
+    return None
+
+def failed_cells(run_dir: Path):
+    out = []
+    for ws in sorted(p for p in run_dir.iterdir() if p.is_dir()):
+        parts = ws.name.split("__")
+        if len(parts) != 4 or parts[0] not in TASKS: continue
+        why = cell_failed(ws)
+        if why: out.append((parts[0], parts[1], parts[2], int(parts[3]), ws, why))
+    return out
+
+def _selftest_fill():
+    """cell_failed must flag an empty output, an is_error record and the usage-limit text, and pass
+    a completed run; failed_cells must skip names that are not cells."""
+    fails = 0
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} fill         {label}")
+        fails += 0 if ok else 1
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        def ws(name, content):
+            w = root / name; w.mkdir(); 
+            if content is not None: (w / "_claude.json").write_text(content, encoding="utf-8")
+            return w
+        good = ws("cache__baseline__sonnet__0", json.dumps({"result": "done", "num_turns": 5, "total_cost_usd": 0.1}))
+        empty = ws("cache__baseline__sonnet__1", "")
+        err = ws("cache__baseline__sonnet__2", json.dumps({"is_error": True, "result": "API Error"}))
+        lim = ws("cache__baseline__sonnet__3", json.dumps({"result": "You've hit your session limit · resets 1:30am (UTC)", "num_turns": 1, "total_cost_usd": 0}))
+        ws("_failed", None); ws("notes", None)
+        _check(cell_failed(good) is None, "a completed run is not failed")
+        _check(cell_failed(empty) == "no output", "empty output is failed")
+        _check((cell_failed(err) or "").startswith("error"), "is_error is failed")
+        _check((cell_failed(lim) or "").startswith("limit"), "usage-limit text with no spend is failed")
+        names = sorted(c[4].name for c in failed_cells(root))
+        _check(names == ["cache__baseline__sonnet__1", "cache__baseline__sonnet__2", "cache__baseline__sonnet__3"], "failed_cells lists exactly the failed cells")
+    return fails
+
 def _claude_version():
     try: return subprocess.run([shutil.which("claude"), "--version"], capture_output=True, text=True).stdout.strip()
     except Exception: return "unknown"
@@ -959,6 +1019,7 @@ def main():
     ap.add_argument("--models", default="haiku", help="comma list: haiku,sonnet,opus")
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--workers", type=int, default=4, help="cells to run concurrently (default 4; cells are fully isolated)")
+    ap.add_argument("--fill", help="re-run the cells of a kept run dir that ended in an error (limit, empty output) into a new stamp; failed workspaces move to <dir>/_failed/")
     ap.add_argument("--smoke", metavar="ARM", choices=list(ARMS),
                     help="live one-prompt check that ARM's plugins are visible (tiny API spend; manual, not a gate)")
     args = ap.parse_args()
@@ -972,19 +1033,34 @@ def main():
     if selftest():
         sys.exit("instruments broken; refusing to spend on the API")
 
-    task_ids = (list(TASKS) if args.all
-                else ([t.strip() for t in args.task.split(",")] if args.task else []))
-    if not task_ids: sys.exit("give --task <id> (comma list ok), --all, or --rescore <dir>")
+    if args.fill:
+        src = Path(args.fill)
+        if not src.exists(): src = RUNS_DIR / src.name
+        failed = failed_cells(src)
+        if not failed: sys.exit(f"nothing to fill in {src}: every cell holds a completed run")
+        task_ids = sorted({f[0] for f in failed})
+        models = sorted({f[2] for f in failed})
+        for tid, arm, model, r, ws, why in failed: print(f"  fill {ws.name}: {why}")
+    else:
+        task_ids = (list(TASKS) if args.all
+                    else ([t.strip() for t in args.task.split(",")] if args.task else []))
+        if not task_ids: sys.exit("give --task <id> (comma list ok), --all, --fill <dir>, or --rescore <dir>")
+        models = [m.strip() for m in (args.model or args.models).split(",")]
     if any(TASKS[t].get("fixture") for t in task_ids): fixture.ensure()   # pinned clone or stop, before any API
     arms = [a.strip() for a in args.arms.split(",")]
-    models = [m.strip() for m in (args.model or args.models).split(",")]
     memory_guard(RUNS_DIR)                                                 # before any API spend
-    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + ("-fill" if args.fill else "")
     out_dir = RUNS_DIR / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cells = [(tid, arm, model, r)
-             for tid in task_ids for model in models for arm in arms for r in range(args.runs)]
+    if args.fill:
+        keep = src / "_failed"; keep.mkdir(exist_ok=True)
+        for tid, arm, model, r, ws, why in failed: shutil.move(str(ws), str(keep / ws.name))
+        cells = [(tid, arm, model, r) for tid, arm, model, r, ws, why in failed]
+        print(f"filling {len(cells)} failed cells of {src} into {out_dir} (originals kept under {keep})", flush=True)
+    else:
+        cells = [(tid, arm, model, r)
+                 for tid in task_ids for model in models for arm in arms for r in range(args.runs)]
     total = len(cells)
     results, done = [], 0
 
