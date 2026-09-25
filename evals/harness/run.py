@@ -672,12 +672,13 @@ def _selftest_score_guard():
             _check(text.startswith("# refused") and not mark.exists(),
                    "the judges' source_text refuses the same cell, and nothing runs")
             other = []                               # the other ways to hand git a config the harness never wrote
-            for i, tamper in enumerate(("commondir", "config.worktree", "gitfile")):
+            for i, tamper in enumerate(("commondir", "config.worktree", "gitfile", "no config")):
                 c = root / f"tmpl-be-count__baseline__haiku__{2 + i}"; c.mkdir(); _git_snapshot(c)
                 if tamper == "gitfile": shutil.rmtree(c / ".git"); (c / ".git").write_text(f"gitdir: {bad / '.git'}\n", encoding="utf-8")
+                elif tamper == "no config": (c / ".git" / "config").unlink()
                 else: (c / ".git" / tamper).write_text("../x\n" if tamper == "commondir" else "", encoding="utf-8")
                 if not str(score_workspace("tmpl-be-count", "baseline", "haiku", c).get("reason", "")).startswith("refused"): other.append(tamper)
-            _check(not other and not mark.exists(), f"a .git that is a gitfile or carries commondir/config.worktree is refused ({', '.join(other) or 'all 3'})")
+            _check(not other and not mark.exists(), f"a .git that is a gitfile, carries commondir/config.worktree or has no config is refused ({', '.join(other) or 'all 4'})")
             # A config git init wrote is still read with the exec-capable settings pinned off, so a
             # command the host's own config (or one git added later) names never runs either.
             gcfg = root / "global.gitconfig"
