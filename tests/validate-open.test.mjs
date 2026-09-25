@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkRegistry, loadRegistry, specCriteria } from '../scripts/validate-open.mjs';
+import { checkReadme, checkRegistry, loadRegistry, specCriteria } from '../scripts/validate-open.mjs';
 
 const spec = [
   '## 12. Riscos', '- not a criterion',
@@ -49,4 +49,27 @@ test('the real registry satisfies the real SPEC', () => {
   const { registry: real, error } = loadRegistry(root);
   assert.equal(error, undefined);
   assert.deepEqual(checkRegistry(real, readFileSync(resolve(root, 'docs/evolution/SPEC.md'), 'utf8')), []);
+});
+
+// evals/README.md's axis table (review G-020: the tasks column drifted from the registry unchecked).
+const axes = { axes: [{ axis: 'reuse', tasks: ['reuse-a', 'reuse-b'] }, { axis: 'real repo', tasks: ['tmpl-x', 'tmpl-y'] }] };
+const readme = (reuseTasks, tmplTasks = 'the two `tmpl-*` tickets') => [
+  '| axis | why | field | tasks | criterion |', '|---|---|---|---|---|',
+  `| reuse | w | nobody | ${reuseTasks} | none |`, `| real repo | w | ponytail | ${tmplTasks} | LOC |`,
+].join('\n');
+
+test('a README row listing exactly its axis tasks (a glob covers its prefix) passes', () => {
+  assert.deepEqual(checkReadme(axes, readme('`reuse-a` `reuse-b`')), []);
+});
+
+test('a README row that omits a task, or lists one outside its axis, fails', () => {
+  const missing = checkReadme(axes, readme('`reuse-a`'));
+  assert.ok(missing.some((e) => e.includes('reuse-b') && e.includes('"reuse"')), missing.join('; '));
+  const foreign = checkReadme(axes, readme('`reuse-a` `reuse-b` `tmpl-x`'));
+  assert.ok(foreign.some((e) => e.includes('tmpl-x') && e.includes('"reuse"')), foreign.join('; '));
+});
+
+test('an axis without a README row fails', () => {
+  const errors = checkReadme(axes, readme('`reuse-a` `reuse-b`').replace('| real repo |', '| real repos |'));
+  assert.ok(errors.some((e) => e.includes('no row') && e.includes('real repo')), errors.join('; '));
 });

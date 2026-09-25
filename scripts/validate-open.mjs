@@ -51,6 +51,23 @@ export function checkRegistry(registry, specText) {
   return errors;
 }
 
+// evals/README.md shows the registry to people as one table row per axis (axis | why | field | tasks |
+// criterion): an axis without its row, or a tasks cell that omits one of the axis's tasks or names a
+// task outside it, is drift. A backticked `prefix-*` in the cell stands for every task it prefixes.
+export function checkReadme(registry, readme) {
+  const errors = [];
+  const lines = String(readme).split('\n');
+  for (const row of registry?.axes ?? []) {
+    const line = lines.find((l) => l.startsWith(`| ${row.axis} |`));
+    if (!line) { errors.push(`evals/README.md has no row for the eval axis "${row.axis}"`); continue; }
+    const listed = [...(line.split('|')[4] ?? '').matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+    const covers = (entry, id) => entry === id || (entry.endsWith('*') && id.startsWith(entry.slice(0, -1)));
+    for (const id of row.tasks) if (!listed.some((entry) => covers(entry, id))) errors.push(`evals/README.md row "${row.axis}" does not list its task ${id}`);
+    for (const entry of listed) if (!row.tasks.some((id) => covers(entry, id))) errors.push(`evals/README.md row "${row.axis}" lists ${entry}, which is not a task of that axis`);
+  }
+  return errors;
+}
+
 // The registry is Python; read it by running the harness's own printer, never by parsing its source.
 export function loadRegistry(root) {
   const r = spawnSync('python3', ['evals/harness/tasks.py', '--registry'], { cwd: root, encoding: 'utf8' });
@@ -171,9 +188,7 @@ function main() {
   const loaded = loadRegistry(root);
   if (loaded.error) fail(loaded.error);
   else for (const e of checkRegistry(loaded.registry, read('docs/evolution/SPEC.md'))) fail(e);
-  // evals/README.md renders the registry for people: an axis missing from its table is drift.
-  const evalsReadme = read('evals/README.md');
-  for (const row of loaded.registry?.axes ?? []) if (!evalsReadme.includes(`| ${row.axis} |`)) fail(`evals/README.md has no row for the eval axis "${row.axis}"`);
+  if (loaded.registry) for (const e of checkReadme(loaded.registry, read('evals/README.md'))) fail(e);
   const evalTasks = Object.keys(loaded.registry?.tasks ?? {}).length;
   const evalAxes = (loaded.registry?.axes ?? []).length;
 
