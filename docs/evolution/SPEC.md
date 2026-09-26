@@ -232,19 +232,19 @@ O kernel contém exatamente estas seções, nesta ordem. Cada seção tem um or�
 
 2. **Escada de proporcionalidade** (6 degraus, parada no primeiro que se sustenta):
    1. Precisa mudar? Não → uma linha de razão. `NO_CHANGE` é resultado.
-   2. Trivial e reversível? Faz, forma mais curta, sem cerimônia.
+   2. Trivial e reversível? Faz, forma mais curta, sem cerimônia. Nunca um arquivo de instrução (§0.3).
    3. Muda comportamento? Um check que falha antes, depois o fix.
-   4. Toca a classe de alto risco? Propõe e para. Autorização vem de fora.
+   4. Altera um contrato da classe de alto risco? Propõe e para. Autorização vem de fora.
    5. Move fronteira ou estado? Forma antes de código: `architect-lite` (≤10 linhas: módulos, dono de cada estado, fronteira, o que nunca cruza) sempre; `architect` completo só quando drivers conflitam ou o repositório já tem fronteiras que a mudança atravessa. Greenfield começa aqui, com o lite.
    6. Não dá para saber? Lê até saber. Ainda não → pergunta UMA coisa.
 
-3. **Escada de ofício** (degraus 2–3; herdada do ponytail): existe aqui → stdlib → plataforma → dependência instalada → uma linha → o mínimo que funciona. Bug = causa raiz: grep em todos os chamadores; um guard na função compartilhada é o diff menor. Um exemplo concreto por degrau.
+3. **Escada de ofício** (degraus 2–3; herdada do ponytail): existe aqui → stdlib → plataforma → dependência instalada → uma linha → o mínimo que funciona. Bug = causa raiz: grep em todos os chamadores; um guard na função compartilhada é o diff menor. Um exemplo concreto por degrau. **Higiene de contexto** (§0.3): reusa o comportamento pela interface, nunca a forma do débito; débito é o que os gates do repositório dizem, não o gosto; sem gate, segue o padrão local.
 
 4. **Decisões**: reversível → toma o default, diz em uma linha, segue. Irreversível ou de alçada humana → `[DECIDE]` com opções e default recomendado; **para o slice dependente, não a sessão**: registra a decisão na fila do ledger, continua o trabalho que não depende dela, e entrega a fila no fim. Em sessão autônoma (§7.3), o envelope de autoridade pré-concedido decide o que pode seguir com default e o que fica na fila.
 
 4b. **Verificação**: "verificado" só existe dentro do bloco de certificado (§7.4). Fora dele, o kernel proíbe as palavras `verified`, `tested`, `all tests pass` como afirmação; o que se pode dizer é o que foi executado e o que retornou.
 
-5. **Limites que nunca se cortam**: validação em fronteira de confiança · tratamento de erro que evita perda de dados · segurança · acessibilidade · compreensão do problema · o check que falha antes do fix. Usuário insiste na versão completa → constrói, sem rediscutir.
+5. **Limites que nunca se cortam**: validação em fronteira de confiança · tratamento de erro que evita perda de dados · segurança · acessibilidade · compreensão do problema · o check que falha antes do fix · os checks que te julgam (**soberania do verificador**, §0.2: nunca enfraquecer teste, limite, skip ou regra para ficar verde). Usuário insiste na versão completa → constrói, sem rediscutir.
 
 6. **Saída**: código primeiro; depois ≤3 linhas `skipped: X, add when: Y`. Atalho com teto real → comentário `deferred: <teto>, <gatilho>`. Explicação pedida explicitamente não é dívida.
 
@@ -277,6 +277,8 @@ Frases que devem existir literalmente em `SKILL.md` e em `AGENTS.md`:
 - `root cause`
 - `ONE thing` (o gate de pergunta única)
 - `deferred:`
+- `shape of debt` (higiene de contexto, §0.3)
+- `never weaken` (soberania do verificador, §0.2)
 
 Alterar a redação de uma delas exige alterar o invariante na mesma PR; é o lembrete de propagar.
 
@@ -311,7 +313,8 @@ Fonte única, compilada para três superfícies: contexto por caminho injetado n
   "version": 1,
   "defaults": { "tier": "normal", "authority": "commit" },
   "paths": {
-    "billing/**":     { "tier": "high-risk", "authority": "prepare", "check": "pytest tests/billing -q", "delta": { "files": 3 } },
+    "billing/**":     { "tier": "high-risk", "authority": "prepare", "check": "pytest tests/billing -q", "delta": { "files": 3 },
+                        "purpose": "cobranças e reembolsos", "invariants": ["valores em centavos inteiros"] },
     "migrations/**":  { "tier": "high-risk", "authority": "prepare" },
     "docs/**":        { "tier": "trivial",   "authority": "commit" }
   }
@@ -320,19 +323,22 @@ Fonte única, compilada para três superfícies: contexto por caminho injetado n
 
 - `tier`: `trivial | normal | high-risk`. Define o degrau mínimo da escada para o caminho.
 - `authority`: teto da escada `observe < recommend < prepare < execute < commit < merge < deploy`.
-- `check`: comando que o `Stop` executa para o oráculo. Opcional; sem ele, o oráculo é o check declarado no contrato.
+- `check`: comando que o `Stop` executa para o oráculo, lido do arquivo **como commitado em HEAD** (§0.5). É o único check que o oráculo executa; sem ele, a prova fica registrada como não medida.
+- `purpose` (≤160 caracteres) e `invariants` (lista): o mapa do repositório (§0.4), injetado em toda sessão. O dono vem do CODEOWNERS.
+- Um `tier: trivial` cujo glob cobre um arquivo de instrução (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, skills, agentes) é erro de validação (§0.3).
 - `delta`: orçamento de arquivos/linhas; excedido → o `Stop` marca `unbounded delta` e exige decisão.
-- Sem arquivo: tudo é `normal`, guardas não bloqueiam, apenas anotam no ledger. O `audit` propõe a primeira versão a partir de CODEOWNERS, nomes de diretório e testes existentes.
+- Sem arquivo: tudo é `normal`, guardas não bloqueiam, apenas anotam no ledger. O `init` e o `audit` propõem a primeira versão a partir de CODEOWNERS, nomes de diretório e testes existentes.
+- O job de CI mantém o mapa vivo: um glob que não casa com nenhum arquivo rastreado reprova, e quando o arquivo muda todo check declarado roda (§7.5).
 
 ### 7.2 Hooks
 
 | Evento | Script | Comportamento | Falha segura |
 |---|---|---|---|
-| `SessionStart` (startup, resume, clear, compact) | inject | kernel; depois as regras do repositório (`rules.json` válido, ≤200 tokens); depois, se o ledger tem mudança aberta (contrato não fechado, declarado há ≤24 h), o resumo dela com uma linha por fase (EXECUTE: escopo, prova, proibido; VERIFY: falsificar, não escrever; demais: continuar da fase), ≤480 chars; acima de 9.500 chars descarta primeiro a mudança, depois as regras, nunca o kernel, e registra `inject_truncated` | qualquer erro → emite kernel estático |
+| `SessionStart` (startup, resume, clear, compact) | inject | kernel; depois o mapa do repositório (`rules.json` válido: envelope, estado das guardas e uma linha por caminho com `purpose`, `invariants` ou tier high-risk, high-risk primeiro, entradas inteiras em ≤1.600 chars); depois, se o ledger tem mudança aberta (contrato não fechado, declarado há ≤24 h), o resumo dela com uma linha por fase (EXECUTE: escopo, prova, proibido; VERIFY: falsificar, não escrever; demais: continuar da fase), ≤480 chars; acima de 9.500 chars descarta primeiro a mudança, depois as regras, nunca o kernel, e registra `inject_truncated` | qualquer erro → emite kernel estático |
 | `SubagentStart` | inject | `agent_type` = verifier → uma linha: seu contrato é `agents/verifier.md`, e, se há mudança aberta, o id e a prova a falsificar; = worker → nada; outros → o mesmo que `SessionStart` | igual |
 | `UserPromptSubmit` | mode | trata `/devanity off|on|status|pending|reset|decide …` e `stop devanity` / `normal mode`, só como mensagem inteira; os verbos de modo (`plan`, `review`…) pertencem ao skill; `decide` é o único escritor de `by: human`, `reset` só grava `ABANDONED` em contratos | silencioso |
-| `PreToolUse` (Edit, Write, MultiEdit, Bash) | guard | (a) caminho `high-risk` sem decisão registrada no ledger para esse caminho nesta sessão → exit 2 com mensagem que nomeia a regra e como registrar a decisão; (b) Bash: comando que escreve em caminho `high-risk` (`sed -i`, `>`, `tee`, `mv`, `rm`, `git checkout --`) → mesma regra; (c) Bash: comando acima do teto de autoridade da sessão (`git push`, `--force`, `git merge` em branch protegida, `terraform apply`, `kubectl apply`, `npm publish`, `deploy`, lista configurável em `rules.json#commands`) → exit 2 | rules ausente/inválido → não bloqueia, anota. Detecção em Bash é heurística por padrão: é piso, e o CI de referência (§7.5) é o teto |
-| `Stop` | oracle | dispara só se a última mensagem do assistente (`last_assistant_message`, que o host entrega no payload junto com `transcript_path`; verificado em 2026-09-24) contém um bloco de certificado (§7.4). Então: worktree de HEAD em tmp **com os arquivos de teste da árvore atual sobrepostos**, roda o check declarado, exige falha; roda na árvore atual, exige sucesso; senão devolve `NOT_VERIFIED` com o motivo e bloqueia o fim do turno **uma vez** (respeita `stop_hook_active`: na segunda passagem, deixa terminar com `NOT_VERIFIED` visível). Arquivos de teste = os que casam com `rules.json#tests` (default: `test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `tests/**`) | sem git → `NOT_VERIFIED: no baseline`; check ausente → `NOT_VERIFIED: no check`; timeout configurável (default 120s) → `NOT_VERIFIED: timeout`. Nunca trava |
+| `PreToolUse` (Edit, Write, MultiEdit, Bash) | guard | (a) caminho `high-risk` sem decisão humana em escopo para esse caminho (ligada à mudança aberta, ou com menos de 24 h; `no` a registra como rejeitada) → exit 2 com mensagem que nomeia a regra e como registrar a decisão; (b) Bash: comando que escreve em caminho `high-risk` (`sed -i`, `>`, `tee`, `mv`, `rm`, `git checkout --`) → mesma regra; (c) Bash: comando acima do teto de autoridade da sessão (`git commit`, `git push`, `git merge`, também com as opções globais do git antes do subcomando; `gh pr merge`; `--force`; `terraform apply`, `kubectl apply`, `npm publish`, `deploy`; lista configurável em `rules.json#commands`) → exit 2 | rules ausente/inválido → não bloqueia, anota. Detecção em Bash é heurística por padrão: é piso, e o CI de referência (§7.5) é o teto |
+| `Stop` | oracle | dispara só se a última mensagem do assistente (`last_assistant_message`, que o host entrega no payload junto com `transcript_path`; verificado em 2026-09-24) contém um bloco de certificado (§7.4). Então: worktree de HEAD em tmp **com os arquivos de teste da árvore atual sobrepostos**, roda o check que `rules.json` **em HEAD** declara para os caminhos alterados (nunca o `check:` que o agente escreveu, §0.5), exige falha; roda na árvore atual, exige sucesso; senão devolve `NOT_VERIFIED` com o motivo e bloqueia o fim do turno **uma vez** (respeita `stop_hook_active`: na segunda passagem, deixa terminar com `NOT_VERIFIED` visível). Arquivos de teste = os que casam com `rules.json#tests` (default: `test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `tests/**`) | sem git → `NOT_VERIFIED: no baseline`; nenhum check declarado → registrado como não medido, sem bloqueio, evento `unmeasured` para o `debt`; timeout configurável (default 120s) → `NOT_VERIFIED: timeout`. Nunca trava |
 
 Contrato de todos os hooks (herdado do ponytail, obrigatório):
 
@@ -350,7 +356,7 @@ Uma sessão é autônoma quando `DEVANITY_AUTONOMOUS=1` (e `=0` força o contrá
 - **Envelope de autoridade** vem do `rules.json#autonomy` ou da variável `DEVANITY_AUTHORITY` (`observe|recommend|prepare|execute|commit`; `merge` e `deploy` nunca são concedíveis a uma sessão autônoma). Exemplo: `"autonomy": { "authority": "commit", "high-risk": "queue", "irreversible": "queue" }`.
 - **`queue`**: a decisão vai para `decisions.jsonl` com status `pending`, o slice dependente fica marcado (stub com `deferred:` ou branch separado, conforme o modo), e o trabalho não dependente continua. **`default`**: o agente toma o default recomendado e registra `by: agent-default` (só permitido para decisões reversíveis, nunca para `high-risk`).
 - **Fim da sessão**: o resumo final lista a fila de decisões pendentes com os `[DECIDE]` completos; o `SessionStart` seguinte reapresenta a fila antes de qualquer coisa.
-- **Auto-concessão é impossível por construção**: o guard só aceita decisões registradas com `by: human` (via `/devanity decide <id> <opção>` ou edição humana do ledger) ou pré-concedidas no envelope. O agente não tem comando que escreva `by: human`.
+- **Nenhum comando do devanity concede autoridade ao agente**: o guard só aceita decisões registradas com `by: human` (via `/devanity decide <id> <opção>` ou edição humana do ledger) ou pré-concedidas no envelope. É um piso contra o erro honesto, não uma fronteira contra quem tenta contornar (§0.2): a fronteira vinculante é o CI (§7.5).
 
 ### 7.4 Certificado de prova
 
@@ -366,11 +372,11 @@ devanity-proof:
   pending: <n decisões>
 ```
 
-Essa é a forma do kernel. O oráculo aceita ainda `contract: <id ou "adhoc">` (sem ele, a prova liga-se ao `devanity-contract:` da mesma mensagem, senão `adhoc`), `baseline: HEAD@<sha> + tests overlay` (que ele próprio escreve no bloco corrigido) e `pending_decisions` como sinônimo de `pending`. O agente escreve o bloco com o que **ele** executou; o `Stop` reexecuta e corrige `failed_before`, `passed_after` e `status`; `probes` e `pending` são copiados, nunca medidos. Divergência entre o que o agente escreveu e o que o hook mediu é registrada como `false_ready` no ledger.
+Essa é a forma do kernel. O oráculo aceita ainda `contract: <id ou "adhoc">` (sem ele, a prova liga-se ao `devanity-contract:` da mesma mensagem, senão `adhoc`), `baseline: HEAD@<sha> + tests overlay` (que ele próprio escreve no bloco corrigido) e `pending_decisions` como sinônimo de `pending`. O agente escreve o bloco com o que **ele** executou; o `Stop` executa o check declarado em HEAD (o `check:` do agente é registrado como `agent_check`, nunca executado) e corrige `check`, `failed_before`, `passed_after` e `status`; `probes` e `pending` são copiados, nunca medidos. Divergência entre o que o agente escreveu e o que o hook mediu é registrada como `false_ready` no ledger.
 
 ### 7.5 CI de referência
 
-Job de exemplo (GitHub Actions) que o `init` oferece: valida `rules.json`, confere `delta` do PR contra o orçamento por caminho, roda o `check` de cada caminho `high-risk` tocado, e exige o bloco `devanity-proof` no corpo do PR quando o diff toca degrau 3+. É o teto do que o `PreToolUse` só consegue estimar em Bash.
+Job de exemplo (GitHub Actions) que o `init` oferece: valida `rules.json`, mantém o mapa vivo (glob sem arquivo reprova; arquivo de regras alterado roda todos os checks declarados), confere `delta` do PR contra o orçamento por caminho, roda o `check` de cada caminho `high-risk` tocado, exige o bloco `devanity-proof` no corpo do PR quando o diff toca degrau 3+, e exige uma linha `verifier-change:` quando o diff remove ou reescreve linhas de testes existentes junto com código (soberania do verificador, §0.2). É a fronteira vinculante (§0.2): roda fora da máquina do agente e lê o diff inteiro.
 
 ### 7.6 Defaults por origem de instalação
 
