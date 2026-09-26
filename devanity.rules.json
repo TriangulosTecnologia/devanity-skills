@@ -1,13 +1,79 @@
 {
   "version": 1,
-  "defaults": { "tier": "normal", "authority": "commit" },
-  "paths": {
-    "hooks/**": { "tier": "high-risk", "check": "node --test tests/*.test.mjs" },
-    "scripts/**": { "tier": "high-risk", "check": "npm test && node scripts/validate-skills.mjs && node scripts/validate-open.mjs" },
-    ".claude-plugin/**": { "tier": "high-risk" },
-    "docs/**": { "tier": "trivial" },
-    "**/*.md": { "tier": "trivial" },
-    "skills/devanity/SKILL.md": { "tier": "normal", "check": "node scripts/kernel.mjs invariants" }
+  "defaults": {
+    "tier": "normal",
+    "authority": "commit"
   },
-  "autonomy": { "authority": "commit", "high-risk": "queue", "irreversible": "queue" }
+  "paths": {
+    "skills/devanity/**": {
+      "tier": "normal",
+      "check": "node scripts/validate-skills.mjs && node scripts/validate-open.mjs",
+      "purpose": "the skill: SKILL.md kernel, modes/ by verb, reference/",
+      "invariants": [
+        "one grammar, one file",
+        "a mode loads only its Load: line"
+      ]
+    },
+    "skills/devanity/SKILL.md": {
+      "tier": "normal",
+      "check": "node scripts/kernel.mjs invariants && node scripts/kernel.mjs check-agents",
+      "purpose": "the kernel, paid on every turn",
+      "invariants": [
+        "Decisions order is measured law",
+        "AGENTS.md is generated from it"
+      ]
+    },
+    "agents/**": {
+      "tier": "normal",
+      "check": "node scripts/kernel.mjs check-agents",
+      "purpose": "worker (evidence, no judgment) and verifier (falsifies, never edits)"
+    },
+    "hooks/**": {
+      "tier": "high-risk",
+      "check": "node --test tests/*.test.mjs",
+      "purpose": "plugin runtime in every user's session",
+      "invariants": [
+        "failure paths allow and leave a trace",
+        "only /devanity decide writes by: human",
+        "the oracle runs only checks declared at HEAD"
+      ]
+    },
+    "scripts/**": {
+      "tier": "high-risk",
+      "check": "npm test && node scripts/validate-skills.mjs && node scripts/validate-open.mjs",
+      "purpose": "CI gates and the consumers' reference CI job",
+      "invariants": [
+        "dependency-free"
+      ]
+    },
+    ".claude-plugin/**": {
+      "tier": "high-risk",
+      "purpose": "plugin manifest and marketplace"
+    },
+    "evals/harness/**": {
+      "tier": "normal",
+      "check": "python3 evals/harness/run.py --selftest",
+      "purpose": "the harness: arms, tasks, AXES, scorers, judges",
+      "invariants": [
+        "every scorer proven by good and bad references",
+        "ported tasks byte-identical"
+      ]
+    },
+    "evals/results/**": {
+      "tier": "trivial",
+      "purpose": "dated writeups, never edited to match a later run"
+    },
+    "docs/**": {
+      "tier": "trivial",
+      "purpose": "development model, hooks reference, SPEC and PLAN"
+    },
+    "README.md": {
+      "tier": "trivial"
+    }
+  },
+  "autonomy": {
+    "authority": "commit",
+    "high-risk": "queue",
+    "irreversible": "queue"
+  }
 }

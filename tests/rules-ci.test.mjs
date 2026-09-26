@@ -106,6 +106,49 @@ describe('rules CI', () => {
     assert.match(r.out, /no pull request body available/);
   });
 
+  test('the map stays alive: a path that matches no tracked file fails, and a changed rules file runs every declared check', () => {
+    let d = seed({ rules: { version: 1, paths: { 'billing/**': { tier: 'high-risk' }, 'payments/**': { tier: 'high-risk' } } }, changes: { 'docs/a.md': 'b\n' } });
+    let r = runCi(d, ['--base', 'main', '--no-proof-required']);
+    assert.equal(r.code, 1, r.out); assert.match(r.out, /payments\/\*\* matches no tracked file/);
+    d = seed({ rules: { version: 1, paths: { 'billing/**': { tier: 'normal' } } }, changes: { 'devanity.rules.json': JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'normal', check: 'node -e "process.exit(3)"' } } }) } });
+    r = runCi(d, ['--base', 'main', '--no-proof-required']);
+    assert.equal(r.code, 1, r.out); assert.match(r.out, /declared check does not pass/);
+    d = seed({ rules: { version: 1, paths: { 'billing/**': { tier: 'normal' } } }, changes: { 'devanity.rules.json': JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'normal', check: marker(fresh()) } } }) } });
+    r = runCi(d, ['--base', 'main', '--no-proof-required']);
+    assert.equal(r.code, 0, r.out);
+  });
+
+  test('verifier sovereignty: a diff that edits existing checks together with code needs a verifier-change line', () => {
+    const rules = { version: 1, paths: { 'docs/**': { tier: 'trivial' } } };
+    const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+    write(d, 'devanity.rules.json', JSON.stringify(rules));
+    write(d, 'src/app.js', 'module.exports = 1;\n');
+    write(d, 'src/app.test.js', "assert(app() === 2);\nassert(app(1) === 3);\n");
+    write(d, 'docs/a.md', 'a\n');
+    commitAll(d, 'base');
+    git(d, 'checkout', '-qb', 'feature');
+    write(d, 'src/app.js', 'module.exports = 2;\n');
+    write(d, 'src/app.test.js', "assert(app() === 2);\n");   // an assertion removed with the fix
+    commitAll(d, 'change');
+    const body = join(temp, `vbody${n}.md`);
+    const proof = '\n```\ndevanity-proof:\n  check: node --test\n  failed_before: yes\n  passed_after: yes\n  status: VERIFIED\n  pending: 0\n```\n';
+    writeFileSync(body, 'Fix.' + proof);
+    let r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+    assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*src\/app\.test\.js/);
+    writeFileSync(body, 'Fix.\n\nverifier-change: the second case asserted the old contract, removed on purpose\n' + proof);
+    r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+    assert.equal(r.code, 0, r.out); assert.match(r.out, /verifier-change declared/);
+    // adding a test next to the fix is the normal case, not a verifier change
+    const d2 = fresh(); git(d2, 'init', '-q', '-b', 'main');
+    write(d2, 'devanity.rules.json', JSON.stringify(rules)); write(d2, 'src/app.js', 'module.exports = 1;\n'); write(d2, 'src/app.test.js', 'assert(true);\n'); write(d2, 'docs/a.md', 'a\n');
+    commitAll(d2, 'base'); git(d2, 'checkout', '-qb', 'feature');
+    write(d2, 'src/app.js', 'module.exports = 2;\n'); write(d2, 'src/app.test.js', 'assert(true);\nassert(app() === 2);\n');
+    commitAll(d2, 'change');
+    writeFileSync(body, 'Fix.' + proof);
+    r = runCi(d2, ['--base', 'main', '--pr-body-file', body]);
+    assert.equal(r.code, 0, r.out);
+  });
+
   // When HEAD touches hooks/**, the self-check runs this repository's own check (the whole test
   // suite), which would reach this test again: the nested run skips it.
   test('--self-check passes on this repository', { skip: Boolean(process.env.DEVANITY_SELF_CHECK_NESTED) }, () => {

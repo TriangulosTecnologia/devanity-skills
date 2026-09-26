@@ -23,7 +23,7 @@ const ledger = require('./devanity-ledger');
 
 // F2.5: the repository's own rules, compacted for the model (SPEC §7.1 "context per path").
 // Only when devanity.rules.json is present and valid; hard cap of ~200 tokens.
-const RULES_CONTEXT_MAX_CHARS = 800;
+const RULES_CONTEXT_MAX_CHARS = 1600;   // the map (SPEC §0.4), ~400 tokens
 // F3.2: the open change (ledger contract not DONE/ABANDONED, declared within 24 h), ~120 tokens.
 const CHANGE_CONTEXT_MAX_CHARS = 480;
 const CHANGE_FIELD_MAX_CHARS = 60;
@@ -34,11 +34,29 @@ function rulesContext(cwd) {
   const loaded = rulesMod.loadRules(cwd);
   if (!loaded.present || loaded.errors.length) return '';
   const r = loaded.rules;
-  const high = r.paths.filter((p) => p.rule.tier === 'high-risk').map((p) => `\`${p.glob}\`${p.rule.check ? ` (check: ${p.rule.check})` : ''}`);
-  const lines = ['## Repository rules (devanity.rules.json)'];
-  lines.push(`High-risk paths (rung 4: propose and stop): ${high.length ? high.join(' · ') : 'none declared'}`);
-  lines.push(`Autonomy envelope: authority ${r.autonomy.authority}; high-risk ${r.autonomy['high-risk']}; irreversible ${r.autonomy.irreversible}`);
-  lines.push(`Guards: ${rt.guardsEnforcing(loaded) ? 'enforcing' : 'recording'}`);
+  // The map (SPEC §0.4): one line per path that has something to say (a purpose, invariants, or
+  // the high-risk tier), so the agent knows where it is before it opens a file. The fixed lines
+  // come first; entries are added whole while they fit, and the rest is named, never cut mid-line.
+  const entry = (p) => {
+    const parts = [p.rule.purpose, p.rule.invariants && p.rule.invariants.length ? `invariants: ${p.rule.invariants.join('; ')}` : '', p.rule.check ? `check: ${p.rule.check}` : ''].filter(Boolean);
+    return `- \`${p.glob}\` ${p.rule.tier || r.defaults.tier}${parts.length ? `: ${parts.join('; ')}` : ''}`;
+  };
+  const mapped = r.paths.filter((p) => p.rule.tier === 'high-risk' || p.rule.purpose || (p.rule.invariants && p.rule.invariants.length))
+    .sort((x, y) => (y.rule.tier === 'high-risk') - (x.rule.tier === 'high-risk'));   // high-risk first: the entries never to miss
+  const lines = [
+    '## Repository rules (devanity.rules.json)',
+    `Autonomy envelope: authority ${r.autonomy.authority}; high-risk ${r.autonomy['high-risk']}; irreversible ${r.autonomy.irreversible}`,
+    `Guards: ${rt.guardsEnforcing(loaded) ? 'enforcing' : 'recording'}`,
+    mapped.length ? 'Map (high-risk: rung 4, propose and stop):' : 'Map: no path declares a purpose, invariants or the high-risk tier',
+  ];
+  let used = lines.join('\n').length;
+  for (let k = 0; k < mapped.length; k++) {
+    const line = entry(mapped[k]);
+    const rest = mapped.length - k - 1;
+    const tail = rest ? `\n… ${rest} more path(s) in devanity.rules.json`.length : 0;
+    if (used + 1 + line.length + tail > RULES_CONTEXT_MAX_CHARS) { lines.push(`… ${mapped.length - k} more path(s) in devanity.rules.json`); break; }
+    lines.push(line); used += 1 + line.length;
+  }
   const text = lines.join('\n');
   return text.length > RULES_CONTEXT_MAX_CHARS ? text.slice(0, RULES_CONTEXT_MAX_CHARS - 1) + '…' : text;
 }

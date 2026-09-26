@@ -61,6 +61,31 @@ describe('rules: loading', () => {
   });
 });
 
+describe('rules: the repository map (SPEC §0.4)', () => {
+  test('a path may carry purpose and invariants; bad shapes are errors', () => {
+    const ok = { version: 1, paths: { 'billing/**': { tier: 'high-risk', purpose: 'charges and refunds', invariants: ['amounts are integer cents', 'refunds never exceed the charge'] } } };
+    assert.deepEqual(rules.validate(ok), []);
+    const loaded = rules.parseRules(JSON.stringify(ok)).rules;
+    const r = rules.ruleFor(loaded, 'billing/x.py');
+    assert.equal(r.purpose, 'charges and refunds'); assert.deepEqual(r.invariants, ok.paths['billing/**'].invariants);
+    for (const [bad, what] of [[{ purpose: '' }, 'purpose'], [{ purpose: 3 }, 'purpose'], [{ invariants: 'one' }, 'invariants'], [{ invariants: [''] }, 'invariants'], [{ purpose: 'x'.repeat(161) }, 'purpose']]) {
+      const errors = rules.validate({ version: 1, paths: { 'a/**': bad } });
+      assert.ok(errors.some((e) => e.includes(what)), `${JSON.stringify(bad)} -> ${errors.join('; ')}`);
+    }
+  });
+});
+
+describe('rules: instruction files are never trivial (SPEC §0.3)', () => {
+  test('a trivial glob that covers an instruction file is an error; one that does not is fine', () => {
+    for (const glob of ['**/*.md', '**', 'CLAUDE.md', 'skills/**', '.claude/**', 'agents/*.md']) {
+      const errors = rules.validate({ version: 1, paths: { [glob]: { tier: 'trivial' } } });
+      assert.ok(errors.some((e) => e.includes('instruction')), `${glob} -> ${errors.join('; ')}`);
+    }
+    for (const glob of ['docs/**', 'README.md', 'evals/results/**']) assert.deepEqual(rules.validate({ version: 1, paths: { [glob]: { tier: 'trivial' } } }), [], glob);
+    assert.deepEqual(rules.validate({ version: 1, paths: { '**/*.md': { tier: 'normal' } } }), [], 'normal is fine');
+  });
+});
+
 describe('rules: matching', () => {
   const R = rules.loadRules.bind(null);
   let loaded;

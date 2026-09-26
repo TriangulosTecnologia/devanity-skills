@@ -91,12 +91,14 @@ On `SessionStart`, and on `SubagentStart` for agents other than the verifier and
 
 ```
 ## Repository rules (devanity.rules.json)
-High-risk paths (rung 4: propose and stop): `hooks/**` (check: node --test tests/*.test.mjs) · `.claude-plugin/**`
 Autonomy envelope: authority commit; high-risk queue; irreversible queue
 Guards: enforcing
+Map (high-risk: rung 4, propose and stop):
+- `hooks/**` high-risk: plugin runtime in every user's session; invariants: failure paths allow and leave a trace; check: node --test tests/*.test.mjs
+- `src/ui/**` normal: React views; no data access here
 ```
 
-Hard cap: 800 characters (about 200 tokens), truncated with an ellipsis. No rules file, or an invalid one, adds nothing.
+This is the **repository map** (SPEC §0.4): one line per path that declares a `purpose`, `invariants` or the high-risk tier, high-risk first. Hard cap: 1,600 characters (about 400 tokens). The fixed lines always fit; entries are added whole while they fit, and the rest is named (`… N more path(s) in devanity.rules.json`), never cut mid-line. No rules file, or an invalid one, adds nothing.
 
 ## Commands (`devanity-mode.js`)
 
@@ -258,13 +260,15 @@ node scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-
 
 1. Validates `<root>/devanity.rules.json` with the plugin's loader (`hooks/devanity-rules.js`, found beside the script or under `--plugin-dir` / `DEVANITY_PLUGIN_DIR`).
 2. Changed files: `git diff --numstat` from the merge base of `--base` (default `origin/main`, then `main`) to `HEAD`.
-3. Per touched path: `delta` budgets (files and added lines per glob); the distinct `check` of every touched high-risk path is run in the repository root; a `devanity-proof:` block with a `status:` line is required in the PR body (`--pr-body-file`, else `GITHUB_EVENT_PATH` `pull_request.body`) when any touched path is tier normal or high-risk, unless `--no-proof-required`. Without any PR context (a push), the requirement is reported, not failed.
-4. Exit 1 with the list of failures, 0 otherwise.
+3. The map stays alive: every `paths` glob must match a tracked file (`git ls-files`), or the job fails naming the dead entry.
+4. Per touched path: `delta` budgets (files and added lines per glob); the distinct `check` of every touched high-risk path is run in the repository root, and when the diff changes `devanity.rules.json` every check it declares is run too, so a check that does not pass cannot enter the map; a `devanity-proof:` block with a `status:` line is required in the PR body (`--pr-body-file`, else `GITHUB_EVENT_PATH` `pull_request.body`) when any touched path is tier normal or high-risk, unless `--no-proof-required`. Without any PR context (a push), the requirement is reported, not failed.
+5. Verifier sovereignty (SPEC §0.2): when the diff removes or rewrites lines of existing test files (the `tests` globs) together with code, the PR body must carry a `verifier-change: <why>` line, so review treats the change to the checks separately from the change they judge. Adding tests next to a fix is not a verifier change.
+6. Exit 1 with the list of failures, 0 otherwise.
 
-`--self-check` is the dogfood mode: this repository's own `devanity.rules.json` is validated and steps 2–3 are dry-run on `HEAD~1..HEAD` without a PR body (`.github/workflows/validate.yml` runs it; a shallow clone with no parent validates the rules and reports an empty change set).
+`--self-check` is the dogfood mode: this repository's own `devanity.rules.json` is validated and steps 2–5 are dry-run on `HEAD~1..HEAD` without a PR body (`.github/workflows/validate.yml` runs it; a shallow clone with no parent validates the rules and reports an empty change set).
 
 ### Wiring it in a consumer repository
 
 Copy `.github/workflows/devanity-rules.example.yml` into `.github/workflows/`, remove the `if:` that keeps it inert in the plugin repository, and pin `DEVANITY_REF` to a release tag or commit. The job checks out with `fetch-depth: 0` (the merge base must exist), sets up Node 22, clones the plugin into `$RUNNER_TEMP/devanity`, and runs the script with `--base origin/<base branch>`; the PR body comes from the event payload.
 
-This repository's own rules (`devanity.rules.json`): `hooks/**` high-risk with `node --test tests/*.test.mjs` (they run in every user's session); `scripts/**` high-risk with `npm test` and the two validators (every script there is a CI gate or the guard's CI job); `.claude-plugin/**` high-risk; `docs/**` and `**/*.md` trivial, except `skills/devanity/SKILL.md`, which is normal with `node scripts/kernel.mjs invariants`.
+This repository's own rules (`devanity.rules.json`) are its map: `hooks/**`, `scripts/**` and `.claude-plugin/**` high-risk (they run in every user's session, gate CI, or publish the plugin); the skill, the kernel, the agents and the harness normal, each with the check that validates it; `docs/**`, `evals/results/**` and `README.md` trivial. No instruction file is trivial: the loader rejects a `trivial` glob that covers one (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, skills, agents).

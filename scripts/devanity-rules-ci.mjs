@@ -70,10 +70,10 @@ function changedFiles(base) {
   const files = [];
   for (const line of r.out.split('\n')) {
     if (!line.trim()) continue;
-    const [added, , rawPath] = line.split('\t');
+    const [added, deleted, rawPath] = line.split('\t');
     if (rawPath === undefined) continue;
     const path = rawPath.includes(' => ') ? rawPath.replace(/\{?([^{]*) => ([^}]*)\}?/, '$2').replace(/\/\//g, '/') : rawPath;
-    files.push({ path, added: added === '-' ? 0 : parseInt(added, 10) || 0 });
+    files.push({ path, added: added === '-' ? 0 : parseInt(added, 10) || 0, deleted: deleted === '-' ? 0 : parseInt(deleted, 10) || 0 });
   }
   return files;
 }
@@ -142,11 +142,30 @@ if (base && rulesMod && !loaded.errors.length) {
     if (g.delta.lines !== undefined && g.lines > g.delta.lines) fail(`delta budget exceeded for ${glob}: ${g.lines} lines added, budget ${g.delta.lines}`);
   }
 
-  // checks of touched high-risk paths
-  const checks = [...new Set(touched.filter((t) => t.rule.tier === 'high-risk' && t.rule.check).map((t) => t.rule.check))];
-  for (const c of checks) {
+  // the map stays alive (SPEC §0.4): every declared path matches a tracked file
+  const tracked = git('ls-files').out.split('\n').filter(Boolean);
+  for (const p of rules.paths) if (!tracked.some((f) => p.re.test(f))) fail(`devanity.rules.json: ${p.glob} matches no tracked file (a map entry for a path that is gone)`);
+
+  // checks of touched high-risk paths; when the rules file itself changed, every declared check,
+  // so a check that no longer runs cannot enter the map
+  const rulesChanged = touched.some((t) => t.path === rulesMod.FILE);
+  const highRisk = touched.filter((t) => t.rule.tier === 'high-risk' && t.rule.check).map((t) => t.rule.check);
+  const declared = rulesChanged ? rules.paths.map((p) => p.rule.check).filter(Boolean) : [];
+  for (const c of [...new Set([...highRisk, ...declared])]) {
     console.log(`\n$ ${c}`);
-    if (!runCheck(c)) fail(`check failed: ${c}`);
+    if (!runCheck(c)) fail(highRisk.includes(c) ? `check failed: ${c}` : `declared check does not pass: ${c} (the rules file changed; every check it declares must run green)`);
+  }
+
+  // verifier sovereignty (SPEC §0.2): a diff that removes or rewrites lines of existing tests
+  // together with code is reviewed as a verifier change, declared in the PR body
+  const verifierEdits = touched.filter((t) => t.deleted > 0 && rulesMod.isTestPath(rules, t.path)).map((t) => t.path);
+  const codeTouched = touched.some((t) => !rulesMod.isTestPath(rules, t.path) && t.path !== rulesMod.FILE && !/\.md$/i.test(t.path));
+  if (verifierEdits.length && codeTouched) {
+    const body = selfCheck ? null : prBody();
+    const declaredChange = body !== null && /^\s*verifier-change\s*:\s*\S/m.test(body);
+    if (declaredChange) note(`verifier-change declared for ${verifierEdits.join(', ')}`);
+    else if (body === null) note(`the diff edits existing checks with code (${verifierEdits.join(', ')}); no PR body to hold the verifier-change line`);
+    else fail(`the diff edits existing checks together with the code they judge (${verifierEdits.join(', ')}): add a \`verifier-change: <why>\` line to the PR body so review treats it as a verifier change`);
   }
 
   // proof block in the PR body for rung 3+

@@ -14,6 +14,10 @@ const FILE = 'devanity.rules.json';
 const TIERS = ['trivial', 'normal', 'high-risk'];
 const AUTHORITIES = ['observe', 'recommend', 'prepare', 'execute', 'commit', 'merge', 'deploy'];
 const AUTONOMY_AUTHORITIES = AUTHORITIES.slice(0, 5);       // merge/deploy are never grantable unattended
+const PURPOSE_MAX = 160;
+// Instruction surfaces: what an agent reads as instructions. A glob that covers one is never tier
+// `trivial` (SPEC §0.3): editing an instruction file changes what every later session does.
+const INSTRUCTION_SAMPLES = ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md', '.cursorrules', 'src/CLAUDE.md', 'src/AGENTS.md', '.claude/settings.json', '.claude/skills/x/SKILL.md', '.github/copilot-instructions.md', 'skills/x/SKILL.md', 'skills/x/modes/y.md', 'agents/x.md'];
 const DEFAULT_TESTS = ['test_*', '*_test.*', '*.test.*', '*.spec.*', 'tests/**'];
 // Commands above the `execute` rung, whatever the repository declares (SPEC §7.2 (c)). `GIT` also
 // matches the global options git accepts before its subcommand (`git -C dir push`, `git -c k=v
@@ -72,7 +76,15 @@ function validate(raw) {
     else for (const [glob, rule] of Object.entries(raw.paths)) {
       if (!rule || typeof rule !== 'object') { bad(`paths["${glob}"] must be an object`); continue; }
       checkTier(rule.tier, `paths["${glob}"]`); checkAuth(rule.authority, `paths["${glob}"]`);
+      if (rule.tier === 'trivial') {
+        const re = globToRegExp(glob);
+        const hit = INSTRUCTION_SAMPLES.find((f) => re.test(f));
+        if (hit) bad(`paths["${glob}"]: tier trivial covers instruction files (${hit}); an instruction file is never trivial`);
+      }
       if (rule.check !== undefined && (typeof rule.check !== 'string' || !rule.check.trim())) bad(`paths["${glob}"].check must be a non-empty string`);
+      // The map (SPEC §0.4): what the path is, and what never changes there.
+      if (rule.purpose !== undefined && !(typeof rule.purpose === 'string' && rule.purpose.trim() && rule.purpose.length <= PURPOSE_MAX)) bad(`paths["${glob}"].purpose must be a non-empty string of at most ${PURPOSE_MAX} characters`);
+      if (rule.invariants !== undefined && !(Array.isArray(rule.invariants) && rule.invariants.every((v) => typeof v === 'string' && v.trim()))) bad(`paths["${glob}"].invariants must be an array of non-empty strings`);
       if (rule.delta !== undefined) {
         for (const k of ['files', 'lines']) if (rule.delta[k] !== undefined && !(Number.isInteger(rule.delta[k]) && rule.delta[k] >= 1)) bad(`paths["${glob}"].delta.${k} must be an integer >= 1`);
       }

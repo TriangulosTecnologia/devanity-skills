@@ -312,26 +312,41 @@ describe('inject: repository rules context (F2.5)', () => {
     const i = r.stdout.indexOf(HEADING);
     assert.ok(i > 0 && r.stdout.indexOf('on call for this repository') < i, 'rules come after the kernel');
     const section = r.stdout.slice(i);
-    assert.ok(section.includes('`billing/**` (check: pytest tests/billing -q)') && section.includes('`migrations/**`'), section);
+    assert.ok(section.includes('`billing/**` high-risk: check: pytest tests/billing -q') && section.includes('`migrations/**` high-risk'), section);
     assert.ok(!section.includes('docs/**'), 'trivial paths are not listed');
     assert.ok(section.includes('authority commit; high-risk queue; irreversible queue'), section);
     assert.ok(section.includes('Guards: enforcing'), section);
-    assert.ok(section.length <= 800, `section is ${section.length} chars`);
+    assert.ok(section.length <= 1600, `section is ${section.length} chars`);
     r = await runHook(INJECT, { input: sessionStart(d), env: baseEnv({ DEVANITY_GUARDS: 'off' }), args: ['SessionStart'], cwd: d });
     assert.ok(r.stdout.includes('Guards: recording'));
     r = await runHook(INJECT, { input: JSON.stringify({ hook_event_name: 'SubagentStart', agent_type: 'verifier', cwd: d }), env: baseEnv(), cwd: d });
     assert.ok(!r.stdout.includes('Repository rules'), 'the verifier never receives rules context');
   });
 
-  test('size cap: many globs are hard-truncated at 800 chars with an ellipsis', async () => {
+  test('the map: each path with a purpose or invariants is injected with them (SPEC §0.4)', async () => {
+    const d = fresh();
+    writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: {
+      'billing/**': { tier: 'high-risk', check: 'pytest tests/billing', purpose: 'charges and refunds', invariants: ['amounts are integer cents'] },
+      'src/ui/**': { tier: 'normal', purpose: 'React views; no data access here' },
+      'docs/**': { tier: 'trivial' } } }));
+    const r = await runHook(INJECT, { input: sessionStart(d), env: baseEnv(), args: ['SessionStart'], cwd: d });
+    assert.equal(r.code, 0, r.stderr);
+    const ctx = r.stdout;
+    assert.ok(ctx.includes('`billing/**` high-risk: charges and refunds; invariants: amounts are integer cents; check: pytest tests/billing'), ctx);
+    assert.ok(ctx.includes('`src/ui/**` normal: React views; no data access here'), ctx);
+    assert.ok(!ctx.includes('`docs/**`'), 'a path with nothing to say is not injected');
+  });
+
+  test('size cap: many globs are hard-truncated at 1600 chars with an ellipsis', async () => {
     const d = fresh();
     const paths = {};
-    for (let i = 0; i < 40; i++) paths[`services/payments/region-${i}/**`] = { tier: 'high-risk', check: `pytest tests/payments/region_${i} -q` };
+    for (let i = 0; i < 80; i++) paths[`services/payments/region-${i}/**`] = { tier: 'high-risk', check: `pytest tests/payments/region_${i} -q` };
     writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths }));
     const r = await runHook(INJECT, { input: sessionStart(d), env: baseEnv(), args: ['SessionStart'], cwd: d });
     assert.equal(r.code, 0, r.stderr);
-    const section = r.stdout.slice(r.stdout.indexOf(HEADING));
-    assert.equal(section.length, 800);
-    assert.ok(section.endsWith('…'));
+    const section = r.stdout.slice(r.stdout.indexOf(HEADING)).trimEnd();
+    assert.ok(section.length <= 1600, `section is ${section.length} chars`);
+    assert.ok(section.includes('Autonomy envelope') && section.includes('Guards:'), 'the fixed lines are never the ones cut');
+    assert.match(section, /… \d+ more path\(s\) in devanity\.rules\.json$/, 'whole entries only, the rest named');
   });
 });
