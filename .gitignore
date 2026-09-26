@@ -1,2 +1,5 @@
 # Locally-installed Claude Code skills (source of truth lives in skills/)
 .claude/skills/
+
+# harness: API key for the LLM judges (never committed)
+.env

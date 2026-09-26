@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/TriangulosTecnologia/devanity-skills/blob/main/skills/devanity/reference/rules.schema.json",
+  "title": "Devanity repository rules",
+  "description": "One declaration per repository, compiled into three surfaces: the context the kernel receives per path, the PreToolUse/Stop guards, and the reference CI job (SPEC §7.1). Absent file: every path is `normal`, guards record and never block.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tier": {
+          "$ref": "#/$defs/tier"
+        },
+        "authority": {
+          "$ref": "#/$defs/authority"
+        }
+      }
+    },
+    "paths": {
+      "description": "Glob (relative to the repository root; `**` crosses directories) → rule. The most specific matching glob wins; ties go to the last declared.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tier": {
+            "$ref": "#/$defs/tier"
+          },
+          "authority": {
+            "$ref": "#/$defs/authority"
+          },
+          "check": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Command the Stop oracle and the CI job run for a change under this path."
+          },
+          "delta": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "files": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "lines": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160,
+            "description": "One line: what this path is. Injected into every session with the path's invariants (the repository map, SPEC §0.4)."
+          },
+          "invariants": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "What never changes under this path. Owners come from CODEOWNERS, never from here."
+          }
+        }
+      }
+    },
+    "tests": {
+      "description": "Globs naming test files (overlaid on HEAD by the Stop oracle). Default: test_*, *_test.*, *.test.*, *.spec.*, tests/**.",
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "commands": {
+      "description": "Bash command patterns (regular expressions) that need at least the named authority; checked by the PreToolUse guard on top of the built-in list.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/authority"
+      }
+    },
+    "autonomy": {
+      "description": "Envelope for unattended sessions (SPEC §7.3). `merge` and `deploy` are never grantable here.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "enum": [
+            "observe",
+            "recommend",
+            "prepare",
+            "execute",
+            "commit"
+          ]
+        },
+        "high-risk": {
+          "enum": [
+            "queue"
+          ]
+        },
+        "irreversible": {
+          "enum": [
+            "queue",
+            "default"
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "tier": {
+      "enum": [
+        "trivial",
+        "normal",
+        "high-risk"
+      ]
+    },
+    "authority": {
+      "enum": [
+        "observe",
+        "recommend",
+        "prepare",
+        "execute",
+        "commit",
+        "merge",
+        "deploy"
+      ]
+    }
+  }
+}

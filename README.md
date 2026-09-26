@@ -1,63 +1,73 @@
 # Devanity Open
 
-Devanity Open is a small set of reusable capabilities for AI-assisted software development: design the change before material coding, make architecture explicit when it matters, verify independently, and keep the repository easy to evolve.
+Devanity makes a repository able to **accept more AI-generated change without growing review cost, defects or entropy in proportion**. It is written for the person who answers for the repository, and it works in two loops:
+
+- **Per change:** every agent change is cheap to accept. Rigor is proportional to what is at stake, every change carries a proof that was seen failing before the fix, and the agent never spends authority it was not given.
+- **Over time:** every change leaves the repository easier to change correctly next time. Agents reproduce the patterns of the context they are given, and the repository is that context: a clean repository propagates cleanliness, one with debt propagates debt. So every observed failure becomes structure (a declared check, a ratchet, a map entry), never just a corrected mistake.
+
+## What it solves
+
+| Problem | What devanity does |
+| --- | --- |
+| **False-ready:** the agent says "done" or "verified" without evidence | "Verified" exists only in a `devanity-proof` block; the Stop hook re-runs the check the repository declares (never one the agent wrote) against `HEAD` and, when the claim does not hold, blocks the turn with the block it measured |
+| **Usurped authority:** an available tool becomes a permission | high-risk and human-owned decisions stop as a `[DECIDE]`, with the dependent slice left as a failing stub instead of a guessed default; the guard blocks high-risk paths and commands above the session's authority; the reference CI job fails a pull request whose high-risk check fails or that carries no proof block |
+| **Wrong rigor:** the same process for a rename and for billing | a proportionality ladder that stops at the first rung that holds, from `NO_CHANGE` to "propose and stop" |
+| **Decision load:** asking what the repository already answers, or deciding what belongs to a human | look for the repository's own answer (ADR, config, sibling) before defaulting; queue what is irreversible or human-owned |
+| **Over-build:** speculative abstraction, configuration and scaffolding | a craft ladder: what exists here, then stdlib, platform, installed dependency, one line |
+| **Rules that rot in prose:** conventions nobody enforces | a durability ladder: `audit` moves a recurring rule from prose into a test, lint rule, schema or CI gate, and removes the prose |
+| **Pattern inertia:** the agent replicates the repository's debt | reuse behavior through interfaces, never the shape of debt; debt is what the repository's gates say, not taste; `audit` and `debt` install ratchets so legacy stays frozen and new code meets the target *(v1, in progress)* |
+
+**What it does not do.** It protects against the agent that errs or races for a green check, not against an adversarial one. The binding boundary is the pipeline, outside the agent: the reference CI job, branch protection and `CODEOWNERS`. The in-session hooks are fast sensors that stop honest mistakes and measure; the agent never authors, and never weakens, the check that judges it.
+
+**Evidence so far** ([stage round](evals/results/2026-09-24-stage-round.md), Sonnet, n=4, against baseline, ponytail, superpowers, a one-sentence control and devanity's own earlier version): devanity is the only arm that never took a human-owned decision (0/12 cells across rounds; the others took it in 2/4 to 4/4), it ties ponytail on leaving unneeded changes undone (4/4), and it reads the repository's ADR before guessing in 3/4 cells where the best competitor does 1/4. Size, rung-2 cost, greenfield and the modes are not measured yet.
 
 ## How to use
 
-If you use Claude Code to develop a repository, start with one rule:
-
-> **For a real software change, use `/maestro <goal>`.**
-
-Maestro investigates the repository, compiles the smallest sufficient Change Contract, passes preflight, executes bounded work, and routes to other capabilities only when their responsibility is needed.
-
-| What you need | Use | Why |
-| --- | --- | --- |
-| Implement, fix, refactor, migrate, or change software behavior | `/maestro <goal>` | Owns the software-change lifecycle |
-| Make or revise a material architecture decision | `/archer <question>` | Owns semantics, state, boundaries, contracts, dependencies, and topology |
-| Review whether a change leaves the repository in good shape | `/guardian review` | Owns repository quality, drift, and durable enforcement |
-| Inspect or improve repository quality more broadly | `/guardian audit <scope>` / `/guardian improve <finding>` | Diagnoses or fixes structural quality findings |
-
-You normally **do not invoke Worker or Verifier yourself**:
-
-- **Worker** collects and compresses evidence; it does not decide.
-- **Verifier** independently tries to falsify a completed change; it does not edit or sequence work.
-- Maestro uses these roles when needed. Missing roles degrade explicitly rather than becoming fabricated evidence.
-
-Typical path:
+Install it once; the kernel applies to every coding turn without being invoked. Before touching anything, the agent stops at the first rung that holds:
 
 ```text
-/maestro add cancellation support for appointments
-        ↓
-inspect → specify → preflight → execute → verify
-                  │
-                  └─ material architecture decision? → ARCHER
-        ↓
-verified candidate
-        ↓
-/guardian review
+1. Does it need to change?        → no: say why, NO_CHANGE
+2. Trivial and reversible?        → do it, shortest form, no ceremony
+3. Changes behavior?              → a check that fails first, then the fix
+4. Touches the high-risk class?   → propose and stop; authorization comes from outside
+5. Moves a boundary or state?     → shape before code; architect when the shape is not enough
+6. Can't tell?                    → read until you can; then ask ONE thing
 ```
 
-For questions, exploration, explanations, or obviously trivial edits, normal Claude Code conversation is enough.
+Below rung 3 it writes the minimum that works (what exists here → stdlib → platform → installed dependency → one line). Decisions a reviewer can flip in one line are taken with a stated default; irreversible or human-owned ones become a `[DECIDE]` and stop the dependent slice, not the session. "Verified" exists only inside a `devanity-proof` block filled with what was actually run.
 
-If you remember only this:
+The verbs are for the moments that need a procedure:
 
-```text
-change the software       → /maestro
-design the architecture   → /archer
-guard the repository      → /guardian
-```
+| What you need | Use |
+| --- | --- |
+| Run a change end to end: contract, preflight, bounded slices, independent verification, assurance | `/devanity plan <goal>` |
+| Make or revise a material architecture decision | `/devanity architect <drivers>` |
+| Review the current diff before it lands | `/devanity review [path]` |
+| Audit a scope, or the instruction surfaces, by the six Foundations; propose map entries and ratchets ranked by hotspots | `/devanity audit <scope>` · `/devanity audit instructions [path]` |
+| Apply one approved finding, or fix one instruction surface | `/devanity improve <finding\|surface>` |
+| Turn deferred shortcuts, pending decisions and the ledger's signals into proposed promotions | `/devanity debt` |
+| Make a repository operable: map draft, pinned CI job, first ratchets | `/devanity init` |
+
+With the plugin installed, a few whole-message commands talk to the hooks rather than to the model: `/devanity on|off`, `/devanity status` (state, open change, pending decisions), `/devanity pending`, `/devanity decide <id> <option> [--path <glob>]` (the only way a human decision reaches the guards), `/devanity reset` (abandons the open change), and `/devanity debt --stats` for the repository's numbers. What they enforce and record: [`docs/hooks.md`](docs/hooks.md).
+
+You normally **do not invoke Worker or Verifier yourself**: Worker collects evidence and does not decide; Verifier tries to falsify a completed change and does not edit. The modes use them when needed; missing roles degrade explicitly rather than becoming fabricated evidence.
 
 ## Install for Claude Code
 
-Install the skills you need:
+As a plugin (recommended: the kernel is then injected on every session, compaction and subagent, and the verbs become available):
 
-```bash
-npx skills add TriangulosTecnologia/devanity-skills --skill maestro --agent claude-code
-npx skills add TriangulosTecnologia/devanity-skills --skill archer --agent claude-code
-npx skills add TriangulosTecnologia/devanity-skills --skill guardian --agent claude-code
+```
+/plugin marketplace add TriangulosTecnologia/devanity-skills
+/plugin install devanity@devanity
 ```
 
-Install the optional companion agents for evidence collection and fresh-context verification:
+Or as a skill only (the kernel loads when the skill is invoked or matched; no hooks, no persistence across compaction):
+
+```bash
+npx skills add TriangulosTecnologia/devanity-skills --skill devanity --agent claude-code
+```
+
+Optional companion agents (the plugin ships them; the skill-only install needs this step):
 
 ```bash
 mkdir -p .claude/agents
@@ -68,47 +78,48 @@ for agent in worker verifier; do
 done
 ```
 
-Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific mechanics belong in bindings/reference surfaces, not in the core methods.
+Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific mechanics belong in `skills/devanity/reference/claude-code.md`, not in the kernel or the modes. Hosts that read an instruction file and run no hooks get the kernel from [`AGENTS.md`](AGENTS.md), generated from the kernel and checked for drift in CI (no modes, no persistence).
+
+## Status
+
+The kernel is a **candidate** (`1.0.0-candidate`). The v1 is being closed by [SPEC §0](docs/evolution/SPEC.md#0-convergência-da-v1-decisão-do-mantenedor-2026-09-26) and phase V of the plan (the outer loop, the repository map, the trust model); items marked *in progress* above belong to it. Its text is measured by the executable harness in [`evals/harness/`](evals/harness/) against the field a maintainer would choose from (ponytail, superpowers, caveman, the official feature-dev and security-guidance plugins, a one-sentence control, and the previously released devanity) before it is released. Specification and plan: [`docs/evolution/SPEC.md`](docs/evolution/SPEC.md), [`docs/evolution/PLAN.md`](docs/evolution/PLAN.md).
 
 ## Development model
 
-The default thesis is **specification before material coding**: resolve every material uncertainty that is economically discoverable before implementation, then falsify the resulting candidate aggressively and preserve recurring lessons as durable enforcement.
-
-The target is not zero iteration. It is **zero avoidable material rework**.
-
-Read [`docs/OPEN_DEVELOPMENT_MODEL.md`](docs/OPEN_DEVELOPMENT_MODEL.md) for the complete model.
+The default thesis is **specification before material coding**: resolve every material uncertainty that is economically discoverable before implementation, then falsify the resulting candidate aggressively and preserve recurring lessons as durable enforcement. The target is not zero iteration; it is **zero avoidable material rework**. Read [`docs/OPEN_DEVELOPMENT_MODEL.md`](docs/OPEN_DEVELOPMENT_MODEL.md) for the complete model.
 
 ## Shared Change protocol
 
-Maestro owns the open software-change protocol:
+Every mode reads and writes the same objects:
 
-- [`skills/maestro/reference/protocol.md`](skills/maestro/reference/protocol.md) — Change Contract, Evidence, Decision, Finding, authority, lifecycle, and projection semantics;
-- [`skills/maestro/reference/change.schema.json`](skills/maestro/reference/change.schema.json) — machine-readable interchange schema.
-
-The protocol is a reusable capability contract, not the entire semantic model of managed Devanity.
+- [`skills/devanity/reference/vocabulary.md`](skills/devanity/reference/vocabulary.md) — Change, target identity, Evidence, authority, Decision, Finding, verdicts;
+- [`skills/devanity/reference/change.schema.json`](skills/devanity/reference/change.schema.json) — the Change as a machine-readable interchange schema.
 
 ## Evaluation
 
-Behavioral revisions are evaluated against [`evals/scenarios.json`](evals/scenarios.json) using [`evals/README.md`](evals/README.md): regression, adversarial, holdout, and field evidence; released-vs-candidate comparison; outcome, error guardrails, and cost rather than a vanity score.
+What is measured, and against which competitor, is the axis table in [`evals/README.md`](evals/README.md); numbers come from [`evals/harness/`](evals/harness/): real headless Claude Code sessions on seeded repositories, scored on the files they leave behind, with deterministic safety checks, judgment traps, rung-2 cost, the modes, vibe and long-horizon tasks, and auditable LLM judges. Nothing in the kernel changes without a number from there.
 
-Repository CI validates skill structure, Guardian's internal contracts, canonical repository identity, the deliberate capability set, protocol JSON, and the eval catalog.
+What repository CI checks is [`.github/workflows/validate.yml`](.github/workflows/validate.yml): each step is one command, and each command's header says what it validates.
 
 ## Repository layout
 
 ```text
-skills/
-  maestro/     software-change lifecycle
-  archer/      architecture
-  guardian/    repository quality
-agents/
-  worker.md    evidence collection
-  verifier.md  independent proof
-docs/
-evals/
-scripts/
+skills/devanity/     the skill: SKILL.md (kernel), modes/ (one file per verb), reference/
+agents/              worker (evidence) and verifier (independent proof)
+hooks/               kernel injection, commands, guard, proof oracle, ledger (plugin install only)
+scripts/             validators, AGENTS.md generator, reference CI job
+tests/               node:test suites (npm test)
+docs/                development model, hooks, evolution spec and plan
+evals/               the measured axes, the runbook, the harness, dated results
+AGENTS.md            the kernel for hosts that run no hooks (generated)
+devanity.rules.json  this repository's own rules
+.claude-plugin/      plugin manifest and marketplace
+.github/             CI, and the CI job template for consumer repositories
 ```
 
-New top-level skills or agents are architecture changes. Add one only when it owns an irreducible responsibility with a stable contract, independent use, and measurable outcome.
+Every file, one line each: [SPEC §4.2](docs/evolution/SPEC.md#42-estrutura-de-arquivos-alvo).
+
+A new capability or a new mode is an architecture change. Add one only when it owns an irreducible responsibility with a stable contract, independent use, and measurable outcome.
 
 ## Boundary with managed Devanity
 
@@ -118,7 +129,7 @@ Devanity Open owns reusable know-how and works standalone. Managed Devanity may 
 
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-orange.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
-This repository contains instructions and routines licensed under the **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**.
+This repository contains instructions and routines licensed under the **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**. The benchmark instruments under `evals/harness/` ported from ponytail keep their MIT notice (`evals/harness/LICENSE-ponytail`).
 
 * **Allowed:** Use the instructions in your personal or professional workflow, study, adapt, and apply them in your projects.
 * **Prohibited:** Sell, repackage, or monetize this set of instructions (or derivative works) in paid products, e-books, or courses without authorization.
