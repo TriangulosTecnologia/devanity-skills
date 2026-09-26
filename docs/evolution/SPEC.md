@@ -174,10 +174,10 @@ skills/devanity/
   modes/
     plan.md                     ciclo da mudança (FRAME→INSPECT→PROVE→EXECUTE→VERIFY→ASSURE), bloco devanity-contract
     architect.md                decisão de arquitetura (A0/A1/A2, fases, pacote de decisão / ADR)
-    review.md  audit.md         qualidade do repositório: diff; escopo + rascunho de devanity.rules.json
-    improve.md  docs.md         um finding aprovado; superfícies de instrução
-    debt.md                     adiamentos e decisões pendentes
-    init.md                     primeira instalação num repositório
+    review.md  audit.md         o diff (e a conformidade com ADRs e invariantes); um escopo ou as superfícies de instrução pelas seis Foundations → entradas do mapa e catracas
+    improve.md                  uma unidade aprovada (um finding ou uma superfície de instrução), com devanity-proof
+    debt.md                     o motor do loop externo: ledger, deferred:, hotspots → promoções em três faixas
+    init.md                     torna o repositório operável: mapa, job de CI, catracas iniciais
   reference/
     vocabulary.md               Change, identidade do alvo, evidência, autoridade, [DECIDE], finding, veredictos
     quality.md                  basis-form, dimensões, síndromes, severidade, classe do fix, escada de durabilidade
@@ -284,23 +284,25 @@ Alterar a redação de uma delas exige alterar o invariante na mesma PR; é o le
 
 ## 6. Modos
 
-| Modo | Arquivo | Entrada | Quando a escada o aciona |
-|---|---|---|---|
-| `init` | `modes/init.md` | — | primeira instalação num repositório: `git init` se ausente, ledger, rascunho de `devanity.rules.json` (a partir de CODEOWNERS, diretórios, testes), job de CI de exemplo; nada é escrito sem confirmação |
-| `plan` | `modes/plan.md` | objetivo | degraus 3+ com mais de um slice, ou pedido explícito |
-| `architect` | `modes/architect.md` | drivers | degrau 5, quando o lite não basta |
-| `review` | `modes/review.md` | diff | fim de mudança em degrau 3+; PR |
-| `audit` | `modes/audit.md` | escopo | pedido explícito; gera/evolui `devanity.rules.json` |
-| `improve` | `modes/improve.md` | finding | pedido explícito |
-| `docs` | `modes/docs.md` | superfície | pedido explícito |
-| `debt` | `modes/debt.md` | — | lista `deferred:` do código + ledger; nomeia os sem gatilho |
+Sete modos, um arquivo por verbo (§0.6: `docs` fundido em `audit` e `improve`). O kernel roteia; cada modo cita o vocabulário e as referências que carrega, e nenhum restata o kernel.
+
+| Modo | Arquivo | Entrada | Quando a escada o aciona | Papel no loop externo |
+|---|---|---|---|---|
+| `init` | `modes/init.md` | — | primeira instalação num repositório | torna o repositório operável: `git init` se ausente, rascunho do mapa (`devanity.rules.json` com `tier`, `check`, `purpose`, `invariants`; dono só no `CODEOWNERS`), o job de CI de referência copiado e pinado, as catracas iniciais; tudo como proposta, nada escrito sem um sim por item |
+| `plan` | `modes/plan.md` | objetivo | degraus 3+ com mais de um slice, ou pedido explícito | a mudança deixa o bloco `devanity-proof` e as promoções que viu recorrer |
+| `architect` | `modes/architect.md` | drivers | degrau 5 com drivers em conflito ou fronteira existente cruzada; fora disso o esboço de ≤10 linhas do kernel basta | o registro de decisão (ADR) que o `review` passa a conferir |
+| `review` | `modes/review.md` | diff | fim de mudança em degrau 3+; PR | confere o diff contra os ADRs e os `invariants` do mapa |
+| `audit` | `modes/audit.md` | escopo, ou `instructions [caminho]` | pedido explícito | diagnostica pelas seis Foundations sobre as dimensões de `reference/quality.md`; propõe entradas do mapa e catracas do stack do repositório, calibradas pela distribuição dele e priorizadas por hotspots de `git log` |
+| `improve` | `modes/improve.md` | finding ou superfície | pedido explícito, ou roteado por `audit`/`debt` | aplica uma unidade e emite `devanity-proof`; invocar é aprovar só quando o humano invocou |
+| `debt` | `modes/debt.md` | — | pedido explícito | o motor recorrente: ledger, `deferred:`, hotspots → promoções em três faixas (corrige sozinho o dominant reversível fora do high-risk; propõe e para ao apertar um guardrail; nunca afrouxa um verificador) |
 
 Regras:
 
 - `disable-model-invocation` sai do capability. O kernel é sempre ativo; os modos são acionados pela escada ou por `/devanity <modo>`.
 - Cada modo carrega só o que sua linha `Load:` declara; o validador reprova uma citação a `reference/` que a linha omite.
-- Uma só gramática de finding e de `[DECIDE]` para todos os modos (`reference/vocabulary.md`), validada estruturalmente.
-- Invocação só por `/devanity <verbo>`; os nomes dos capabilities de origem não aparecem em nada que o modelo carrega (validate-open.mjs).
+- Uma só gramática de finding e de `[DECIDE]` para todos os modos (`reference/vocabulary.md`), validada estruturalmente; o tipo `design` cobre a escolha entre arquiteturas materialmente diferentes.
+- Os modos de diagnóstico (`review`, `audit`, `debt`) são somente leitura: nada sobrevive à resposta sem pedido do usuário. As catracas são dependências do repositório, propostas por PR; o devanity não carrega nenhuma.
+- Invocação só por `/devanity <verbo>`; os nomes dos capabilities de origem não aparecem em nada que o modelo carrega nem em `docs/` fora do histórico (validate-open.mjs).
 
 ## 7. Guardas
 

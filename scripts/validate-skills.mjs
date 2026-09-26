@@ -233,7 +233,7 @@ export function validate(skillsDir) {
     //    neither is an object.
     const RUNGS = new Set(['enforcement', 'path-scoped-context', 'procedure', 'prose']);
     const CLASSES = new Set(['dominant', 'trade']);
-    const DECIDE_KINDS = new Set(['rule', 'trade', 'acceptance', 'scope']);
+    const DECIDE_KINDS = new Set(['rule', 'trade', 'acceptance', 'scope', 'design']);
     const STATUSES = new Set(['blocking', 'dormant']);
     const tagRe = /\[P(\d)\]\[([a-z]+)\]\[G-(\d+)\]\[([a-z-]+)\]\[([a-z-]+)\]/g;
     const decideRe = /\[DECIDE\]\[([a-z]+)\]\[G-(\d+)\]\[([a-z]+)\]/g;
@@ -320,7 +320,7 @@ export function validate(skillsDir) {
         if (d) {
           if (!STATUSES.has(d[1])) err(skill, `${rel} decision "${d[0]}" uses unknown status "${d[1]}" (expected blocking|dormant)`);
           if (d[2].length < 3) err(skill, `${rel} decision "${d[0]}" alias must be G-NNN (≥3 digits)`);
-          if (!DECIDE_KINDS.has(d[3])) err(skill, `${rel} decision "${d[0]}" uses unknown kind "${d[3]}" (expected rule|trade|acceptance|scope)`);
+          if (!DECIDE_KINDS.has(d[3])) err(skill, `${rel} decision "${d[0]}" uses unknown kind "${d[3]}" (expected rule|trade|acceptance|scope|design)`);
           if (!isListItem) err(skill, `${rel} decision "${d[0]}" headline is not a markdown list item (reference/vocabulary.md, Rendering a report)`);
           if (d[1] === 'blocking') {
             if (!boldOpen) err(skill, `${rel} blocking decision "${d[0]}" must render full-form (bold headline over a nested detail tier, reference/vocabulary.md)`);

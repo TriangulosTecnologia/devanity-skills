@@ -34,20 +34,20 @@ Coverage survives a session only as a **checkpoint** that the user supplies and 
 
 **Light** (the default for `review`): `git status --short`, `git diff --stat HEAD`, `git diff HEAD`, the changed files, the nearest `CLAUDE.md`, `.claude/rules`, `AGENTS.md` and `*.spec.md`, the package scripts, and the focused check.
 
-**Deep** applies to `audit`, to a full `docs review`, and to any diff that edits tool config (lint, types, tests, coverage, CI, hooks), touches a package or layer boundary, a high-risk domain or an instruction surface, or adds a package. It resolves:
+**Deep** applies to `audit` and to any diff that edits tool config (lint, types, tests, coverage, CI, hooks), touches a package or layer boundary, a high-risk domain or an instruction surface, or adds a package. It resolves:
 
 - the effective lint config, including extended and shared configs (a local config that only extends a package hides what it inherits);
 - type strictness, test and coverage config (collected? thresholds? gated?);
 - CI gates (what runs on PR and on merge), pre-commit hooks, and `devanity.rules.json` with whatever reads it;
 - the instruction surfaces across tools: `CLAUDE.md` at root and nested, `.claude/rules/**`, `AGENTS.md`, `.github/copilot-instructions.md`, `.github/instructions/**`, `.cursorrules`, `.windsurfrules`, `.devin/rules/**`, and skill files (`**/SKILL.md` with what they reference, `.claude/skills/**`).
 
-Read the always-on surfaces in full, plus those on the path to and beneath the scope. Only a full `docs review` sweeps everything. More than about 15 surfaces in scope → inventory them all (path and line count), read the always-on ones, and propose batches for the rest.
+Read the always-on surfaces in full, plus those on the path to and beneath the scope. Only `audit instructions` with no path sweeps everything. More than about 15 surfaces in scope → inventory them all (path and line count), read the always-on ones, and propose batches for the rest.
 
 Disposition every Deep item as `enforced`, `prose-only` or `absent`, with where it runs (local hook, CI, both). An item left out reads as unchecked.
 
 ## Safe discovery
 
-Discovery is read-only: file reads, and the toolchain's own print-config commands. Never run install, build, deploy, migration, postinstall or arbitrary package scripts. If resolving a config would execute project code, propose the command and ask.
+Discovery is read-only: file reads, and the toolchain's own print-config commands. Never run install, build, deploy, migration, postinstall or any other package script; the focused check is the one package script discovery may run. If resolving a config would execute project code, propose the command and ask.
 
 Before any check, classify the change's origin (`reference/vocabulary.md`). An external or unknown origin → propose and stop with an `acceptance` decision whose options are: *sandboxed* (run inside real platform isolation), *confirmed risk* (run, with the exposure recorded), *skip* (`NOT_RUN`, kept under missing verification). A `git worktree` protects the working tree and nothing else: it is not a sandbox. Whether a sandbox exists is a platform fact; when you cannot tell, write `sandbox: UNKNOWN` and treat it as absent.
 

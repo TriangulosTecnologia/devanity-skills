@@ -23,7 +23,7 @@ What the host provides and what the plugin enforces today. Every other rule in t
 
 The guards block only with a valid `devanity.rules.json` (or `DEVANITY_GUARDS=on`); otherwise they record `would_block`. Bash detection is a heuristic; the reference CI job (`scripts/devanity-rules-ci.mjs`) is the ceiling. The plugin repository documents each hook in `docs/hooks.md`.
 
-Held by the model alone: read-only modes write nothing; a writing mode writes one approved unit; the adjudicator runs no command.
+Held by the model alone: a read-only mode writes nothing unless the user asks for a record; a writing mode writes one approved unit; the adjudicator runs no command.
 
 ## Menus
 

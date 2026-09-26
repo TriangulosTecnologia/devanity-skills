@@ -1,6 +1,6 @@
 # debt
 
-Read-only: writes nothing.
+Read-only: nothing outlives the reply unless the user asks for a record.
 
 Collect every deliberate shortcut and every decision still owed, so a deferral cannot quietly become permanent.
 

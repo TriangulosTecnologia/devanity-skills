@@ -1,35 +1,24 @@
 # Devanity
 
-One capability, always on, for the engineer who answers for the repository: rigor proportional to what is at stake, every change carries its proof, and authority never exceeds what was granted. `SKILL.md` is the kernel; the modes are procedures reached by verb.
+One capability, always on, for the engineer who answers for the repository: rigor proportional to what is at stake, every change carries its proof, and authority never exceeds what was granted. `SKILL.md` is the kernel; `modes/` holds one procedure per verb, and `reference/` what the modes share.
 
-## Install
-
-As a plugin (recommended: hooks inject the kernel on every session, compaction and subagent, and enforce the guards):
-
-```
-/plugin marketplace add TriangulosTecnologia/devanity-skills
-/plugin install devanity@devanity
-```
-
-As a skill only (no hooks):
+This page is for a skill-only install:
 
 ```bash
 npx skills add TriangulosTecnologia/devanity-skills --skill devanity --agent claude-code
 ```
 
-## Use
+A skill-only install gets the kernel and the modes, and nothing that runs outside the model: no hooks, no guard, no proof oracle, no ledger, no re-injection after compaction. For those, install the plugin. The plugin install, the verbs and what each is for are on the [repository page](https://github.com/TriangulosTecnologia/devanity-skills#readme).
 
-The kernel applies to every coding turn without being invoked. The modes are for the moments the ladder alone is not enough:
+The modes hand collection and independent proof to two agents, which the plugin ships and a skill-only install must add:
 
-| Mode | Invocation | For |
-|---|---|---|
-| `plan` | `/devanity plan <goal>` | a multi-slice change: contract, preflight, bounded slices, verification, assurance |
-| `architect` | `/devanity architect <question>` | a material architecture decision |
-| `review` | `/devanity review [path]` | the current diff |
-| `audit` | `/devanity audit <scope>` | repository health; drafts `devanity.rules.json` |
-| `improve` | `/devanity improve <finding>` | one approved finding |
-| `docs` | `/devanity docs [review\|improve] [surface]` | instruction surfaces |
-| `debt` | `/devanity debt` | deferred shortcuts and pending decisions |
-| `init` | `/devanity init` | first install in a repository |
+```bash
+mkdir -p .claude/agents
+for agent in worker verifier; do
+  curl -fsSL \
+    "https://raw.githubusercontent.com/TriangulosTecnologia/devanity-skills/main/agents/${agent}.md" \
+    -o ".claude/agents/${agent}.md"
+done
+```
 
-Status: candidate. The kernel is measured by [`evals/harness/`](../../evals/harness/) against the field in [`docs/evolution/PLAN.md`](../../docs/evolution/PLAN.md) before release; until then, `1.0.0-candidate`.
+Status: candidate (`1.0.0-candidate`), measured by the [harness](https://github.com/TriangulosTecnologia/devanity-skills/tree/main/evals/harness) against the field in the [plan](https://github.com/TriangulosTecnologia/devanity-skills/blob/main/docs/evolution/PLAN.md) before release.

@@ -2,7 +2,7 @@
 
 Load: `reference/vocabulary.md`, `reference/quality.md`, `reference/baseline.md`, `reference/claude-code.md`; `reference/adjudication.md` for the fresh-context pass; `reference/rules.schema.json` for the rules proposal.
 
-A bounded health review of the working tree in scope: tracked and untracked files, gitignored ones excluded. This mode is read-only. The words after `audit` are the scope (paths, a package, a domain); with none, ask.
+A bounded health review of the working tree in scope: tracked and untracked files, gitignored ones excluded. Read-only: nothing outlives the reply unless the user asks for a record. The words after `audit` are the scope (paths, a package, a domain); with none, ask. `audit instructions [path]` scopes it to the instruction surfaces (`reference/baseline.md`, Deep) beneath the path, or to every one.
 
 ## Size first
 
@@ -15,7 +15,18 @@ Probe NUL-safe, over tracked and untracked files alike:
 
 `<scope…>` is one pathspec argument per path, never one quoted string. Binary and generated files are listed with that reason, and never line-counted or swept.
 
-The contract is exhaustive: every file read, every syndrome applied, every dimension scored with a cited check. Past about 100 files or 30k lines it degrades silently. Then propose 2–4 sub-scopes along seams (package, layer, domain) as a `scope` decision (a menu when interactive, `reference/claude-code.md`), and audit the one chosen. Narrowing hides what lives between sub-scopes, such as duplication across them and cycles between them. So still run any repository-wide mechanical check at full width, and list the cross-scope checks you did not run under Coverage.
+The contract is exhaustive: every file read, every syndrome applied, every dimension scored with a cited check. Past about 100 files or 30k lines it degrades silently. Then propose 2–4 sub-scopes along seams (package, layer, domain) as a `scope` decision (a menu when interactive, `reference/claude-code.md`), and audit the one chosen. Narrowing hides what lives between sub-scopes, such as duplication across them and cycles between them. So still run any repository-wide mechanical check at full width, and list the cross-scope checks you did not run under Coverage. An instruction scope past about 15 surfaces batches the same way: every surface inventoried, the unread ones `pending (batch k)`, the options bounded `audit instructions <directory>` batches under the manifest rule (`reference/baseline.md`); the run that finishes the last batch owes the verdict.
+
+## Instruction surfaces
+
+A surface is one file; for JSDoc/TSDoc, one file's doc blocks, whose claims tag `co-located-spec`, never `instruction-hygiene`. A surface finding anchors as `path:heading:dimension:rule`.
+
+- Name the ambiguity or failure each surface should reduce and the smallest correct surface on the ladder (`reference/quality.md`); prefer enforceable structure to prose, and keep the surface in basis-form. Stale or duplicated text is a finding whose fix removes it; each asserted behavior is verified, or the test that would verify it is named.
+- A rule in force with no durable home is a finding whose fix writes that home.
+- A named target absent from disk → `absent`, and stop. An unreadable one is `absent (unreadable: <reason>)`.
+- No surfaces at all does not end the run: each rule in force with no agent-legible home and no enforcement is a finding. The absence bounds the syndromes, never reconciliation or severity.
+- `### Surfaces found / reviewed` lists every surface the Deep baseline discovers as `reviewed` (enforced or prose-only, context cost LOW|MEDIUM|HIGH) or `absent`. One missing from the list is a defect of the run; the verdict is owed only when every one is dispositioned.
+- A fix inside one surface runs as `/devanity improve <path>`; one that writes a second file, as `/devanity improve <Key>`.
 
 ## Steps
 
@@ -30,7 +41,7 @@ The contract is exhaustive: every file read, every syndrome applied, every dimen
 5. List the findings, a decision for each owed stop, and a safe sequence. `AUDIT_BACKLOG` is the only terminal verdict, whatever the finding count.
 6. **Rules proposal.** Draft or amend `devanity.rules.json` (`reference/rules.schema.json`) from CODEOWNERS, directory names, the existing tests and the findings above:
    - `high-risk` for paths whose owners, names or findings put them in the class;
-   - `trivial` for docs and generated output;
+   - `trivial` for docs and generated output, never for an instruction surface (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, skill, mode and agent files), which is `normal` at least;
    - a `check` per high-risk path, taken from a command the repository already runs (never invented);
    - `tests` globs only when the repository's naming differs from the defaults.
 
@@ -41,6 +52,7 @@ The contract is exhaustive: every file read, every syndrome applied, every dimen
 ```md
 ### Verdict AUDIT_BACKLOG | none — audit completion pending
 ### Scope audited
+### Surfaces found / reviewed   instruction scope only
 ### Coverage                 files read · checks and results, with side effects · `focused check: none` when none exists · what was not checked
 ### Baseline                 every item enforced / prose-only / absent, and where it runs
 ### Dimension status         a table: Dimension | Status | Evidence, one row per dimension

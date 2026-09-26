@@ -1,6 +1,6 @@
 # architect
 
-Load: `reference/vocabulary.md` (architecture class, Decision).
+Load: `reference/vocabulary.md` (architecture class, Decision); `reference/change.schema.json` for the status it records.
 
 Decide architecture when a change is material to it. The input is the words after `architect` (a system, a change, a question) or the packet `/devanity plan` hands over. Start from the required properties and meanings, then derive state, ownership, boundaries, topology, failure behavior, enforcement and evidence from them. Never start from a technology, framework, pattern or folder template.
 
@@ -10,7 +10,8 @@ Classify first (`reference/vocabulary.md`):
 
 - `A0` → return the constraints that already hold, and stop.
 - `A1` → cite the decision or contract being followed, state the conformance constraints, and stop. No citable decision → it is `A2`.
-- `A2` → run the phases.
+- `A2` whose drivers agree and that crosses no existing boundary → the kernel's ≤10-line shape is the whole answer: write it and stop.
+- `A2` with drivers in conflict, or crossing or redrawing an existing boundary → run the phases.
 
 ## Rules
 
@@ -21,7 +22,8 @@ Classify first (`reference/vocabulary.md`):
 - Operation is architecture: failure, recovery, rollback, load, security, observability and evolution are part of the design.
 - Design for limited context: one owner per meaning, explicit contracts, local verification, one obvious home for new behavior.
 - Keep observed fact, inference, assumption, accepted decision, implemented constraint and enforced constraint apart. Never present an inference as a rule.
-- Stop at a `[DECIDE]` when materially different architectures remain and the choice depends on product intent, organizational authority, accepted risk, or a constraint nobody supplied.
+- Stop at a `design` decision when materially different architectures remain and the choice depends on product intent, organizational authority, accepted risk, or a constraint nobody supplied.
+- Owners come from the repository (`CODEOWNERS`, an ADR, a human's word). Never invent organizational ownership: an unknown owner is `owner: unknown`, and a critical choice that depends on it is the organizational-authority stop above.
 
 ## Phases (A2)
 
@@ -36,13 +38,13 @@ Gate: central concepts have one meaning each; invariants and transitions are exp
 **P3 Compose**: where state and responsibility live. Derive boundaries from reasons to change, consistency needs, failure containment, trust, scaling independence and ownership, never from nouns or framework habit. Per unit: `responsibility · owned concepts and state · public contracts · dependencies · forbidden dependencies · local invariants · local verification · owner`. A unit with no independent responsibility, contract, state, failure boundary, owner or evolution need is an empty axis. Keep one source of truth per meaning; any replication names its authority and its reconciliation rule.
 Gate: every important responsibility and piece of state has one owner; collaboration goes through explicit contracts; dependency direction supports the independent changes that are required.
 
-**P4 Harden**: behavior under failure, pressure, misuse and attack. Per hazard: `trigger · path to loss · prevention · detection · containment · recovery · residual risk · who may accept it`. Keep these apart: retryable is not idempotent; at-least-once delivery needs consumers that tolerate duplicates; authorization, decision and execution are separate; an attempted action is not an observed outcome; an undetectable critical failure is a design defect; human confirmation records acceptance and isolates nothing.
-Gate: each critical loss has prevention, detection, containment and recovery in proportion to its risk.
+**P4 Harden**: behavior under failure, pressure, misuse and attack. Per hazard: `trigger · path to loss · prevention · detection · containment · recovery · residual risk · who may accept it`. Cover each class the design touches, or name it on a `Skipped:` line: time, retry and idempotency; concurrency and consistency; overload and degradation; privacy and destructive operations; recovery and rollback; audit. A design that describes only the nominal path is not complete. Keep these apart: retryable is not idempotent; at-least-once delivery needs consumers that tolerate duplicates; authorization, decision and execution are separate; an attempted action is not an observed outcome; an undetectable critical failure is a design defect; human confirmation records acceptance and isolates nothing.
+Gate: each class above is covered or skipped with its reason; each critical loss has prevention, detection, containment and recovery in proportion to its risk.
 
 **P5 Encode**: how decisions become checks. Use the strongest mechanism that decides the property with acceptable precision and latency: types, schemas, contract tests, dependency rules, fitness functions, CI or runtime gates, signals tied to properties. Prose explains a decision; it is never the only control for a decidable critical invariant. Per critical property: `property · decision · enforcement · verification · operational signal · evidence owner · blind spots`. Never compute a composite "architecture health" score.
 Gate: every critical decision has enforcement or evidence, or a stated reason why it stays human-judged.
 
-**P6 Release and revise**: what reality confirmed or broke. Revisit a decision when an assumption turns false, a scenario misses its bound, operation contradicts the model, change amplification grows, a boundary keeps leaking, or a simpler design now covers the problem.
+**P6 Release and revise**: what reality confirmed or broke. Conformance has an owner: `/devanity review` checks every later diff against the accepted records. Revisit a decision when an assumption turns false, a scenario misses its bound, operation contradicts the model, change amplification grows, a boundary keeps leaking, or a simpler design now covers the problem.
 Gate: the implementation traces back to the critical decisions; deviations are explicit; every conditioned decision shows its revision condition.
 
 ## Topology
@@ -108,4 +110,4 @@ If the repository keeps ADRs, render the records in its format and propose the f
 
 ## Completion
 
-The architecture is done when implementation can rebuild, for each critical property, the chain objective → scenario → decision → structure → enforcement → signal → revision condition. When topology is material, implementation must also know where each responsibility belongs, which dependencies are allowed, and how drift is detected. Name any broken link; never paper over it. Then hand the constraints back to `/devanity plan`, which owns the sequencing.
+The architecture is done when implementation can rebuild, for each critical property, the chain objective → scenario → decision → structure → enforcement → signal → revision condition. When topology is material, implementation must also know where each responsibility belongs, which dependencies are allowed, and how drift is detected. Name any broken link; never paper over it. Record the outcome as the Change's `architecture.status`: `A0` → `not-required`; `A1` → `conforming`; the kernel shape, or every chain complete → `resolved`; a blocking `design` decision open → `needs-decision`; a named broken link → `incomplete`. Then hand the constraints back to `/devanity plan`, which owns the sequencing.

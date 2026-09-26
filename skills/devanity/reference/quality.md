@@ -1,6 +1,6 @@
 # Repository quality
 
-The standard that `review`, `audit`, `improve` and `docs` judge by. It governs quality only. It never overrides system or user instructions, permissions, security policy, or what a human owns.
+The standard that `review`, `audit` and `improve` judge by. It governs quality only. It never overrides system or user instructions, permissions, security policy, or what a human owns.
 
 - **Methodology** (this file decides): basis-form, the dimensions, severity, fix class, the ladder.
 - **Product and architecture intent** (humans own it; respect it, never "fix" it): language, stack, scope, business rules, security posture, chosen conventions. A choice with no universal right answer is intent.
@@ -19,7 +19,7 @@ Describe a decision space by its basis (the axes), never by its cases (the point
 Both directions fail:
 
 - **Case-enumeration** (under-abstraction): a switch per case, copy-paste, hardcoded variants. Migrate case → basis only once the axis is visible (3 or more concrete points) and the migration cuts blast radius or ambiguity.
-- **Empty axis** (over-abstraction): a wrapper, framework or config with no concrete consumer. Collapse it back to cases until the axis reappears.
+- **Empty axis** (over-abstraction): a wrapper, framework or config with no concrete consumer. Collapse it back to cases until the axis reappears. A surface written to give a rule in force its first durable home is propagation, never an empty axis.
 
 Basis-form makes deviations detectable. It never certifies that a contract is correct.
 

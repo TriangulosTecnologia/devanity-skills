@@ -43,9 +43,8 @@ The verbs are for the moments that need a procedure:
 | Run a change end to end: contract, preflight, bounded slices, independent verification, assurance | `/devanity plan <goal>` |
 | Make or revise a material architecture decision | `/devanity architect <drivers>` |
 | Review the current diff before it lands | `/devanity review [path]` |
-| Audit a scope of the repository; draft `devanity.rules.json` | `/devanity audit <scope>` |
-| Apply one approved finding | `/devanity improve <finding>` |
-| Review or improve instruction surfaces | `/devanity docs [review\|improve] [surface]` |
+| Audit a scope of the repository, or its instruction surfaces; draft `devanity.rules.json` | `/devanity audit <scope>` · `/devanity audit instructions [path]` |
+| Apply one approved finding, or fix one instruction surface | `/devanity improve <finding\|surface>` |
 | List deferred shortcuts and pending decisions | `/devanity debt` |
 | First install in a repository | `/devanity init` |
 

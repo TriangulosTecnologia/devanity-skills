@@ -181,7 +181,7 @@ function main() {
     fail(`skills/ must be the deliberate capability set (${expectedSkills.join(', ')}); found: ${skillDirs.join(', ')}`);
   }
   // One flat file per verb, the set the kernel's routing table and argument-hint promise.
-  const expectedModes = ['architect.md', 'audit.md', 'debt.md', 'docs.md', 'improve.md', 'init.md', 'plan.md', 'review.md'];
+  const expectedModes = ['architect.md', 'audit.md', 'debt.md', 'improve.md', 'init.md', 'plan.md', 'review.md'];
   const modeEntries = existsSync(join(root, 'skills/devanity/modes')) ? readdirSync(join(root, 'skills/devanity/modes')).sort() : [];
   if (modeEntries.join(',') !== expectedModes.join(',')) {
     fail(`skills/devanity/modes must be the deliberate mode set (${expectedModes.join(', ')}); found: ${modeEntries.join(', ')}`);
@@ -214,16 +214,20 @@ function main() {
   // What the model loads speaks one interface: the `/devanity <verb>` invocations and one spelling of
   // each status token. The retired skill names (and their `/name` commands) and the spaced spellings
   // of the underscore tokens are what the pre-C1 files used; a file that reintroduces one teaches the
-  // model a command that does not exist or a token no parser expects.
+  // model a command that does not exist or a token no parser expects. The docs a person reads speak
+  // the same interface (PLAN V4): only the history keeps the old names, the spec and plan that record
+  // the consolidation and the dated results; the harness names the released version's commands.
   const retiredNames = /\b(?:maestro|archer|guardian)\b/i;
   const spacedTokens = /\b(?:NOT VERIFIED|INVALID TARGET|NOT RUN|NOT ADJUDICATED|NOT FALSIFIED)\b/;
+  const history = ['docs/evolution/PLAN.md', 'docs/evolution/SPEC.md', 'evals/results/'];
   for (const file of textFiles) {
     const rel = file.slice(root.length + 1);
-    if (!rel.startsWith('skills/') && !rel.startsWith('agents/')) continue;
+    const loaded = rel.startsWith('skills/') || rel.startsWith('agents/');
+    if (!loaded && (!rel.startsWith('docs/') || history.some((h) => rel.startsWith(h)))) continue;
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
       const name = line.match(retiredNames);
       if (name) fail(`${rel}:${i + 1} names the retired "${name[0]}"; the interface is /devanity <verb>`);
-      const token = line.match(spacedTokens);
+      const token = loaded && line.match(spacedTokens);
       if (token) fail(`${rel}:${i + 1} spells "${token[0]}"; the token is ${token[0].replace(' ', '_')}`);
     });
   }

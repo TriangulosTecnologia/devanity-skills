@@ -2,9 +2,11 @@
 
 Load: `reference/vocabulary.md`, `reference/quality.md`, `reference/baseline.md`; `reference/claude-code.md` for an ambiguous reference.
 
-Fix exactly one approved finding, on the ladder (`reference/quality.md`). The words after `improve` are the reference; with none, ask. Invoking `improve <ref>` is the approval for that one unit, with four exceptions: the high-risk class (kernel rung 4), a trade, a new dependency, or a hook or CI change. For those, show the proposed patch under a decision and stop.
+Fix exactly one approved unit, on the ladder (`reference/quality.md`): a finding, or one instruction surface. The words after `improve` are the reference; with none, ask. When the human typed `improve <ref>`, that is the approval for that one unit; when you routed here yourself, state how you read the reference and ask before any write. Either way, four exceptions stop for a decision with the proposed patch: the high-risk class (kernel rung 4), a trade, a new dependency, or a hook or CI change.
 
 ## Resolve
+
+A path to an instruction surface, not a Key, makes that one file the unit: run the instruction syndromes on it (`reference/quality.md`) and apply its dominant fixes inside it. A fix that must write a second file is not this unit: audit it and improve the resulting Key.
 
 1. **Find the Key.** A `G-###` in this session's findings → its Key. A full Key resolves on its own, because it carries its path. An unambiguous suffix of a Key → resolve it against this session's findings. Several matches → list them and ask. No match (always the case in a fresh session) → ask for the full Key. A stale or cross-session alias → ask, or re-run the diagnostic. Parse the Key right to left: the last segment is the rule, then the dimension, and the rest splits at its first colon into path and symbol. Fewer than four segments, or a dimension not in `reference/quality.md` → the Key is malformed: ask.
 2. **Locate.** Read the path and find the symbol. If either is gone, stop and ask: a vanished file is not a fixed finding.

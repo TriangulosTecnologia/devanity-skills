@@ -5,7 +5,7 @@ license: CC-BY-NC-4.0
 metadata:
   author: enniolopes@gmail.com
   version: 1.0.0-candidate
-argument-hint: '[plan|architect|review|audit|improve|docs|debt|init] [args]'
+argument-hint: '[plan|architect|review|audit|improve|debt|init] [args]'
 ---
 
 # Devanity
@@ -65,13 +65,12 @@ devanity-proof:
 | Mode | Read | When |
 |---|---|---|
 | `plan` | `modes/plan.md` | rung 3+ with more than one slice, or on request: the full change lifecycle |
-| `architect` | `modes/architect.md` | rung 5 when the ≤10-line shape is not enough |
+| `architect` | `modes/architect.md` | rung 5 when drivers conflict or the change crosses an existing boundary |
 | `review` | `modes/review.md` | end of a rung 3+ change; a diff or PR |
-| `audit` | `modes/audit.md` | on request: repository-wide; also drafts `devanity.rules.json` |
-| `improve` | `modes/improve.md` | on request: one approved finding |
-| `docs` | `modes/docs.md` | on request: instruction surfaces |
-| `debt` | `modes/debt.md` | on request: every `deferred:` in the code and the pending decisions, the ones without a trigger flagged |
-| `init` | `modes/init.md` | first install in a repository: ledger, rules draft, CI job; nothing written without confirmation |
+| `audit` | `modes/audit.md` | on request: a scope or the instruction surfaces; drafts map entries and ratchets |
+| `improve` | `modes/improve.md` | on request: one approved finding or one instruction surface |
+| `debt` | `modes/debt.md` | on request: `deferred:` markers, pending decisions, the ledger and hotspots, turned into proposed promotions |
+| `init` | `modes/init.md` | first install in a repository: map draft, CI job, first ratchets; nothing written without confirmation |
 
 A mode file names the references it loads; read nothing else.
 

@@ -14,7 +14,7 @@ A Change carries: target identity · intent (problem, desired outcome) · scope 
 
 - `A0` — implementation-local: no meaning, ownership, boundary, public contract, state model, topology or critical property changes.
 - `A1` — follows an explicit existing decision, and cites it. Conformance you cannot cite is intuition: treat it as `A2`.
-- `A2` — creates or revises a decision about semantics, state, ownership, boundaries, public contracts, topology, dependency direction, failure behavior, operation or critical qualities.
+- `A2` — creates or revises a decision about semantics, state, ownership, boundaries, public contracts, topology, dependency direction, failure behavior, operation or critical qualities. Creating a folder or a file is not, by itself, such a decision. The kernel's ≤10-line shape (rung 5) settles an `A2` whose drivers agree and that crosses no existing boundary; drivers in conflict, or an existing boundary crossed or redrawn → `/devanity architect`.
 
 Between two classes, take the higher.
 
@@ -38,10 +38,10 @@ Before a side effect, name its rung and compare it with the ceiling this session
 
 ## Decision
 
-Every stop-and-ask renders as this block. It hands over the decision space, not the case: someone without this session's context must be able to decide from the block alone.
+Every stop-and-ask renders as this block. It renders a stop the kernel or a mode already owes, and never creates one. It hands over the decision space, not the case: someone without this session's context must be able to decide from the block alone.
 
 ```txt
-- **[DECIDE][blocking|dormant][G-###][rule|trade|acceptance|scope] Question, one line**
+- **[DECIDE][blocking|dormant][G-###][rule|trade|acceptance|scope|design] Question, one line**
   - decision: <the rule at stake, in product terms, never the instance>
   - context: <why it surfaced: one line of evidence> · anchors <G-### or Key>
   - options: <A → durable consequence> · <B → durable consequence> (2–4, one a no-op)
@@ -50,7 +50,7 @@ Every stop-and-ask renders as this block. It hands over the decision space, not 
 ```
 
 - **Status.** `blocking` is owed now; `if undecided:` names the fate (the dependent slice stays a failing stub, the verdict holds, it re-fires on the next run). `dormant` may sleep and renders on one line: `- [DECIDE][dormant][G-###][trade] Title — worth doing when <pain observed> — anchors <Key>`. Deciding "defer" turns a blocking decision into a dormant one.
-- **Kind.** `rule`: a recurring rule or product intent; a yes resolves to `<rule> → codify at <surface>`. `trade`: a fix-class trade (`reference/quality.md`). `acceptance`: someone takes on a risk, either an unfixed P0/P1 or the exposure of an action such as running untrusted code; record who, what, why, expiry and any compensating control. `scope`: what falls inside this unit (routing, a sub-scope, absorbing an unexpected change). When `trade` and `acceptance` both fit, it is `acceptance`.
+- **Kind.** `rule`: a recurring rule or product intent; a yes resolves to `<rule> → codify at <surface>`. `trade`: a fix-class trade (`reference/quality.md`). `acceptance`: someone takes on a risk, either an unfixed P0/P1 or the exposure of an action such as running untrusted code; record who, what, why, expiry and any compensating control. `scope`: what falls inside this unit (routing, a sub-scope, absorbing an unexpected change). `design`: a pick between materially different architectures that rests on product intent, organizational authority, accepted risk or a constraint nobody supplied (`modes/architect.md`). When `trade` and `acceptance` both fit, it is `acceptance`.
 - **Id.** `G-###`, one sequence per session, shared with findings. It is the id a human passes to `/devanity decide <id> <option> --path <glob>`, the only writer of `by: human`. A decision the guard queued keeps its ledger id (`D-…`).
 - **Anchor, don't repeat.** A decision about a finding cites it and adds only the question, the options, the recommendation and the fate.
 - A recommendation is not a resolution: dependent work stays blocked until a human answers.
@@ -88,9 +88,8 @@ A discrepancy between what should hold and what was observed.
 
 | Who | Verdicts, most severe first |
 |---|---|
-| review, single-surface docs | `BLOCK` (an unaccepted P0) · `PASS_WITH_ACCEPTED_RISK` · `PASS_WITH_FIXES` (a P1 is open) · `PASS` |
+| review | `BLOCK` (an unaccepted P0) · `PASS_WITH_ACCEPTED_RISK` · `PASS_WITH_FIXES` (a P1 is open) · `PASS` |
 | audit | `AUDIT_BACKLOG` |
-| full docs review | `DOCS_BACKLOG` |
 | verifier (`agents/verifier.md`) | `INVALID_TARGET` · `FAILED` · `NOT_VERIFIED` · `VERIFIED` |
 | a Change | `INVALID_TARGET` · `BLOCKED` · `NOT_VERIFIED` · `NO_CHANGE` · `CANDIDATE_READY` |
 

@@ -241,6 +241,12 @@ test('blocking decision missing any of the five fields fails; complete block pas
   withSkill('foo', `${fm('foo')}\n${completeDecide()}`, (dir) => assert.deepEqual(validate(dir), []));
 });
 
+test('every decision kind of reference/vocabulary.md passes, design included', () => {
+  for (const kind of ['rule', 'trade', 'acceptance', 'scope', 'design']) {
+    withSkill('foo', `${fm('foo')}\n${completeDecide('G-002', kind)}`, (dir) => assert.deepEqual(validate(dir), [], kind));
+  }
+});
+
 test('a blocking decision must be full-form; a dormant one must stay one line', () => {
   const notBold = `${fm('foo')}\n- [DECIDE][blocking][G-002][trade] Question?\n  - decision: x\n  - context: y\n  - options: A → x · B → y\n  - recommendation: A\n  - if undecided: re-fires\n`;
   withSkill('foo', notBold, (dir) => {

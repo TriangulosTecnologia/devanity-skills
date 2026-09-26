@@ -9,7 +9,7 @@ First installation of devanity in a repository. The goal is that the guards have
 1. **Repository identity.** `git rev-parse --git-common-dir`; if this is not a git repository, propose `git init` (the oracle needs a baseline and the ledger lives under `.git/`). Stop here until decided.
 2. **Rules draft.** Read `CODEOWNERS`, top-level directories, existing test layout and CI. Propose `devanity.rules.json`:
    - `high-risk` tier for paths whose names or owners indicate security, auth, billing/payments, migrations, infra, data deletion;
-   - `trivial` for docs and generated output;
+   - `trivial` for docs and generated output, never for an instruction surface (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, skill, mode and agent files), which is `normal` at least;
    - `check` per high-risk path from the test command the repository already uses (never invented);
    - `tests` globs if the repository's naming differs from the defaults (`test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `tests/**`).
    Show the file in full. Every tier assignment names the evidence it came from.
