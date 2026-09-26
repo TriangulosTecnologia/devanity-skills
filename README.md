@@ -1,6 +1,25 @@
 # Devanity Open
 
-Devanity is one always-on capability for AI-assisted software development, written for the person who answers for the repository: rigor proportional to what is at stake, every change carries its proof, and the agent never spends authority it was not given.
+Devanity makes a repository able to **accept more AI-generated change without growing review cost, defects or entropy in proportion**. It is written for the person who answers for the repository, and it works in two loops:
+
+- **Per change:** every agent change is cheap to accept. Rigor is proportional to what is at stake, every change carries a proof that was seen failing before the fix, and the agent never spends authority it was not given.
+- **Over time:** every change leaves the repository easier to change correctly next time. Agents reproduce the patterns of the context they are given, and the repository is that context: a clean repository propagates cleanliness, one with debt propagates debt. So every observed failure becomes structure (a declared check, a ratchet, a map entry), never just a corrected mistake.
+
+## What it solves
+
+| Problem | What devanity does |
+| --- | --- |
+| **False-ready:** the agent says "done" or "verified" without evidence | "Verified" exists only in a `devanity-proof` block; the Stop hook re-runs the check against `HEAD` and, when the claim does not hold, blocks the turn with the block it measured |
+| **Usurped authority:** an available tool becomes a permission | high-risk and human-owned decisions stop as a `[DECIDE]`, with the dependent slice left as a failing stub instead of a guessed default; the guard blocks high-risk paths and commands above the session's authority; the reference CI job fails a pull request whose high-risk check fails or that carries no proof block |
+| **Wrong rigor:** the same process for a rename and for billing | a proportionality ladder that stops at the first rung that holds, from `NO_CHANGE` to "propose and stop" |
+| **Decision load:** asking what the repository already answers, or deciding what belongs to a human | look for the repository's own answer (ADR, config, sibling) before defaulting; queue what is irreversible or human-owned |
+| **Over-build:** speculative abstraction, configuration and scaffolding | a craft ladder: what exists here, then stdlib, platform, installed dependency, one line |
+| **Rules that rot in prose:** conventions nobody enforces | a durability ladder: `audit` moves a recurring rule from prose into a test, lint rule, schema or CI gate, and removes the prose |
+| **Pattern inertia:** the agent replicates the repository's debt | reuse behavior through interfaces, never the shape of debt; debt is what the repository's gates say, not taste; `audit` and `debt` install ratchets so legacy stays frozen and new code meets the target *(v1, in progress)* |
+
+**What it does not do.** It protects against the agent that errs or races for a green check, not against an adversarial one. The binding boundary is the pipeline, outside the agent: the reference CI job, branch protection and `CODEOWNERS`. The in-session hooks are fast sensors that stop honest mistakes and measure; the agent never authors, and never weakens, the check that judges it *(v1, in progress: today the Stop hook still runs the check the agent wrote)*.
+
+**Evidence so far** ([stage round](evals/results/2026-09-24-stage-round.md), Sonnet, n=4, against baseline, ponytail, superpowers, a one-sentence control and devanity's own earlier version): devanity is the only arm that never took a human-owned decision (0/12 cells across rounds; the others took it in 2/4 to 4/4), it ties ponytail on leaving unneeded changes undone (4/4), and it reads the repository's ADR before guessing in 3/4 cells where the best competitor does 1/4. Size, rung-2 cost, greenfield and the modes are not measured yet.
 
 ## How to use
 
@@ -64,7 +83,7 @@ Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific
 
 ## Status
 
-The kernel is a **candidate** (`1.0.0-candidate`): its text is measured by the executable harness in [`evals/harness/`](evals/harness/) against the field a maintainer would choose from (ponytail, superpowers, caveman, the official feature-dev and security-guidance plugins, a one-sentence control, and the previously released devanity) before it is released. Specification and plan: [`docs/evolution/SPEC.md`](docs/evolution/SPEC.md), [`docs/evolution/PLAN.md`](docs/evolution/PLAN.md).
+The kernel is a **candidate** (`1.0.0-candidate`). The v1 is being closed by [SPEC §0](docs/evolution/SPEC.md#0-convergência-da-v1-decisão-do-mantenedor-2026-09-26) and phase V of the plan (the outer loop, the repository map, the trust model); items marked *in progress* above belong to it. Its text is measured by the executable harness in [`evals/harness/`](evals/harness/) against the field a maintainer would choose from (ponytail, superpowers, caveman, the official feature-dev and security-guidance plugins, a one-sentence control, and the previously released devanity) before it is released. Specification and plan: [`docs/evolution/SPEC.md`](docs/evolution/SPEC.md), [`docs/evolution/PLAN.md`](docs/evolution/PLAN.md).
 
 ## Development model
 
