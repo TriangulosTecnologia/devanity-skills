@@ -139,7 +139,7 @@ function pathMessage(tool, rel, rule, via) {
     `  rule: ${rule.glob ? `${rule.glob} → tier ${rule.tier}` : `tier ${rule.tier}`}${rule.builtin ? ' (built-in: protects the rules and the ledger)' : ' (devanity.rules.json)'}`,
     '  A high-risk path needs a human decision recorded in the ledger before any tool may write to it.',
     `  Next step: Record the human decision with: ${DECIDE_HINT} ${id} <option> --path ${scope}`,
-    '  (typed by the human as a whole message; the agent cannot record it — propose the change and stop)',
+    '  (typed by the human as a whole message; the agent does not record it — propose the change and stop)',
   ].join('\n');
 }
 
@@ -148,7 +148,7 @@ function authorityMessage(command, need, auth) {
     `devanity: blocked Bash command: ${command}`,
     `  needs authority: ${need}; this session has: ${auth.have} (${auth.source})`,
     `  Next step: raise DEVANITY_AUTHORITY / edit devanity.rules.json#autonomy${auth.autonomous ? ' — merge and deploy are never available to an autonomous session' : ''}`,
-    '  (a human does this outside the session; the agent cannot raise its own authority)',
+    '  (a human does this outside the session; the agent does not raise its own authority)',
   ].join('\n');
 }
 

@@ -2,6 +2,8 @@
 
 The hooks run only when devanity is installed as a Claude Code plugin (`hooks/hooks.json`); an `AGENTS.md`-only host gets the kernel and nothing below. Four entry points share three libraries: `devanity-runtime.js` (payload, kernel, fallbacks), `devanity-rules.js` (the `devanity.rules.json` loader and globs) and `devanity-ledger.js` (the state every hook reads). None of them asks the model anything, and every failure path allows and leaves a trace.
 
+**What they are, and what they are not** (SPEC §0.2). The hooks are sensors of the per-change loop: they stop the agent that errs or races for a green check, and they measure. They run on the agent's machine with the agent's permissions, so they are not a boundary against an agent that sets out to get around them; the binding boundary is the pipeline, outside the agent (the [reference CI job](#reference-ci-job-scriptsdevanity-rules-cimjs), branch protection, `CODEOWNERS`). What each hook does not stop is listed under [Limits](#limits).
+
 | event | hook | job |
 |---|---|---|
 | `SessionStart`, `SubagentStart` | `devanity-inject.js` | kernel, repository rules and the open change into context ([Injection](#injection-devanity-injectjs)) |
@@ -17,10 +19,10 @@ The hooks run only when devanity is installed as a Claude Code plugin (`hooks/ho
 | file | written by | record |
 |---|---|---|
 | `contracts.jsonl` | `Stop` (a `devanity-contract:` block); `/devanity reset` | `{id, phase, intent?, scope?, forbidden?, proof?, pending?, reason?}`; the latest record per id wins field by field |
-| `decisions.jsonl` | `PreToolUse` guard (`by: agent`, `status: pending`); `/devanity decide` (the only writer of `by: human`) | `{id, path?, kind, status: pending\|decided, by, chosen?}`; latest per id wins |
+| `decisions.jsonl` | `PreToolUse` guard (`by: agent`, `status: pending`); `/devanity decide` (the only hook that writes `by: human`) | `{id, path?, kind, status: pending\|decided\|rejected, by, chosen?, contract?}`; latest per id wins |
 | `proofs.jsonl` | `Stop` oracle | `{kind: 'proof', contract, check, head, failed_before, passed_after, status, agent_status, pending, measured, reason}` |
 | `deferrals.jsonl` | nothing yet (`debt` reads the `deferred:` markers in the code instead) | reserved |
-| `events.jsonl` | guard, oracle, inject | `{kind: blocked \| would_block \| false_ready \| rules_invalid \| guard_payload_missing \| inject_truncated, …}` |
+| `events.jsonl` | guard, oracle, inject | `{kind: blocked \| would_block \| false_ready \| unmeasured \| rules_invalid \| guard_payload_missing \| inject_truncated, …}` |
 
 ### The open change (`devanity-contract:`)
 
@@ -107,9 +109,11 @@ Type, as a whole message in the Claude Code prompt:
 /devanity pending
 ```
 
-- `decide` appends `{id, status: decided, by: human, chosen, path}` to `decisions.jsonl`. For an id that is not yet in the ledger, `--path` is mandatory: a human decision must name what it authorizes. For a pending id (queued by an autonomous session) the path is inherited.
+- `decide` appends `{id, status: decided, by: human, chosen, path, contract?}` to `decisions.jsonl`. For an id that is not yet in the ledger, `--path` is mandatory: a human decision must name what it authorizes. For a pending id (queued by an autonomous session) the path is inherited.
+- An answer of `no`, `n`, `reject`, `deny`, `refuse` or `não` records `status: rejected`: it answers the pending question and authorizes nothing (`DEVANITY DECISION REJECTED: … stay blocked`).
+- A decision is scoped: it is tied to the change open when it was typed and authorizes while that change is open; with no open change it expires after 24 hours. It never authorizes every later session.
 - `pending` lists the queue.
-- Both are handled by the `UserPromptSubmit` hook only. That event is trusted because its payload is the text the human typed; the model cannot author it and no tool reaches it. There is no tool, command or env var by which the agent can write `by: human` (guardrail 12; `tests/guard.test.mjs` asserts it against the source).
+- Both are handled by the `UserPromptSubmit` hook only. That event is trusted because its payload is the text the human typed; the model does not author it and no tool reaches it. No devanity tool, command or env var writes `by: human` for the agent (guardrail 12; `tests/guard.test.mjs` asserts it against the source); a direct write into the ledger file is a limit, see [Limits](#limits).
 - In an autonomous session (`DEVANITY_AUTONOMOUS=1`, `claude -p`, `CI=true`) a blocked high-risk edit is also queued once as a pending decision (`by: agent`), so the end-of-session summary can list it; unrelated work continues.
 
 Editing `decisions.jsonl` by hand (it lives under `.git/`, never committed) is the other human path.
@@ -136,7 +140,9 @@ Neither exists without git: the reply says `no ledger here`.
 | (c) | A Bash command needs more authority than the session holds (`git push` → `commit`, `--force` / `git merge` → `merge`, `terraform apply` / `kubectl apply` / `npm publish` / `deploy` → `deploy`, plus `rules.json#commands`) | block |
 | built-in | Any tool that would rewrite `devanity.rules.json` or `.git/devanity/**` | treated as `high-risk` whatever the rules say: rewriting them is the only way an agent could grant itself authority |
 
-Everything else is allowed. Paths outside the repository are ignored. A high-risk path is only unblocked by a decision record with `status: decided`, `by: human` and a `path` (glob or prefix) that covers it; `by: agent`, `by: agent-default` and pending records authorize nothing.
+Everything else is allowed. Paths outside the repository are ignored. A high-risk path is only unblocked by a decision record with `status: decided`, `by: human`, a `path` (glob or prefix) that covers it, and still in scope (its change open, or younger than 24 hours); `by: agent`, `by: agent-default`, rejected and pending records authorize nothing.
+
+Command authority (`hooks/devanity-rules.js` `BUILTIN_COMMANDS`, plus `rules.json#commands`): `git commit` and `git push` need `commit`; `git merge`, `gh pr merge` and `--force` need `merge`; `terraform apply`, `kubectl apply|delete`, `npm publish` and `deploy` need `deploy`. The git patterns also match git's global options before the subcommand (`git -C dir push`, `git -c k=v push`).
 
 The session's authority is, in order: `DEVANITY_AUTHORITY` when it names a valid rung; otherwise `rules.json#autonomy.authority` in an autonomous session (see SPEC §7.3) or `rules.json#defaults.authority` (default `commit`). An autonomous session is capped at `commit`: `merge` and `deploy` are never reachable unattended, whatever the env says.
 
@@ -149,14 +155,14 @@ devanity: blocked Edit on billing/x.py
   rule: billing/** → tier high-risk (devanity.rules.json)
   A high-risk path needs a human decision recorded in the ledger before any tool may write to it.
   Next step: Record the human decision with: /devanity decide D-billing <option> --path billing/**
-  (typed by the human as a whole message; the agent cannot record it — propose the change and stop)
+  (typed by the human as a whole message; the agent does not record it — propose the change and stop)
 ```
 
 ```
 devanity: blocked Bash command: git push --force origin main
   needs authority: merge; this session has: commit (devanity.rules.json#defaults.authority)
   Next step: raise DEVANITY_AUTHORITY / edit devanity.rules.json#autonomy
-  (a human does this outside the session; the agent cannot raise its own authority)
+  (a human does this outside the session; the agent does not raise its own authority)
 ```
 
 ### Defaults by install origin (SPEC §7.6)
@@ -179,6 +185,7 @@ Every real block records `{kind: blocked, path|command, rule|authority}`; every 
 - Glob semantics are the minimal ones of `devanity-rules.js`: `**` crosses directories, `*` and `?` stay within a segment.
 - Env vars are read from the host process. `DEVANITY_AUTHORITY` can lower or (attended only) raise command authority; it never substitutes for a human decision on a path.
 - The guard blocks the call, not the intent: a model told "propose and stop" should do that before the guard has to say it.
+- **Not a boundary against an agent that tries to get around it** (SPEC §0.2). The hooks run with the agent's own permissions, so these reach past them and are documented, not chased: a write into the ledger through a changed directory (`cd .git/devanity && echo … >> decisions.jsonl`, the redirect target is resolved against the payload's cwd); a write outside the repository (`$CLAUDE_CONFIG_DIR/devanity/config.json`, `.devanity-state`), which is ignored by design; a `devanity.rules.json` corrupted on purpose, which makes the guards record instead of block; in a linked worktree the ledger sits outside the worktree root. The reference CI job reads the whole diff on another machine and is the boundary for these.
 
 ## Oracle (`devanity-oracle.js`)
 
@@ -206,7 +213,7 @@ devanity-proof:
 
 1. **`status` does not start with `VERIFIED`** (an honest `NOT_VERIFIED`, or nothing claimed): the agent's values are recorded in the ledger (`proofs.jsonl`, `measured: null`) and the turn ends. The check is never re-run.
 2. **`VERIFIED`, and the oracle cannot measure it**: outside git (no baseline, no ledger) or with guards recording, the claim is recorded and never blocked. Guards enforce when `DEVANITY_GUARDS=on`, or, absent `DEVANITY_GUARDS=off` and `config.json { "guards": false }`, when `devanity.rules.json` is present and valid (SPEC §7.6).
-3. **The check**: the block's `check`; else the `check` of the most specific high-risk (then normal) rule matched by a changed path (`git diff --name-only HEAD` plus untracked files); else, when enforcing, the status becomes `NOT_VERIFIED: no check` and the turn is blocked once so the agent supplies one.
+3. **The check** is only ever one the repository declares (verifier sovereignty, SPEC §0.5): the `check` of the most specific high-risk (then normal) rule matched by a changed path (`git diff --name-only HEAD` plus untracked files), read from `devanity.rules.json` **as committed at HEAD**, the version a human reviewed (before the first commit, the working tree's). The `check:` the agent wrote in its block is recorded as `agent_check` and never executed, and a working-tree edit of the rules never chooses the check that judges the same change. With no declared check for the changed paths, the claim is recorded as unmeasured (`reason: no declared check`), never blocked, and an `unmeasured` event lets `debt` propose declaring one.
 4. **The run**, within one budget (`DEVANITY_ORACLE_TIMEOUT_MS`, default 120 s; the `Stop` entry in `hooks.json` allows 150 s, raise both together):
    - baseline = `git worktree add --detach <tmp> HEAD`; on an unborn repository (no commit yet) the baseline is an empty directory;
    - overlay = every changed or untracked file that matches the test globs (`rules.json#tests`, default `test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `tests/**`) copied into the baseline at the same relative path;
@@ -220,9 +227,8 @@ devanity-proof:
    | check fails in the working tree | `NOT_VERIFIED: check fails after` |
    | budget exhausted | `NOT_VERIFIED: timeout` |
    | worktree could not be created | `NOT_VERIFIED: no baseline` |
-   | no check anywhere | `NOT_VERIFIED: no check` |
 
-6. **Ledger**: every claim appends to `proofs.jsonl` `{kind: 'proof', contract, check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason}` (`measured: null` when nothing was re-run). When `status` differs from what the agent wrote, `events.jsonl` gets `{kind: 'false_ready', check, agent_status, status, reason}`. That divergence is the `false_ready` metric of the harness.
+6. **Ledger**: every claim appends to `proofs.jsonl` `{kind: 'proof', contract, check, agent_check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason}` (`check` is the declared check that ran, `measured: null` when nothing was re-run). When `status` differs from what the agent wrote, `events.jsonl` gets `{kind: 'false_ready', check, agent_status, status, reason}`. That divergence is the `false_ready` metric of the harness.
 
 ### What it emits
 

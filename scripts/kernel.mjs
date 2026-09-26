@@ -24,6 +24,8 @@ export const INVARIANTS = [
   'deferred:',                  // the debt marker /devanity debt greps for
   'devanity-proof',             // the only place "verified" may appear
   'pending',                    // the decision queue
+  'shape of debt',              // context hygiene (SPEC §0.3): reuse behavior, never the shape of debt
+  'never weaken',               // verifier sovereignty (SPEC §0.2): no check relaxed to go green
 ];
 
 export function checkInvariants(files) {
