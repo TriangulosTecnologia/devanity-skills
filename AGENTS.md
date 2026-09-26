@@ -51,4 +51,4 @@ devanity-proof:
   pending: <n decisions>
 ```
 
-This file is the instruction-only form of devanity, for hosts that read AGENTS.md and run no hooks. With Claude Code, install the plugin instead: the kernel is then injected on every session, compaction and subagent, and the modes (`/devanity plan|architect|review|audit|improve|docs|debt|init`) become available.
+This file is the instruction-only form of devanity, for hosts that read AGENTS.md and run no hooks. With Claude Code, install the plugin instead: the kernel is then injected on every session, compaction and subagent, and the modes (`/devanity plan|architect|review|audit|improve|debt|init`) become available.

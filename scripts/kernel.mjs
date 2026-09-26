@@ -53,7 +53,7 @@ export function renderAgentsMd(skillMd) {
     if (!skipping) out.push(line);
   }
   const text = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  return `<!-- Generated from skills/devanity/SKILL.md by scripts/kernel.mjs build-agents. Edit the kernel, not this file. -->\n${text}\n\nThis file is the instruction-only form of devanity, for hosts that read AGENTS.md and run no hooks. With Claude Code, install the plugin instead: the kernel is then injected on every session, compaction and subagent, and the modes (\`/devanity plan|architect|review|audit|improve|docs|debt|init\`) become available.\n`;
+  return `<!-- Generated from skills/devanity/SKILL.md by scripts/kernel.mjs build-agents. Edit the kernel, not this file. -->\n${text}\n\nThis file is the instruction-only form of devanity, for hosts that read AGENTS.md and run no hooks. With Claude Code, install the plugin instead: the kernel is then injected on every session, compaction and subagent, and the modes (\`/devanity plan|architect|review|audit|improve|debt|init\`) become available.\n`;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

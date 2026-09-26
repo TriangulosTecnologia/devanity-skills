@@ -1,6 +1,6 @@
 ---
 name: devanity
-description: Always-on engineering judgment for any coding task — writing, fixing, refactoring, reviewing or designing code, choosing dependencies, unattended sessions. Stops at the first rung that holds (nothing to change, trivial, behavior, high-risk, architecture, unknown), writes the minimum that works, leaves a check that fails before the fix, and never spends authority it was not given. Modes /devanity plan|architect|review|audit|improve|docs|debt|init. Do NOT use for non-coding requests (prose, translation, general knowledge).
+description: Always-on engineering judgment for any coding task — writing, fixing, refactoring, reviewing or designing code, choosing dependencies, unattended sessions. Stops at the first rung that holds (nothing to change, trivial, behavior, high-risk, architecture, unknown), writes the minimum that works, leaves a check that fails before the fix, and never spends authority it was not given. Modes /devanity plan|architect|review|audit|improve|debt|init. Do NOT use for non-coding requests (prose, translation, general knowledge).
 license: CC-BY-NC-4.0
 metadata:
   author: enniolopes@gmail.com

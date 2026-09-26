@@ -138,7 +138,7 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 │    persona · escada de proporcionalidade · escada de ofício · limites · decisões · saída
 │
 ├─ MODOS  (sob demanda, mesma gramática do kernel)
-│    plan · architect · review · audit · improve · docs · debt · init
+│    plan · architect · review · audit · improve · debt · init
 │    um arquivo por verbo; vocabulário, padrão de qualidade e baseline compartilhados em reference/
 │
 ├─ GUARDAS  hooks/  (por construção; derivadas de devanity.rules.json do repositório)
