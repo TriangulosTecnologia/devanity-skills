@@ -55,10 +55,12 @@ const claimVerified = (check) => 'Done.\n\n```\n' + proofBlock({ ...(check ? { c
 const TEST_FILE = "const t=require('node:test');const a=require('node:assert');t('add',()=>a.equal(require('./mod.js')(1,2),3));\n";
 
 // A repository whose HEAD holds a buggy module; the working tree holds the fix and a new test.
-function seedBuggyRepo() {
+// `check` is the check HEAD's rules declare for mod.js (the only one the oracle ever runs).
+function seedBuggyRepo(check) {
   const d = fresh();
   initRepo(d);
   writeFileSync(join(d, 'mod.js'), 'module.exports = (a, b) => a - b;\n');
+  if (check) writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'mod.js': { tier: 'normal', check } } }));
   commitAll(d);
   writeFileSync(join(d, 'mod.js'), 'module.exports = (a, b) => a + b;\n');
   writeFileSync(join(d, 'mod.test.js'), TEST_FILE);
@@ -94,10 +96,61 @@ describe('oracle: parsing', () => {
   });
 });
 
-describe('oracle: measurement', () => {
-  test('(a) a real oracle: the check fails on HEAD + tests overlay and passes now -> stays VERIFIED, proof recorded, no block', async () => {
+describe('oracle: verifier sovereignty (SPEC §0.5)', () => {
+  // The oracle runs only the check the repository declares, as committed at HEAD. The check the agent
+  // writes in its own proof block is recorded and never executed.
+  const declare = (d, check) => { writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'mod.js': { tier: 'normal', check } } })); };
+
+  test('the check the agent wrote is never executed; the declared one is measured and recorded', async () => {
+    const d = fresh(); initRepo(d);
+    writeFileSync(join(d, 'mod.js'), 'module.exports = (a, b) => a - b;\n');
+    declare(d, 'node --test mod.test.js');
+    commitAll(d);
+    writeFileSync(join(d, 'mod.js'), 'module.exports = (a, b) => a + b;\n');
+    writeFileSync(join(d, 'mod.test.js'), TEST_FILE);
+    const marker = join(d, 'agent-ran.marker');
+    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified(`node -e "require('fs').writeFileSync('${marker}','1')"`)), env: baseEnv(), cwd: d });
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(existsSync(marker), false, 'the agent-authored check must not run');
+    const p = readLedger(d, 'proofs')[0];
+    assert.equal(p.check, 'node --test mod.test.js', 'the declared check is the one measured');
+    assert.equal(p.status, 'VERIFIED'); assert.equal(p.measured, true);
+    assert.ok(p.agent_check.includes('agent-ran.marker'), 'the agent check is kept as evidence of what it claimed');
+  });
+
+  test('a check added to the rules in the working tree is not declared: only HEAD counts', async () => {
+    const d = fresh(); initRepo(d);
+    writeFileSync(join(d, 'mod.js'), 'module.exports = (a, b) => a - b;\n');
+    declare(d, 'node --test mod.test.js');
+    commitAll(d);
+    writeFileSync(join(d, 'mod.js'), 'module.exports = (a, b) => a + b;\n');
+    writeFileSync(join(d, 'mod.test.js'), TEST_FILE);
+    const marker = join(d, 'wt-rules-ran.marker');
+    declare(d, `node -e "require('fs').writeFileSync('${marker}','1')"`);
+    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified(null)), env: baseEnv(), cwd: d });
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(existsSync(marker), false, 'a working-tree edit of the rules must not choose the check');
+    assert.equal(readLedger(d, 'proofs')[0].check, 'node --test mod.test.js');
+  });
+
+  test('no declared check for the change: recorded as unmeasured, never blocked, an unmeasured event for debt', async () => {
     const d = seedBuggyRepo();
-    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified('node --test mod.test.js')), env: baseEnv({ DEVANITY_GUARDS: 'on' }), cwd: d });
+    const marker = join(d, 'ran.marker');
+    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified(`node -e "require('fs').writeFileSync('${marker}','1')"`)), env: baseEnv({ DEVANITY_GUARDS: 'on' }), cwd: d });
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.stdout, '', 'nothing the agent can do fixes a missing declared check: no block');
+    assert.equal(existsSync(marker), false);
+    const p = readLedger(d, 'proofs')[0];
+    assert.equal(p.measured, null); assert.equal(p.reason, oracle.REASONS.noDeclaredCheck); assert.equal(p.status, 'VERIFIED');
+    const ev = readLedger(d, 'events').filter((e) => e.kind === 'unmeasured');
+    assert.equal(ev.length, 1);
+  });
+});
+
+describe('oracle: measurement', () => {
+  test('(a) a real oracle: the declared check fails on HEAD + tests overlay and passes now -> stays VERIFIED, proof recorded, no block', async () => {
+    const d = seedBuggyRepo('node --test mod.test.js');
+    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified('node --test mod.test.js')), env: baseEnv(), cwd: d });
     assert.equal(r.code, 0, r.stderr);
     assert.equal(r.stdout, '', 'a true claim is not blocked');
     const proofs = readLedger(d, 'proofs');
@@ -112,9 +165,9 @@ describe('oracle: measurement', () => {
   });
 
   test('(b) the check passes on HEAD too -> corrected to NOT_VERIFIED, blocked once, second pass lets the turn end; false_ready recorded', async () => {
-    const d = seedBuggyRepo();
+    const d = seedBuggyRepo('node --test mod.test.js');
     writeFileSync(join(d, 'mod.test.js'), "const t=require('node:test');t('always green',()=>{});\n");
-    const env = baseEnv({ DEVANITY_GUARDS: 'on' });
+    const env = baseEnv();
     const message = claimVerified('node --test mod.test.js');
     let r = await runHook(ORACLE, { input: stopPayload(d, message), env, cwd: d });
     assert.equal(r.code, 0, r.stderr);
@@ -133,18 +186,8 @@ describe('oracle: measurement', () => {
     assert.ok(events[0].status.startsWith('NOT_VERIFIED'));
   });
 
-  test('(c) VERIFIED with no check in the block and no rule check -> NOT_VERIFIED: no check', async () => {
-    const d = seedBuggyRepo();
-    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified(null)), env: baseEnv({ DEVANITY_GUARDS: 'on' }), cwd: d });
-    assert.equal(r.code, 0, r.stderr);
-    const reason = parseBlock(r.stdout);
-    assert.ok(reason.includes(`status: NOT_VERIFIED: ${oracle.REASONS.noCheck}`), reason);
-    assert.equal(readLedger(d, 'proofs')[0].measured, null, 'nothing was run');
-  });
-
   test('the rule check of the touched path is used when the block names none', async () => {
-    const d = seedBuggyRepo();
-    writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'mod.js': { tier: 'high-risk', check: 'node --test mod.test.js' } } }));
+    const d = seedBuggyRepo('node --test mod.test.js');
     const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified(null)), env: baseEnv(), cwd: d });   // rules present -> enforcing
     assert.equal(r.code, 0, r.stderr);
     assert.equal(r.stdout, '', 'measured through the rule check and found true');
@@ -156,7 +199,8 @@ describe('oracle: measurement', () => {
     initRepo(d);
     writeFileSync(join(d, 'mod.js'), 'module.exports = (a, b) => a + b;\n');
     writeFileSync(join(d, 'mod.test.js'), TEST_FILE);
-    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified('node --test mod.test.js')), env: baseEnv({ DEVANITY_GUARDS: 'on' }), cwd: d });
+    writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'mod.js': { check: 'node --test mod.test.js' } } }));   // no HEAD yet: the working tree's rules
+    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified('node --test mod.test.js')), env: baseEnv(), cwd: d });
     assert.equal(r.code, 0, r.stderr);
     assert.equal(r.stdout, '');
     const p = readLedger(d, 'proofs')[0];
@@ -204,8 +248,8 @@ describe('oracle: measurement', () => {
   });
 
   test('(h) timeout -> NOT_VERIFIED: timeout, temporary worktree removed', async () => {
-    const d = seedBuggyRepo();
-    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified('node -e "setTimeout(()=>{}, 30000)"')), env: baseEnv({ DEVANITY_GUARDS: 'on', DEVANITY_ORACLE_TIMEOUT_MS: '1500' }), cwd: d });
+    const d = seedBuggyRepo('node -e "setTimeout(()=>{}, 30000)"');
+    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified('node --test mod.test.js')), env: baseEnv({ DEVANITY_ORACLE_TIMEOUT_MS: '1500' }), cwd: d });
     assert.equal(r.code, 0, r.stderr);
     assert.ok(r.ms < 8000, `took ${r.ms}ms`);
     assert.ok(parseBlock(r.stdout).includes(`NOT_VERIFIED: ${oracle.REASONS.timeout}`), r.stdout);

@@ -38,6 +38,7 @@ const REASONS = {
   failsAfter: 'check fails after',
   noBaseline: 'no baseline',
   noCheck: 'no check',
+  noDeclaredCheck: 'no declared check (devanity.rules.json at HEAD names none for the changed paths)',
   timeout: 'timeout',
 };
 
@@ -161,6 +162,15 @@ function changedPaths(root, head) {
     }
   }
   return [...set];
+}
+
+// The rules that choose the check: devanity.rules.json as committed at HEAD, the version a human
+// reviewed; before the first commit, the working tree's. A working-tree edit never chooses the check
+// that judges the same change (verifier sovereignty, SPEC §0.2).
+function declaredRules(root, head) {
+  if (!head) return rulesMod.loadRules(root);
+  const shown = git(root, ['show', `${head}:${rulesMod.FILE}`]);
+  return shown.status === 0 ? rulesMod.parseRules(shown.stdout) : { present: false, errors: [], rules: rulesMod.parseRules('{"version":1}').rules };
 }
 
 // The check a repository rule declares for the change: the most specific touched path with a
@@ -289,7 +299,7 @@ function decide(payload, env = process.env) {
   // A proof without a `contract` field links to the contract declared in the same message.
   const contractId = agent.contract || (contract ? contract.fields.id : null) || 'adhoc';
   // `probes` is the verifier's count (run/survived); the oracle records it and never measures it.
-  const base = { kind: 'proof', contract: contractId, check: agent.check || null, head: info ? info.head : null, agent_status: agentStatus, probes: agent.probes || null, pending, enforce };
+  const base = { kind: 'proof', contract: contractId, check: null, agent_check: agent.check || null, head: info ? info.head : null, agent_status: agentStatus, probes: agent.probes || null, pending, enforce };
 
   // An honest NOT_VERIFIED, or a status that claims nothing, needs no re-run.
   if (!/^VERIFIED\b/i.test(agentStatus)) {
@@ -297,19 +307,17 @@ function decide(payload, env = process.env) {
     return { action: 'exit' };
   }
 
-  // A claim the oracle cannot measure is recorded, never enforced: outside git there is no
-  // baseline and no ledger; with guards recording there is no authority to block. A missing check
-  // is different: the agent can supply one, so when enforcing it is corrected to `no check`.
+  // Only the check the repository declares is ever run (verifier sovereignty, SPEC §0.5): the one
+  // the agent wrote is kept as `agent_check` and never executed. A claim the oracle cannot measure
+  // is recorded, never enforced: outside git there is no baseline and no ledger; with guards
+  // recording there is no authority to block; with no declared check there is nothing the agent
+  // could fix, so the claim is recorded as unmeasured and `debt` proposes declaring one.
   const paths = info ? changedPaths(root, info.head) : [];
-  const check = (agent.check && !/^<.*>$/.test(agent.check.trim())) ? agent.check.trim() : (info ? ruleCheckFor(loaded.rules, paths) : null);
+  const check = info ? ruleCheckFor(declaredRules(root, info.head).rules, paths) : null;
   if (!enforce || !info || !check) {
-    const reason = !info ? REASONS.noBaseline : !check ? REASONS.noCheck : null;
-    const status = enforce && info && reason ? `NOT_VERIFIED: ${reason}` : agentStatus;
-    ledger.append(root, 'proofs', { ...base, check, failed_before: null, passed_after: null, status, measured: null, reason }, sid);
-    if (status !== agentStatus) {
-      ledger.append(root, 'events', { kind: 'false_ready', check, agent_status: agentStatus, status, reason }, sid);
-      return { action: 'correct', block: renderProofBlock({ ...agent, check, failed_before: 'n/a', passed_after: 'n/a', status, pending }), reason };
-    }
+    const reason = !info ? REASONS.noBaseline : !check ? REASONS.noDeclaredCheck : null;
+    ledger.append(root, 'proofs', { ...base, check, failed_before: null, passed_after: null, status: agentStatus, measured: null, reason }, sid);
+    if (enforce && info && !check) ledger.append(root, 'events', { kind: 'unmeasured', agent_check: base.agent_check, paths: paths.slice(0, 20) }, sid);
     return { action: 'exit' };
   }
 

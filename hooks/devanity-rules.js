@@ -110,11 +110,16 @@ function normalize(raw) {
 function loadRules(root) {
   const file = path.join(root || process.cwd(), FILE);
   if (!fs.existsSync(file)) return { present: false, errors: [], rules: normalize({ version: 1 }), file };
+  return { ...parseRules(fs.readFileSync(file, 'utf8')), file };
+}
+
+// The same result from the file's text (the Stop oracle reads the rules committed at HEAD).
+function parseRules(text) {
   let raw;
-  try { raw = JSON.parse(stripBom(fs.readFileSync(file, 'utf8'))); }
-  catch (e) { return { present: true, errors: [`${FILE} is not valid JSON: ${e.message}`], rules: normalize({ version: 1 }), file }; }
+  try { raw = JSON.parse(stripBom(text)); }
+  catch (e) { return { present: true, errors: [`${FILE} is not valid JSON: ${e.message}`], rules: normalize({ version: 1 }) }; }
   const errors = validate(raw);
-  return { present: true, errors, rules: normalize(errors.length ? { version: 1 } : raw), file };
+  return { present: true, errors, rules: normalize(errors.length ? { version: 1 } : raw) };
 }
 
 // Repository-relative POSIX path, or null when the path is outside the root.
@@ -153,5 +158,5 @@ function commandAuthority(rules, command) {
 
 module.exports = {
   AUTHORITIES, AUTONOMY_AUTHORITIES, BUILTIN_COMMANDS, DEFAULT_TESTS, FILE, TIERS,
-  authorityRank, commandAuthority, globToRegExp, isTestPath, loadRules, relPath, ruleFor, validate,
+  authorityRank, commandAuthority, globToRegExp, isTestPath, loadRules, parseRules, relPath, ruleFor, validate,
 };
