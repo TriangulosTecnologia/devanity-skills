@@ -38,6 +38,21 @@ Every finding carries exactly one dimension, and each dimension has one parent t
 - `decodable` has no general check. Never invent a "clever code" lint.
 - The last column is why a diff alone rarely decides a dimension: case-enumeration needs the instance count, and an empty axis needs the absence of consumers.
 
+### Foundations
+
+`audit` reports by the six Foundations; each dimension rolls up into one, worst status winning. The last column is what each ecosystem offers for a ratchet: the repository's dependency, never devanity's.
+
+| Foundation | Dimensions | Ratchet, by ecosystem |
+|---|---|---|
+| Executable Intent | `executable-spec`, `co-located-spec` | type strictness (`tsc --strict`, mypy or pyright strict), a schema at the edge, contract tests |
+| Testability | `verification-loop` | mutation score: Stryker (JS/TS), mutmut (Python); a coverage floor |
+| Understandability | `compressibility`, `pattern-hygiene`, `debt-containment`, `instruction-hygiene` | complexity: ESLint `complexity`/`max-depth` + eslint-plugin-sonarjs, ruff `C901`, radon/xenon, lizard (any language) · duplication: jscpd · dead code: knip, vulture |
+| Deterministic Guardrails | `boundary-integrity` | dependency-cruiser, eslint-plugin-boundaries, import-linter |
+| Observability | none | the stack's own; a critical failure nothing would detect is a `verification-loop` finding |
+| Reversibility | none | the stack's own; a change that cannot be undone inside one boundary (an irreversible migration, no rollback) is a `boundary-integrity` finding |
+
+Freezing the legacy, with any of them: ESLint bulk suppressions, betterer, or the tool's own baseline file.
+
 ## Dimensions
 
 This list is the only home of the dimensions. Never state how many there are.

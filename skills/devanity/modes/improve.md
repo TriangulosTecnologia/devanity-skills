@@ -45,7 +45,10 @@ Before verifying, name the expected files in order: oracle first, then implement
 ### Verification command / result    red, then green, both this session; or `n/a` (no oracle) · `focused check: none` · `NOT_FALSIFIED: <reason>` · `NOT_RUN: <reason>`; then the observed delta against the expected set, inventory and identity
 ### Residual risk
 ### Suggested PR description
+### Proof                          the devanity-proof block
 ```
+
+Every applied unit ends with the kernel's `devanity-proof` block, which also opens the PR description (the reference CI job refuses a rung-3+ PR without one): `check` is the map's declared check for the path when there is one, else the focused check; `failed_before`/`passed_after` are the red and green runs (`n/a` with no oracle); `probes: 0/0` unless a verifier ran. A unit that stopped before any write emits none.
 
 ## Example
 
@@ -83,5 +86,14 @@ dominant (checked: the oracle failed on the defect before the fix existed; no AP
 Other modules may still do float money math; raised as a follow-up finding, not fixed here.
 
 ### Suggested PR description
-"Fix float money arithmetic in sumLineItems; add cents-based tests."
+The proof block below, then: "Fix float money arithmetic in sumLineItems; add cents-based tests."
+
+### Proof
+devanity-proof:
+  check: pnpm test --filter payments
+  failed_before: yes
+  passed_after: yes
+  probes: 0/0
+  status: VERIFIED
+  pending: 0
 ```

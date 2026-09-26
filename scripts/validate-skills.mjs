@@ -73,7 +73,7 @@ const estimateTokens = (s) => {
 // counts stayed green throughout. The honest mechanism is a ratchet, not a cap: the budget sits at
 // the last deliberate size, and the PR that grows the skill raises it in the same diff — growth
 // stays possible and stops being free. Lowering it after a trim is the same deliberate act.
-export const SKILL_TOTAL_BUDGETS = { devanity: 108300 }; // bytes, every file under skills/<name>/: 105176 after the C1 rewrite (205345 with the moved subtrees before it), +3% headroom
+export const SKILL_TOTAL_BUDGETS = { devanity: 117900 }; // bytes, every file under skills/<name>/: 105176 after the C1 rewrite (205345 with the moved subtrees before it); 114485 after phase V3/V4 (docs merged into audit and improve, the §0.6 fixes, the outer loop in init, audit, debt and improve: +9% over 104907), +3% headroom
 export function checkSkillTotal(skillsDir, budgets) {
   const errors = [];
   const sizeOf = (d) => readdirSync(d).reduce((n, f) => {

@@ -43,10 +43,10 @@ The verbs are for the moments that need a procedure:
 | Run a change end to end: contract, preflight, bounded slices, independent verification, assurance | `/devanity plan <goal>` |
 | Make or revise a material architecture decision | `/devanity architect <drivers>` |
 | Review the current diff before it lands | `/devanity review [path]` |
-| Audit a scope of the repository, or its instruction surfaces; draft `devanity.rules.json` | `/devanity audit <scope>` · `/devanity audit instructions [path]` |
+| Audit a scope, or the instruction surfaces, by the six Foundations; propose map entries and ratchets ranked by hotspots | `/devanity audit <scope>` · `/devanity audit instructions [path]` |
 | Apply one approved finding, or fix one instruction surface | `/devanity improve <finding\|surface>` |
-| List deferred shortcuts and pending decisions | `/devanity debt` |
-| First install in a repository | `/devanity init` |
+| Turn deferred shortcuts, pending decisions and the ledger's signals into proposed promotions | `/devanity debt` |
+| Make a repository operable: map draft, pinned CI job, first ratchets | `/devanity init` |
 
 With the plugin installed, a few whole-message commands talk to the hooks rather than to the model: `/devanity on|off`, `/devanity status` (state, open change, pending decisions), `/devanity pending`, `/devanity decide <id> <option> [--path <glob>]` (the only way a human decision reaches the guards), `/devanity reset` (abandons the open change), and `/devanity debt --stats` for the repository's numbers. What they enforce and record: [`docs/hooks.md`](docs/hooks.md).
 
