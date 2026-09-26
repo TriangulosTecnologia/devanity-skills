@@ -2,7 +2,7 @@
 
 Executable benchmark for devanity ([SPEC](../../docs/evolution/SPEC.md) §9). Every cell is a real headless Claude Code session in an isolated workspace, scored on the files it leaves behind. What each task measures, and why, is the axis table in [`../README.md`](../README.md); this file is how to run it.
 
-`python3 run.py --selftest` proves every instrument offline, on the host and inside the container (and in CI): each task's good reference passes and its bad one is caught, the evals review's counter-examples (`tasks.PROBES`) score as they must, arm isolation and the `devanity-v0` control's one hook, the tier guard and the container rule for scoring, the metric definitions and gate rows, the multi-turn wiring, the registry of axes, the memory-file guard, cross-cell isolation of the scorers, one delivery rule for scorers, judges and LOC, the seeded checks of the mode tasks, and the pin on the ported tasks.
+`python3 run.py --selftest` proves every instrument offline, on the host and inside the container (and in CI): each task's good reference passes and its bad one is caught, the evals review's counter-examples (`tasks.PROBES`) score as they must, arm isolation and the `devanity-v0` control's one hook, the tier guard and the container rule for scoring, the metric definitions and gate rows, the multi-turn wiring, the seeded CI job of `judge-loosen` (red for both hidden reasons), the registry of axes, the memory-file guard, cross-cell isolation of the scorers, one delivery rule for scorers, judges and LOC, the seeded checks of the mode tasks, and the pin on the ported tasks.
 
 ## Reproduce from zero
 
@@ -23,7 +23,7 @@ python3 run.py --task tmpl-fe-datepicker,tmpl-fe-colorpicker,tmpl-fe-command,tmp
 # every other axis, in the runbook's stage order (evals/RUNBOOK.md step 4) — container only (the scorers and the agents execute delivered code):
 ./container.sh python3 run.py --task safe-path,critic-email,rate-limit,sql-user,auth-token,csv-sum,todo-null,cache,sec-shell \
   --arms $FIELD --models sonnet --runs 4 --workers 4                                            # safety
-./container.sh python3 run.py --task judge-humanowned,vibe-autonomous-billing,judge-nochange,judge-askable,judge-falsetest,trace-transfer,reuse-slug,reuse-money,conv-exporter,authority-ship \
+./container.sh python3 run.py --task judge-humanowned,vibe-autonomous-billing,judge-nochange,judge-askable,judge-falsetest,trace-transfer,reuse-slug,reuse-money,conv-exporter,authority-ship,judge-loosen \
   --arms $FIELD --models sonnet --runs 4 --workers 4                                            # authority and judgment
 ./container.sh python3 run.py --task rung2-rename,rung2-typo,rung2-constant \
   --arms $FIELD --models sonnet --runs 4 --workers 4                                            # rung-2 cost
@@ -31,13 +31,15 @@ python3 run.py --task tmpl-fe-datepicker,tmpl-fe-colorpicker,tmpl-fe-command,tmp
   --arms $FIELD --models sonnet --runs 4 --workers 4                                            # greenfield and long horizon
 ./container.sh python3 run.py --task mode-review,mode-review-clean,mode-audit,mode-plan,mode-architect \
   --arms devanity --models sonnet --runs 4 --workers 4                                          # the modes (devanity only)
+./container.sh python3 run.py --task twin-clean,twin-debt,long-entropy \
+  --arms $FIELD --models sonnet --runs 4 --workers 4                                            # context hygiene and entropy
 ./container.sh python3 run.py --rescore /runs/<stamp>   # 6. recompute metrics offline (the scorers execute delivered code: container; a tmpl-*-only stamp may rescore on the host, where git reads a cell only while its .git/config is the one git init wrote)
 python3 judge.py --selftest && python3 judge.py --run <stamp>          # 7. over-engineering judge (small spend)
 python3 complete.py --selftest && python3 complete.py --run <stamp>    # 8. completeness judge (small spend)
 ./container.sh python3 run.py --fill /runs/<stamp>   # re-run only the cells that ended in an error or a usage limit (a cell killed at its timeout is a result, kept)
 ```
 
-Budget: a full round is about 1 500 cells (10 arms × 38 tasks + the 5 mode tasks on one arm, n=4); the 2026-09-24 round cost US$0.10–0.15 per surgical cell and up to US$0.56 per greenfield cell on Sonnet. Iterate the kernel on the affected axis plus the safety tasks, never on the full round per edit. Every workspace is kept under `runs/<stamp>/`, so a scorer change never costs API twice.
+Budget: a full round is about 1 700 cells (10 arms × 42 tasks + the 5 mode tasks on one arm, n=4); the 2026-09-24 round cost US$0.10–0.15 per surgical cell and up to US$0.56 per greenfield cell on Sonnet. Iterate the kernel on the affected axis plus the safety tasks, never on the full round per edit. Every workspace is kept under `runs/<stamp>/`, so a scorer change never costs API twice.
 
 `--rescore` accepts any kept stamp; a task removed from the registry is skipped, and a scorer change is applied to every cell the task still names. Every scorer except the `tmpl-*` git diff imports or runs the agent's code, so `score_workspace` refuses outside the container; the git diff itself runs in the cell's agent-writable `.git`, so a cell whose `.git/config` differs from a fresh `git init`'s (or that carries a gitfile, `commondir` or `config.worktree`) scores `refused` and the judges' text is the refusal line, and every git call the harness makes (`tasks._git`, the one it has) pins `core.fsmonitor` off, points `core.hooksPath` at `/dev/null` (a hook needs no config line) and diffs with `--no-ext-diff --no-textconv` (live runs refuse before any spend, `--rescore` before scoring any cell); `--selftest` is the exception by construction, because it scores only the repository's own good/bad references. Every cell but the `tmpl-*` tickets (their git diff runs no delivered code), live, on `--rescore` and on `--fill`, and every selftest reference is scored in a fresh process of its own (`run.py score_cell` → `tasks.py --score-one`, killed at `SCORE_TIMEOUT`): a module, a `sys.path` entry, an exit, an interrupt or a hang the delivered code leaves ends with its cell, which scores `scorer: <reason>`.
 

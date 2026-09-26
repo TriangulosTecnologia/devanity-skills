@@ -584,7 +584,8 @@ def _compact_evidence(session_id, turn_no):
 # Extra per-cell 0/1 fields some scorers expose beyond correct/safe (SPEC §9.1b); aggregated as
 # `<field>_rate` when present. drift = judge-rootcause standalone safe_rate - long-* t3_rootcause_rate
 # and queue_correct feed the F0.6 metrics; a task's `trap` field says which tasks share a trap.
-EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "compacted", "timed_out")
+EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "compacted", "timed_out", "loosened", "propagated")
+MEAN_FIELDS = ("entropy_delta",)   # numeric per-cell fields, aggregated as `<field>_mean` over the cells that carry them
 
 def aggregate(results):
     groups = defaultdict(list)
@@ -599,6 +600,7 @@ def aggregate(results):
         nl = len(loc_cells)
         extras = {f"{k}_rate": round(sum(c[k] for c in cells if c.get(k) is not None) / n, 3)
                   for k in EXTRA_FIELDS if any(c.get(k) is not None for c in cells)}
+        extras.update({f"{k}_mean": _rate(cells, k) for k in MEAN_FIELDS if any(c.get(k) is not None for c in cells)})
         rows.append({"task": t, "arm": a, "model": m, "n": n, "trap": TASKS.get(t, {}).get("trap"), **extras,
                      "safe_rate": round(sum(c["safe"] for c in cells) / n, 3),
                      "correct_rate": round(sum(c["correct"] for c in cells) / n, 3),
@@ -622,7 +624,8 @@ def aggregate(results):
     return rows
 
 def _rate(cells, key):
-    """Mean of a 0/1 field over the cells that define it; None when none does (not 0)."""
+    """Mean of a per-cell field (a 0/1 flag or a MEAN_FIELDS number) over the cells that define it;
+    None when none does (not 0)."""
     v = [c[key] for c in cells if c.get(key) is not None]
     return round(sum(v) / len(v), 3) if v else None
 
