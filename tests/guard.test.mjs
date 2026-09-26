@@ -153,6 +153,44 @@ describe('guard: Bash (d) (e)', () => {
   });
 });
 
+describe('guard: honest-error holes closed (SPEC §0.5)', () => {
+  test('a human "no" is recorded as a rejection and authorizes nothing', async () => {
+    for (const answer of ['no', 'reject', 'não', 'deny']) {
+      const d = repo();
+      const m = await run(MODE, { input: prompt(d, `/devanity decide D-billing ${answer} --path billing/**`), cwd: d });
+      assert.ok(m.stdout.includes('REJECTED'), `"${answer}" must read as a rejection: ${m.stdout}`);
+      const rec = ledger.decisions(d).find((x) => x.id === 'D-billing');
+      assert.equal(rec.status, 'rejected'); assert.equal(rec.by, 'human');
+      assert.equal((await run(GUARD, { input: edit(d, 'billing/x.py'), cwd: d })).code, 2, `after "${answer}" the edit stays blocked`);
+      assert.equal(ledger.pendingDecisions(d).length, 0, 'a rejection answers the pending question');
+    }
+  });
+
+  test('merge and push in any spelling need their authority; git commit needs commit', async () => {
+    const d = repo();
+    const prepare = baseEnv({ DEVANITY_AUTHORITY: 'prepare' });
+    for (const [cmd, need] of [['gh pr merge 12 --squash --admin', 'merge'], ['git -C . push origin HEAD', 'commit'], ['git -c user.name=x push', 'commit'], ['git commit -am x', 'commit'], ['git -C sub merge main', 'merge']]) {
+      assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d, env: prepare }), `needs authority: ${need}`);
+    }
+    assertBlocked(await run(GUARD, { input: bash(d, 'gh pr merge 12'), cwd: d, env: baseEnv({ DEVANITY_AUTONOMOUS: '1' }) }), 'needs authority: merge', 'never available to an autonomous session');
+    assertAllowed(await run(GUARD, { input: bash(d, 'git status && git log -1'), cwd: d, env: prepare }));
+  });
+
+  test('a human decision expires: older than 24 h it authorizes nothing, unless the change it was given for is still open', async () => {
+    const d = repo();
+    const old = new Date(Date.now() - 25 * 3600 * 1000).toISOString();
+    const dir = ledger.ledgerDir(d); mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'decisions.jsonl'), JSON.stringify({ ts: old, session_id: 'old', id: 'D-old', status: 'decided', by: 'human', chosen: 'yes', path: 'billing/**' }) + '\n');
+    assert.equal((await run(GUARD, { input: edit(d, 'billing/x.py'), cwd: d })).code, 2, 'a 25-hour-old decision no longer authorizes');
+    writeFileSync(join(dir, 'contracts.jsonl'), JSON.stringify({ ts: new Date().toISOString(), id: 'C-1', phase: 'EXECUTE' }) + '\n');
+    writeFileSync(join(dir, 'decisions.jsonl'), JSON.stringify({ ts: old, session_id: 'old', id: 'D-old', status: 'decided', by: 'human', chosen: 'yes', path: 'billing/**', contract: 'C-1' }) + '\n');
+    assertAllowed(await run(GUARD, { input: edit(d, 'billing/x.py'), cwd: d }));
+    const m = await run(MODE, { input: prompt(d, '/devanity decide D-new yes --path billing/**'), cwd: d });
+    assert.equal(ledger.decisions(d).find((x) => x.id === 'D-new').contract, 'C-1', 'a decision is tied to the open change');
+    assert.ok(m.stdout.includes('C-1'), m.stdout);
+  });
+});
+
 describe('guard: enforcement by install origin (f) (g) (h)', () => {
   test('no rules file: everything is normal, nothing blocks, no event', async () => {
     const d = repo({ rules: null });

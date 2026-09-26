@@ -86,6 +86,7 @@ function pendingList(cwd) {
 }
 
 // `/devanity decide <id> <option> [--path <glob>]`. An unknown id must name what it authorizes.
+const REJECT = /^(?:no|n|não|nao|reject(?:ed)?|deny|denied|refuse[ds]?)\.?$/i;
 function decide(args, cwd, sessionId) {
   const toks = String(args || '').trim().split(/\s+/).filter(Boolean);
   let pathGlob = null;
@@ -100,11 +101,19 @@ function decide(args, cwd, sessionId) {
     const ids = ledger.pendingDecisions(cwd).map((d) => `${d.id} (${d.path || 'no path'})`);
     return `DEVANITY DECIDE: "${id}" is not a known decision; a human decision must name what it authorizes. Re-run with \`--path <glob>\`, or pick a pending id: ${ids.length ? ids.join(', ') : 'none pending'}.`;
   }
-  const record = { id, status: 'decided', by: 'human', chosen, kind: (known && known.kind) || 'human' };
+  // A "no" answers the question and authorizes nothing: recorded as rejected, never as decided.
+  const rejected = REJECT.test(chosen);
+  const record = { id, status: rejected ? 'rejected' : 'decided', by: 'human', chosen, kind: (known && known.kind) || 'human' };
   if (pathGlob) record.path = pathGlob;
+  // Scope: the decision serves the open change (and lives as long as it is open), else it expires
+  // after ledger.DECISION_TTL_MS; it never authorizes every later session (SPEC §0.5).
+  const change = ledger.openContract(cwd);
+  if (change) record.contract = change.id;
   if (!ledger.append(cwd, 'decisions', record, sessionId)) return 'DEVANITY DECIDE: the ledger could not be written; nothing recorded.';
   const scope = pathGlob || (known && known.path) || '(no path: authorizes no edit)';
-  return `DEVANITY DECISION RECORDED: ${id} = ${chosen}, path ${scope}, by human. Guarded edits under that path are now allowed.`;
+  if (rejected) return `DEVANITY DECISION REJECTED: ${id} = ${chosen}, by human. Guarded edits under ${scope} stay blocked.`;
+  const lasts = change ? `while change ${change.id} is open` : `for ${Math.round(ledger.DECISION_TTL_MS / 3600000)} h`;
+  return `DEVANITY DECISION RECORDED: ${id} = ${chosen}, path ${scope}, by human. Guarded edits under that path are allowed ${lasts}.`;
 }
 
 // ---- open change (SPEC §7.2 risk table, F3.6) --------------------------------------------------

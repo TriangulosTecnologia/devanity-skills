@@ -15,11 +15,16 @@ const TIERS = ['trivial', 'normal', 'high-risk'];
 const AUTHORITIES = ['observe', 'recommend', 'prepare', 'execute', 'commit', 'merge', 'deploy'];
 const AUTONOMY_AUTHORITIES = AUTHORITIES.slice(0, 5);       // merge/deploy are never grantable unattended
 const DEFAULT_TESTS = ['test_*', '*_test.*', '*.test.*', '*.spec.*', 'tests/**'];
-// Commands above the `execute` rung, whatever the repository declares (SPEC §7.2 (c)).
+// Commands above the `execute` rung, whatever the repository declares (SPEC §7.2 (c)). `GIT` also
+// matches the global options git accepts before its subcommand (`git -C dir push`, `git -c k=v
+// push`), which a plain `git\s+push` let through.
+const GIT = '\\bgit(?:\\s+-[Cc]\\s+\\S+|\\s+--[\\w-]+(?:=\\S+)?)*\\s+';
 const BUILTIN_COMMANDS = {
-  'git\\s+push': 'commit',
+  [`${GIT}commit\\b`]: 'commit',
+  [`${GIT}push\\b`]: 'commit',
   '--force(-with-lease)?\\b': 'merge',
-  'git\\s+merge\\b': 'merge',
+  [`${GIT}merge\\b`]: 'merge',
+  '\\bgh\\s+pr\\s+merge\\b': 'merge',
   'terraform\\s+apply': 'deploy',
   'kubectl\\s+(apply|delete)': 'deploy',
   'npm\\s+publish': 'deploy',

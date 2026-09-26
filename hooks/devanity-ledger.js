@@ -92,10 +92,18 @@ function pendingDecisions(cwd) {
 }
 
 // A human decision that authorizes edits under `rel` in this repository: status decided, by
-// human, and its path (a glob or a prefix) covers rel. The guard never widens this.
+// human, its path (a glob or a prefix) covers rel, and it is still in scope: the change it was
+// given for is open, or it is younger than DECISION_TTL_MS. The guard never widens this.
+const DECISION_TTL_MS = 24 * 3600 * 1000;
+function inScope(d, open, now = Date.now()) {
+  if (d.contract && open.has(d.contract)) return true;
+  const t = Date.parse(d.ts || '');
+  return Number.isFinite(t) && now - t <= DECISION_TTL_MS;
+}
 function humanDecisionFor(cwd, rel, globToRegExp) {
+  const open = new Set(openContracts(cwd).map((c) => c.id));
   for (const d of decisions(cwd)) {
-    if (d.status !== 'decided' || d.by !== 'human' || !d.path) continue;
+    if (d.status !== 'decided' || d.by !== 'human' || !d.path || !inScope(d, open)) continue;
     const re = globToRegExp ? globToRegExp(d.path) : null;
     if ((re && re.test(rel)) || rel === d.path || rel.startsWith(d.path.replace(/\/?$/, '/'))) return d;
   }
@@ -234,7 +242,7 @@ function cli(argv) {
 
 module.exports = {
   CONTRACT_PHASES, KINDS, RETENTION_DAYS,
-  append, contracts, decisions, expiredContracts, gitCommonDir, humanDecisionFor, ledgerDir,
+  DECISION_TTL_MS, append, contracts, decisions, expiredContracts, gitCommonDir, humanDecisionFor, ledgerDir,
   openContract, openContracts, pendingDecisions, prune, read, stats,
 };
 
