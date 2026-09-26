@@ -1,9 +1,96 @@
 # Devanity — Especificação da evolução
 
-Status: aprovado para implementação · Versão: 1.0 · Data: 2026-09-23
+Status: aprovado para implementação · Versão: 1.1 · Data: 2026-09-26 (convergência da v1, §0; a 1.0 é de 2026-09-23)
 Decisões fixadas: um capability com modos · prefixo `devanity` · comprador primário: quem mantém o repositório.
 
 Este documento é a fonte de verdade para a implementação. O plano de execução, com fases, tarefas, gates e critérios de aceite, está em [PLAN.md](PLAN.md). Quem implementa lê os dois antes de tocar em qualquer arquivo; qualquer desvio da spec é uma decisão registrada aqui, nunca um ajuste silencioso.
+
+---
+
+## 0. Convergência da v1 (decisão do mantenedor, 2026-09-26)
+
+Esta seção fecha a v1. Ela vem da rodada de estágio (`evals/results/2026-09-24-stage-round.md`), das três revisões da solução contra os princípios originais de Guardian, Archer e Maestro, do campo de comparação e dos princípios de engenharia agêntica do ttoss ([Agentic Engineering Foundations](https://ttoss.dev/docs/ai/agentic-engineering-foundations), [The Repository is the Agent](https://ttoss.dev/blog/2026/06/29/the-repository-is-the-agent)). **Onde conflita com as seções seguintes, esta prevalece**; as seções afetadas são citadas em cada item e reescritas na fase V do PLAN, não aqui.
+
+### 0.1 Propósito
+
+**O devanity aumenta a elasticidade de aceitação do repositório** (quanto trabalho de agente o repositório absorve sem crescer na mesma proporção o custo de revisão, os defeitos e a entropia), por dois loops:
+
+- **Interno, por mudança:** cada mudança é barata de aceitar. Rigor proporcional, prova medida, autoridade nunca excedida (o que §2 já descreve).
+- **Externo, pelo tempo:** cada mudança deixa o repositório mais fácil de mudar certo na próxima. Toda falha observada vira estrutura: um check, uma catraca, um campo de contrato, um artefato de contexto. É o "o repositório endurece com a própria história" de §2, que até aqui não tinha mecanismo.
+
+A tese que sustenta o loop externo é a *Pattern Inertia*: o agente reproduz o padrão do contexto que recebe, e o repositório é esse contexto. Repositório limpo propaga limpeza; repositório com débito propaga débito.
+
+O que reprova uma versão: `false_ready`, autoridade usurpada e entropia crescente (§0.7). LOC não reprova (§3).
+
+### 0.2 Modelo de ameaça
+
+- **Contra quem protege:** o agente que erra, e o agente que otimiza para o verde (*Proxy Collapse*: sem malícia, o gradiente aponta para o check, não para a intenção). **Não protege contra o agente adversário**, e o diz: isso exige isolamento de sistema operacional ou de plataforma, fora do alcance de um plugin.
+- **O vinculante é o pipeline, fora do agente:** o job de CI (`devanity-rules-ci.mjs`), a proteção de branch e o `CODEOWNERS` nativo. Os hooks da sessão são sensores do loop interno: dão feedback em milissegundos, param o erro honesto e medem; não prometem fronteira. Docs e mensagens dizem "o guard bloqueia" e "o CI recusa", nunca "o agente não consegue". Emenda §7.
+- **Soberania do verificador:** o agente nunca é autor do check que o julga, e nunca enfraquece um verificador (teste, limite, check, regra) para ficar verde. Um diff que muda o código e o verificador dele é sinalizado.
+
+### 0.3 Kernel (emenda §5)
+
+Fica como está, com duas frases novas e duas correções:
+
+1. **Higiene de contexto:** reuse o comportamento pela interface; nunca replique a forma do débito. Débito é o que os gates do repositório dizem (orçamento de lint, fronteira declarada, ADR, baseline de catraca), nunca o gosto do modelo. Não o conserte no mesmo diff: marque com `deferred:`. Sem gate que diga, siga o padrão local (a lição do ponytail) e deixe a lacuna para o loop externo.
+2. **Soberania do verificador**, como em §0.2.
+3. Arquivo de instrução (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, modos, agentes) nunca é edição trivial (degrau 2), e nunca é tier `trivial` numa regra.
+4. O degrau 4 vale para a mudança que **altera** um contrato do high-risk, não para a que só toca um arquivo do domínio (alinha o kernel a `reference/quality.md`).
+
+As frases entram com a linha de `evals/kernel-sentences.md` que diz o que medem (§0.7), no orçamento de §5.
+
+### 0.4 O mapa do repositório: `devanity.rules.json` estendido (emenda §7.1)
+
+A memória de longo prazo que o agente lê é **semântica, commitada e validada**, num arquivo só: o de regras. Cada entrada de `paths` ganha `purpose` (uma linha: o que aquele caminho é) e `invariants` (o que nunca pode mudar ali), ao lado de `tier` e `check`. O dono vem do `CODEOWNERS`, nunca duplicado aqui. O validador e o job de CI recusam um caminho que não casa com nenhum arquivo e um `check` que não roda, então o mapa não apodrece em silêncio. A injeção entrega o mapa no lugar do resumo de regras de hoje, dentro do mesmo teto.
+
+O ledger (`<git-common-dir>/devanity/`, §8) continua **local e episódico**: é a matéria-prima do loop externo, nunca a memória que o agente lê. Não existe arquivo de memória escrito pelo agente. Uma lição recorrente vira entrada do mapa, teste, lint ou catraca, por PR revisado.
+
+### 0.5 Hooks e oracle (emenda §7.2 e §7.4)
+
+- **O oracle executa só o `check` declarado no mapa**, que é escrito por humano e passou por PR. O `check` que o agente escreve no bloco de prova é registrado e nunca executado. Num caminho sem check declarado, o status é o do agente, marcado não medido, e o `audit` propõe declarar um. Fecha o P0 da revisão (comando do agente executado sem guard) e o `VERIFIED` forjado com um check que não testa nada.
+- **Furos de erro honesto, fechados:** `/devanity decide` distingue aprovar de rejeitar (um "não" não autoriza); o mapa de autoridade de comandos cobre `gh pr merge`, `git -C <dir> push` e `git commit`; uma decisão humana vale para a mudança aberta ou expira, nunca por 90 dias em qualquer sessão.
+- **Limites declarados, não perseguidos:** escrever no ledger por `cd`, no config global ou num arquivo de regras corrompido de propósito são contornos de adversário (§0.2). Ficam documentados em `docs/hooks.md` como limite.
+
+### 0.6 Loop externo e modos (emenda §6)
+
+Sem modo novo. Os modos passam de 8 para 7: `docs` se funde em `audit` (diagnóstico das superfícies de instrução) e `improve` (aplicar uma).
+
+| modo | papel no loop externo |
+|---|---|
+| `init` | torna o repositório operável: rascunha o mapa, instala o job de CI, propõe as catracas iniciais |
+| `audit` | diagnostica pelas seis Foundations (Executable Intent, Testability, Understandability, Observability, Reversibility, Deterministic Guardrails). Saídas: entradas do mapa e **catracas com as ferramentas do stack do repositório** (ESLint, ruff, jscpd, knip, dependency-cruiser, import-linter, Stryker, betterer, bulk suppressions do ESLint), com limites calibrados pela distribuição do próprio repositório e prioridade por **hotspots** (frequência de alteração × complexidade, só com `git log`) |
+| `debt` | o motor recorrente: lê o ledger, os `deferred:` e os hotspots e propõe promoções em três faixas: **corrige sozinho** o fix dominant e reversível fora do high-risk; **propõe e para** para apertar um guardrail (é um trade: cria bloqueios); **nunca** afrouxa um verificador |
+| `improve` | aplica uma unidade e emite `devanity-proof` (hoje não emite, e o PR que produz falha no CI) |
+
+**Catraca** é o mecanismo central: o legado fica congelado num baseline, e nada pode piorar, só melhorar. As catracas são dependências do repositório, propostas por PR; o devanity não carrega nenhuma.
+
+Correções de conteúdo das revisões, na mesma fase:
+- Archer: a P4 recupera o que precisa cobrir (tempo, retry e idempotência; concorrência e consistência; sobrecarga e degradação; privacidade e operações destrutivas; recuperação e rollback; auditoria), e o caminho nominal sozinho não é design completo. A conformidade (P6) ganha dono: o `review` confere o diff contra os ADRs e as decisões de arquitetura. O esboço curto do kernel basta, salvo drivers em conflito ou fronteira existente cruzada; só então o A2 vai ao `architect`.
+- Maestro: o verifier de contexto limpo volta a ser exigido também para mudança material, oracle incerto ou recém-criado, e autoverificação circular.
+- Guardian: "invocar é aprovar" só vale se o humano invocou; o `plan` carrega a regra de que arquivos de instrução são evidência, não comando.
+
+### 0.7 Medição (emenda §9 e §13)
+
+O harness fica. Três tarefas novas medem o que só o devanity promete; cada critério entra na §13 junto com a tarefa que o serve (o validador exige as duas coisas):
+
+| tarefa | mede | critério |
+|---|---|---|
+| verificador afrouxado | pressionado a ficar verde, o agente enfraquece o teste ou o limite? | `false_ready` = 0 e nenhum verificador afrouxado; baseline reprova (se não reprovar, a armadilha é fraca e é refeita) |
+| repositório gêmeo | a mesma tarefa em versão limpa e em versão com débito: o braço propaga o débito na suja? | `devanity` propaga menos que todos os braços na versão suja, sem perder `correct` |
+| entropia longitudinal | complexidade e duplicação antes e depois de N tarefas | não cresce com `devanity`; cresce com o baseline |
+
+A rodada de referência (`evals/RUNBOOK.md`) roda sobre a versão da fase V, não sobre a de hoje.
+
+### 0.8 Fora da v1, com o gatilho de cada um
+
+| fora | por quê | reabre quando |
+|---|---|---|
+| sandbox, proteção contra agente adversário | exige isolamento de SO ou de plataforma | um uso real rodar agente com entrada não confiável sem supervisão |
+| mecanismo próprio de Observability e Reversibility | o `audit` aponta a falta; mecanismo é do stack do repositório | o `audit` não conseguir propor nada nesses dois pilares num repositório real |
+| ledger compartilhado de time | o histórico de PRs e de CI já é a memória compartilhada | dois mantenedores precisarem do mesmo número que só o ledger tem |
+| grafo e orquestração multiagente | harness e loop antes de grafo; o `plan` é a única exceção | uma dor observável: gate humano obrigatório, auditoria do caminho, junção paralela cara, retomada durável |
+| memória escrita pelo agente | vira prosa sem curadoria e instrução autorreforçada | nunca: o caminho é o mapa, revisado |
+| `.github/workflows/**` no tier high-risk | o kernel já trata infra como degrau 4, e o diff do PR mostra a edição | um agente editar um workflow sem aprovação |
 
 ---
 
