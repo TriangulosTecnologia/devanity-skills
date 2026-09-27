@@ -40,20 +40,21 @@ function rulesContext(cwd) {
   const loaded = rulesMod.loadRules(repoRoot(cwd));
   if (!loaded.present || loaded.errors.length) return '';
   const r = loaded.rules;
-  // The map (SPEC §0.4): one line per path that has something to say (a purpose, invariants, or
-  // the high-risk tier), so the agent knows where it is before it opens a file. The fixed lines
+  // The map (SPEC §0.4): one line per path that has something to say (a purpose, invariants, the
+  // high-risk tier, or core), so the agent knows where it is before it opens a file. The fixed lines
   // come first; entries are added whole while they fit, and the rest is named, never cut mid-line.
   const entry = (p) => {
     const parts = [p.rule.purpose, p.rule.invariants && p.rule.invariants.length ? `invariants: ${p.rule.invariants.join('; ')}` : '', p.rule.check ? `check: ${p.rule.check}` : ''].filter(Boolean);
-    return `- \`${p.glob}\` ${p.rule.tier || r.defaults.tier}${parts.length ? `: ${parts.join('; ')}` : ''}`;
+    return `- \`${p.glob}\` ${p.rule.tier || r.defaults.tier}${p.rule.core ? ' core' : ''}${parts.length ? `: ${parts.join('; ')}` : ''}`;
   };
-  const mapped = r.paths.filter((p) => p.rule.tier === 'high-risk' || p.rule.purpose || (p.rule.invariants && p.rule.invariants.length))
-    .sort((x, y) => (y.rule.tier === 'high-risk') - (x.rule.tier === 'high-risk'));   // high-risk first: the entries never to miss
+  const rank = (p) => (p.rule.tier === 'high-risk' ? 2 : 0) + (p.rule.core ? 1 : 0);   // high-risk, then core: the entries never to miss
+  const mapped = r.paths.filter((p) => rank(p) || p.rule.purpose || (p.rule.invariants && p.rule.invariants.length))
+    .sort((x, y) => rank(y) - rank(x));
   const lines = [
     '## Repository rules (devanity.rules.json)',
     `Autonomy envelope: authority ${r.autonomy.authority}; high-risk ${r.autonomy['high-risk']}; irreversible ${r.autonomy.irreversible}`,
     `Guards: ${rt.guardsEnforcing(loaded) ? 'enforcing' : 'recording'}`,
-    mapped.length ? 'Map (high-risk: rung 4, propose and stop):' : 'Map: no path declares a purpose, invariants or the high-risk tier',
+    mapped.length ? 'Map (high-risk: rung 4, propose and stop; core: rung 5, its invariants survive pivots):' : 'Map: no path declares a purpose, invariants, core or the high-risk tier',
   ];
   let used = lines.join('\n').length;
   for (let k = 0; k < mapped.length; k++) {

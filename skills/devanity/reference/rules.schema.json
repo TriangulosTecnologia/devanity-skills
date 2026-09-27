@@ -69,6 +69,10 @@
               "minLength": 1
             },
             "description": "What never changes under this path. Owners come from CODEOWNERS, never from here."
+          },
+          "core": {
+            "type": "boolean",
+            "description": "The stable center the product's pivots must survive, orthogonal to tier: its invariants are rigid, its content is not. A change that alters one is rung 5."
           }
         }
       }

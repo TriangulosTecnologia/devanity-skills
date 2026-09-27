@@ -20,6 +20,7 @@
     },
     "skills/devanity/SKILL.md": {
       "tier": "normal",
+      "core": true,
       "check": "node scripts/kernel.mjs invariants && node scripts/kernel.mjs check-agents",
       "purpose": "the kernel, paid on every turn",
       "invariants": [

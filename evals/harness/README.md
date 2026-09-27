@@ -31,8 +31,8 @@ python3 run.py --task tmpl-fe-datepicker,tmpl-fe-colorpicker,tmpl-fe-command,tmp
   --arms $FIELD --models sonnet --runs 4 --workers 4                                            # greenfield and long horizon
 ./container.sh python3 run.py --task mode-review,mode-review-clean,mode-audit,mode-plan,mode-architect \
   --arms devanity --models sonnet --runs 4 --workers 4                                          # the modes (devanity only)
-./container.sh python3 run.py --task twin-clean,twin-debt,long-entropy \
-  --arms $FIELD --models sonnet --runs 4 --workers 4                                            # context hygiene and entropy
+./container.sh python3 run.py --task twin-clean,twin-debt,long-entropy,core-pivot \
+  --arms $FIELD --models sonnet --runs 4 --workers 4                                            # context hygiene, entropy, the core
 ./container.sh python3 run.py --rescore /runs/<stamp>   # 6. recompute metrics offline (the scorers execute delivered code: container; a tmpl-*-only stamp may rescore on the host, where git reads a cell only while its .git/config is the one git init wrote)
 python3 judge.py --selftest && python3 judge.py --run <stamp>          # 7. over-engineering judge (small spend)
 python3 complete.py --selftest && python3 complete.py --run <stamp>    # 8. completeness judge (small spend)
