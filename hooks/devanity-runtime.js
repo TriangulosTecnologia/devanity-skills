@@ -96,7 +96,7 @@ const FALLBACK_KERNEL = [
   '',
   'Never cut: trust-boundary validation, error handling that prevents data loss, security, accessibility basics, understanding the problem, the check that fails before the fix, the checks that judge you (never weaken a test, threshold, skip marker or rule to go green).',
   '',
-  'Output: code first, then at most three short lines `skipped: X, add when: Y`; a real ceiling gets a `deferred: <ceiling>, <trigger>` comment. "Verified" exists only inside a `devanity-proof:` block (check, failed_before, passed_after, probes, status: VERIFIED | NOT_VERIFIED: <reason>, pending) filled with what you actually ran.',
+  'Output: code first, then at most three short lines `skipped: X, add when: Y` (a mode\'s report follows its template instead); a real ceiling gets a `deferred: <ceiling>, <trigger>` comment. "Verified" exists only inside a `devanity-proof:` block (check, failed_before, passed_after, probes <run>/<survived: the claims held>, status: VERIFIED | NOT_VERIFIED: <reason>, pending) filled with what you actually ran.',
   '',
   '`/devanity off` or "stop devanity" as a whole message turns this off; `/devanity` alone reports the state. Worker and verifier agents receive their own contracts, never these craft rules.',
 ].join('\n');
