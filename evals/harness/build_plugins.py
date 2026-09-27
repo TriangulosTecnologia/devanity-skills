@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Generate the harness-local devanity plugins (evals/harness/plugins/, gitignored).
 
-  python3 evals/harness/build_plugins.py             # devanity-released from `main`, devanity from the working tree
+  python3 evals/harness/build_plugins.py             # devanity-released from RELEASED_REF, devanity from the working tree
   DEVANITY_RELEASED_REF=v0.5.0 python3 evals/harness/build_plugins.py
 
-`devanity-released` is what users have today: the skills/ and agents/ of the released ref (default
-`main`), exported with `git archive` so a moved or edited working tree can never leak into the
+`devanity-released` is what users had before v1: the skills/ and agents/ of the released ref (default
+RELEASED_REF, the pre-v1 `main`), exported with `git archive` so a moved or edited working tree can never leak into the
 regression reference. `devanity` is the candidate: the working tree's skills/devanity + agents/ (+
 hooks/ and .claude-plugin/ once phase 1 ships them). Layout follows Claude Code's plugin contract:
 .claude-plugin/plugin.json at the root, skills/<name>/SKILL.md with its reference/ and modes/, and
@@ -40,6 +40,9 @@ def _manifest(out: Path, name: str, version: str, description: str):
     (out / ".claude-plugin").mkdir(parents=True, exist_ok=True)
     (out / ".claude-plugin" / "plugin.json").write_text(
         json.dumps({"name": name, "version": version, "description": description}, indent=2) + "\n", encoding="utf-8")
+
+RELEASED_REF = "890cb4824860e3eb446c9d44d9516749b12cfc15"   # main as released before the v1 merge (see main())
+
 
 def build_released(ref: str):
     """Export skills/ and agents/ of `ref` with git archive: the released tree, never the working tree."""
@@ -109,7 +112,10 @@ rt.readStdinJson(() => {
 """
 
 def main():
-    ref = os.environ.get("DEVANITY_RELEASED_REF", "main")
+    # The released baseline is pinned: once the v1 PR merges, `main` is the candidate itself, and an
+    # arm built from it would measure devanity against devanity. 890cb48 is main before that merge
+    # (skills maestro, archer, guardian). Override with DEVANITY_RELEASED_REF for another release.
+    ref = os.environ.get("DEVANITY_RELEASED_REF", RELEASED_REF)
     out, skills = build_released(ref)
     print(f"built {out} from {ref} ({sum(1 for p in out.rglob('*') if p.is_file())} files: skills {', '.join(skills)})")
     out = build_control()
