@@ -14,8 +14,8 @@ Devanity makes a repository able to **accept more AI-generated change without gr
 | **Wrong rigor:** the same process for a rename and for billing | a proportionality ladder that stops at the first rung that holds, from `NO_CHANGE` to "propose and stop" |
 | **Decision load:** asking what the repository already answers, or deciding what belongs to a human | look for the repository's own answer (ADR, config, sibling) before defaulting; queue what is irreversible or human-owned |
 | **Over-build:** speculative abstraction, configuration and scaffolding | a craft ladder: what exists here, then stdlib, platform, installed dependency, one line |
-| **Rules that rot in prose:** conventions nobody enforces | a durability ladder: `audit` moves a recurring rule from prose into a test, lint rule, schema or CI gate, and removes the prose |
-| **Pattern inertia:** the agent replicates the repository's debt | reuse behavior through interfaces, never the shape of debt; debt is what the repository's gates say, not taste; `audit` and `debt` install ratchets so legacy stays frozen and new code meets the target *(v1, in progress)* |
+| **Rules that rot in prose:** conventions nobody enforces | a durability ladder: `audit` proposes moving a recurring rule from prose into a test, lint rule, schema or CI gate, and dropping the prose in the same change |
+| **Pattern inertia:** the agent replicates the repository's debt | reuse behavior through interfaces, never the shape of debt; debt is what the repository's gates say, not taste; `init` and `audit` propose ratchets from the repository's own stack so legacy stays frozen and new code meets the target, and `debt` turns recurring signals into the next proposal |
 
 **What it does not do.** It protects against the agent that errs or races for a green check, not against an adversarial one. The binding boundary is the pipeline, outside the agent: the reference CI job, branch protection and `CODEOWNERS`. The in-session hooks are fast sensors that stop honest mistakes and measure; the agent never authors, and never weakens, the check that judges it.
 
@@ -48,7 +48,7 @@ The verbs are for the moments that need a procedure:
 | Turn deferred shortcuts, pending decisions and the ledger's signals into proposed promotions | `/devanity debt` |
 | Make a repository operable: map draft, pinned CI job, first ratchets | `/devanity init` |
 
-With the plugin installed, a few whole-message commands talk to the hooks rather than to the model: `/devanity on|off`, `/devanity status` (state, open change, pending decisions), `/devanity pending`, `/devanity decide <id> <option> [--path <glob>]` (the only way a human decision reaches the guards), `/devanity reset` (abandons the open change), and `/devanity debt --stats` for the repository's numbers. What they enforce and record: [`docs/hooks.md`](docs/hooks.md).
+With the plugin installed, a few whole-message commands talk to the hooks rather than to the model: `/devanity on|off`, `/devanity status` (state, open change, pending decisions), `/devanity pending`, `/devanity decide <id> <option> [--path <glob>]` (the only command that records a human decision; editing the ledger by hand is the other human path), `/devanity reset` (abandons the open change), and `/devanity debt --stats` for the repository's numbers. What they enforce and record: [`docs/hooks.md`](docs/hooks.md).
 
 You normally **do not invoke Worker or Verifier yourself**: Worker collects evidence and does not decide; Verifier tries to falsify a completed change and does not edit. The modes use them when needed; missing roles degrade explicitly rather than becoming fabricated evidence.
 

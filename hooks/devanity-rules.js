@@ -17,7 +17,7 @@ const AUTONOMY_AUTHORITIES = AUTHORITIES.slice(0, 5);       // merge/deploy are 
 const PURPOSE_MAX = 160;
 // Instruction surfaces: what an agent reads as instructions. A glob that covers one is never tier
 // `trivial` (SPEC §0.3): editing an instruction file changes what every later session does.
-const INSTRUCTION_SAMPLES = ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md', '.cursorrules', 'src/CLAUDE.md', 'src/AGENTS.md', '.claude/settings.json', '.claude/skills/x/SKILL.md', '.github/copilot-instructions.md', 'skills/x/SKILL.md', 'skills/x/modes/y.md', 'agents/x.md'];
+const INSTRUCTION_SAMPLES = ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md', '.cursorrules', 'src/CLAUDE.md', 'src/AGENTS.md', 'packages/x/CLAUDE.md', 'packages/x/AGENTS.md', 'apps/x/CLAUDE.md', '.claude/settings.json', '.claude/skills/x/SKILL.md', '.github/copilot-instructions.md', 'skills/x/SKILL.md', 'skills/x/modes/y.md', 'agents/x.md'];
 const DEFAULT_TESTS = ['test_*', '*_test.*', '*.test.*', '*.spec.*', 'tests/**'];
 // Commands above the `execute` rung, whatever the repository declares (SPEC §7.2 (c)). `GIT` also
 // matches the global options git accepts before its subcommand (`git -C dir push`, `git -c k=v
@@ -27,7 +27,7 @@ const GIT = `\\bgit(?:\\s+-[Cc]\\s+${ARG}|\\s+--(?:git-dir|work-tree|namespace|e
 const BUILTIN_COMMANDS = {
   [`${GIT}commit\\b`]: 'commit',
   [`${GIT}push\\b`]: 'commit',
-  [`${GIT}push\\b[^;&|]*\\s(?:--force(?:-with-lease)?|-f)\\b`]: 'merge',   // a forced push rewrites shared history
+  [`${GIT}push\\b[^;&|]*\\s(?:--force(?:-with-lease)?|-[a-zA-Z]*f[a-zA-Z]*|\\+\\S+)(?=\\s|$)`]: 'merge',   // a forced push rewrites shared history (-f, -fu, +ref)
   [`${GIT}merge\\b`]: 'merge',
   '\\bgh\\s+pr\\s+merge\\b': 'merge',
   'terraform\\s+apply': 'deploy',
@@ -35,7 +35,7 @@ const BUILTIN_COMMANDS = {
   'npm\\s+publish': 'deploy',
   // `deploy` as the command, or as the target of a runner; never a word inside an argument
   // (`cat docs/deploy.md`, `grep deploy`).
-  '(?:^|[;&|(]\\s*)(?:\\S*/)?deploy(?:\\.sh)?(?=\\s|$)': 'deploy',
+  '(?:^|[;&|(]\\s*)(?:(?:ba|z)?sh\\s+)?(?:\\S*/)?deploy(?:\\.sh)?(?=\\s|$)': 'deploy',
   '\\b(?:npm|pnpm|yarn|bun)\\s+(?:run\\s+)?deploy\\b|\\bmake\\s+(?:\\S+\\s+)*deploy\\b': 'deploy',
 };
 
@@ -69,16 +69,26 @@ function validate(raw) {
   const bad = (m) => errors.push(m);
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return ['rules must be a JSON object'];
   if (raw.version !== 1) bad('version must be 1');
+  // The same closed shape as reference/rules.schema.json: an unknown key is a typo or a field this
+  // loader would silently ignore.
+  const known = (obj, keys, where) => { for (const k of Object.keys(obj || {})) if (!keys.includes(k)) bad(`${where}: unknown key "${k}"`); };
+  known(raw, ['version', 'defaults', 'paths', 'tests', 'commands', 'autonomy', 'verifiers'], 'rules');
+  if (raw.verifiers !== undefined && !(Array.isArray(raw.verifiers) && raw.verifiers.every((g) => typeof g === 'string' && g.trim()))) bad('verifiers must be an array of non-empty globs');
   const checkTier = (t, where) => { if (t !== undefined && !TIERS.includes(t)) bad(`${where}: tier must be one of ${TIERS.join('|')}`); };
   const checkAuth = (a, where, allowed = AUTHORITIES) => { if (a !== undefined && !allowed.includes(a)) bad(`${where}: authority must be one of ${allowed.join('|')}`); };
   if (raw.defaults !== undefined) {
     if (typeof raw.defaults !== 'object') bad('defaults must be an object');
-    else { checkTier(raw.defaults.tier, 'defaults'); checkAuth(raw.defaults.authority, 'defaults'); }
+    else {
+      known(raw.defaults, ['tier', 'authority'], 'defaults');
+      checkTier(raw.defaults.tier, 'defaults'); checkAuth(raw.defaults.authority, 'defaults');
+      if (raw.defaults.tier === 'trivial') bad('defaults: tier trivial covers instruction files (CLAUDE.md); an instruction file is never trivial');
+    }
   }
   if (raw.paths !== undefined) {
     if (typeof raw.paths !== 'object' || Array.isArray(raw.paths)) bad('paths must be an object of glob → rule');
     else for (const [glob, rule] of Object.entries(raw.paths)) {
       if (!rule || typeof rule !== 'object') { bad(`paths["${glob}"] must be an object`); continue; }
+      known(rule, ['tier', 'authority', 'check', 'delta', 'purpose', 'invariants'], `paths["${glob}"]`);
       checkTier(rule.tier, `paths["${glob}"]`); checkAuth(rule.authority, `paths["${glob}"]`);
       if (rule.tier === 'trivial') {
         const re = globToRegExp(glob);
@@ -89,7 +99,9 @@ function validate(raw) {
       // The map (SPEC §0.4): what the path is, and what never changes there.
       if (rule.purpose !== undefined && !(typeof rule.purpose === 'string' && rule.purpose.trim() && rule.purpose.length <= PURPOSE_MAX)) bad(`paths["${glob}"].purpose must be a non-empty string of at most ${PURPOSE_MAX} characters`);
       if (rule.invariants !== undefined && !(Array.isArray(rule.invariants) && rule.invariants.every((v) => typeof v === 'string' && v.trim()))) bad(`paths["${glob}"].invariants must be an array of non-empty strings`);
-      if (rule.delta !== undefined) {
+      if (rule.delta !== undefined && (!rule.delta || typeof rule.delta !== 'object' || Array.isArray(rule.delta))) bad(`paths["${glob}"].delta must be an object {files?, lines?}`);
+      else if (rule.delta !== undefined) {
+        known(rule.delta, ['files', 'lines'], `paths["${glob}"].delta`);
         for (const k of ['files', 'lines']) if (rule.delta[k] !== undefined && !(Number.isInteger(rule.delta[k]) && rule.delta[k] >= 1)) bad(`paths["${glob}"].delta.${k} must be an integer >= 1`);
       }
     }
@@ -106,6 +118,7 @@ function validate(raw) {
     if (typeof raw.autonomy !== 'object') bad('autonomy must be an object');
     else {
       checkAuth(raw.autonomy.authority, 'autonomy', AUTONOMY_AUTHORITIES);
+      known(raw.autonomy, ['authority', 'high-risk', 'irreversible'], 'autonomy');
       if (raw.autonomy['high-risk'] !== undefined && raw.autonomy['high-risk'] !== 'queue') bad('autonomy.high-risk can only be "queue"');
       if (raw.autonomy.irreversible !== undefined && !['queue', 'default'].includes(raw.autonomy.irreversible)) bad('autonomy.irreversible must be queue|default');
     }
@@ -140,7 +153,7 @@ function parseRules(text) {
   try { raw = JSON.parse(stripBom(text)); }
   catch (e) { return { present: true, errors: [`${FILE} is not valid JSON: ${e.message}`], rules: normalize({ version: 1 }) }; }
   const errors = validate(raw);
-  return { present: true, errors, rules: normalize(errors.length ? { version: 1 } : raw) };
+  return { present: true, errors, rules: normalize(errors.length ? { version: 1 } : raw), raw: errors.length ? null : raw };
 }
 
 // Repository-relative POSIX path, or null when the path is outside the root.
@@ -169,9 +182,13 @@ function isTestPath(rules, rel) {
 // The authority a Bash command needs (highest matching pattern), or null when none matches.
 function commandAuthority(rules, command) {
   let need = null;
+  // A command word inside a quoted argument (`grep "git push" docs`) is data, not a command; the
+  // raw text still counts when a shell or eval will run the quoted string.
+  const raw = String(command || '');
+  const text = /\b(?:sh|bash|zsh|eval|xargs)\b/.test(raw) ? raw : raw.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""');
   for (const [re, a] of Object.entries(rules.commands)) {
     let hit = false;
-    try { hit = new RegExp(re).test(String(command || '')); } catch (e) { hit = false; }
+    try { hit = new RegExp(re).test(text); } catch (e) { hit = false; }
     if (hit && (need === null || authorityRank(a) > authorityRank(need))) need = a;
   }
   return need;

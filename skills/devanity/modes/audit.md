@@ -61,6 +61,7 @@ Draft or amend `devanity.rules.json` (`reference/rules.schema.json`): one entry 
 - `check`: a command the repository already runs (CI, package scripts), never invented, and one the CI job can run on its runner: one that needs a service the job does not provide (a database, docker) is replaced by the narrower command that runs without it, or by none. Every high-risk path, and every path with no check that could fail for it, gets one, or a report line saying none exists and why (the schema has no field for it): the Stop oracle runs only the declared check.
 - `purpose`: one line, what the path is, in the repository's own words (a README, an ADR).
 - `invariants`: what never changes there, each from a test, an ADR, a rule in force or a finding; none found → omit it, never guess.
+- `verifiers` (top level): the files the declared checks read (`package.json` for `npm test`, `pytest.ini`, `jest.config.*`, a root `conftest.py`), so the CI job treats weakening one next to code as a verifier change.
 - Owners stay in `CODEOWNERS`, never in the map. `tests` globs only when the naming differs from the defaults.
 - Each glob matches a tracked file under the loader's glob semantics, which a `git ls-files` pathspec does not share: once the file is on disk, `node "${CLAUDE_PLUGIN_ROOT}/scripts/devanity-rules-ci.mjs" --self-check` (one parent commit needed) refuses a dead path, as the CI job does. Until then the match is `NOT_RUN`.
 

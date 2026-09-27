@@ -163,6 +163,29 @@ describe('rules CI', () => {
     assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*devanity\.rules\.json/);
   });
 
+  test('verifier sovereignty: editing a declared verifier config or the default tier together with code is a verifier change', () => {
+    const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+    write(d, 'devanity.rules.json', JSON.stringify({ version: 1, verifiers: ['package.json'], paths: { 'src/**': { tier: 'normal', check: 'npm test --silent' } } }));
+    write(d, 'package.json', JSON.stringify({ scripts: { test: 'node src/t.js' } }));
+    write(d, 'src/a.js', 'module.exports = 1;\n'); write(d, 'src/t.js', "process.exit(require('./a.js') === 1 ? 0 : 1);\n");
+    commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature');
+    write(d, 'src/a.js', 'module.exports = 2;\n'); write(d, 'package.json', JSON.stringify({ scripts: { test: 'true' } }));
+    commitAll(d, 'change');
+    const body = join(temp, `vcbody${n}.md`);
+    writeFileSync(body, 'Change.\n```\ndevanity-proof:\n  check: npm test\n  failed_before: yes\n  passed_after: yes\n  status: VERIFIED\n  pending: 0\n```\n');
+    let r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+    assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*package\.json/);
+    const d2 = fresh(); git(d2, 'init', '-q', '-b', 'main');
+    write(d2, 'devanity.rules.json', JSON.stringify({ version: 1, defaults: { tier: 'normal' }, paths: { 'docs/**': { tier: 'trivial' } } }));
+    write(d2, 'src/a.js', '1\n'); write(d2, 'docs/a.md', 'a\n');
+    commitAll(d2, 'base'); git(d2, 'checkout', '-qb', 'feature');
+    write(d2, 'devanity.rules.json', JSON.stringify({ version: 1, defaults: { tier: 'normal', authority: 'deploy' }, paths: { 'docs/**': { tier: 'trivial' } } }));
+    write(d2, 'src/a.js', '2\n');
+    commitAll(d2, 'change');
+    r = runCi(d2, ['--base', 'main', '--pr-body-file', body]);
+    assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*devanity\.rules\.json/);
+  });
+
   // When HEAD touches hooks/**, the self-check runs this repository's own check (the whole test
   // suite), which would reach this test again: the nested run skips it.
   test('--self-check passes on this repository', { skip: Boolean(process.env.DEVANITY_SELF_CHECK_NESTED) }, () => {

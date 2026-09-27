@@ -210,7 +210,7 @@ function evaluate(payload, env) {
       // Never append over an answered id: a later pending record with the same id would become the
       // latest and silently revoke the human's decision (latest per id wins).
       let id = f.pending.id;
-      for (let k = 2; all.some((d) => d.id === id && d.status !== 'pending'); k++) id = `${f.pending.id}-${k}`;
+      for (let k = 2; all.some((d) => d.id === id && (d.status !== 'pending' || d.path !== f.pending.path)); k++) id = `${f.pending.id}-${k}`;
       if (!exists) ledger.append(root, 'decisions', { ...f.pending, id }, sid);
     }
   }

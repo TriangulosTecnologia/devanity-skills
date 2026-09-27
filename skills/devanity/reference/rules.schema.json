@@ -114,6 +114,14 @@
           ]
         }
       }
+    },
+    "verifiers": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Globs of the files the declared checks read (package scripts, test-runner config, root conftest). The reference CI job treats a diff that edits one together with code as a verifier change (SPEC §0.2)."
     }
   },
   "$defs": {

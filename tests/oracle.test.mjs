@@ -372,6 +372,19 @@ describe('inject: repository rules context (F2.5)', () => {
     assert.ok(r.stdout.includes('Pending human decisions (1): D-billing (billing/**)'), r.stdout.slice(-400));
   });
 
+  test('the pending queue survives a full open change and comes before the map', async () => {
+    const d = fresh(); initRepo(d);
+    writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', purpose: 'charges' } } }));
+    const dir = join(d, '.git', 'devanity'); mkdirSync(dir, { recursive: true });
+    const now = new Date().toISOString(); const long = 'x'.repeat(200);
+    writeFileSync(join(dir, 'contracts.jsonl'), JSON.stringify({ ts: now, id: 'C-1', phase: 'EXECUTE', intent: long, scope: long, forbidden: long, proof: long }) + '\n');
+    writeFileSync(join(dir, 'decisions.jsonl'), [1, 2, 3, 4, 5].map((k) => JSON.stringify({ ts: now, id: `D-${k}`, status: 'pending', by: 'agent', path: `billing/f${k}.py` })).join('\n') + '\n');
+    const r = await runHook(INJECT, { input: sessionStart(d), env: baseEnv(), args: ['SessionStart'], cwd: d });
+    const q = r.stdout.indexOf('Pending human decisions (5): D-1');
+    assert.ok(q > 0, r.stdout.slice(-600));
+    assert.ok(q < r.stdout.indexOf(HEADING), 'the queue comes before the repository rules');
+  });
+
   test('size cap: many globs are hard-truncated at 1600 chars with an ellipsis', async () => {
     const d = fresh();
     const paths = {};

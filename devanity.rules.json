@@ -4,6 +4,10 @@
     "tier": "normal",
     "authority": "commit"
   },
+  "verifiers": [
+    "package.json",
+    ".github/workflows/validate.yml"
+  ],
   "paths": {
     "skills/devanity/**": {
       "tier": "normal",

@@ -82,7 +82,7 @@ Evidence belongs to the target it observed. Target drift invalidates the affecte
 observe < recommend < prepare < execute < commit < merge < deploy
 ```
 
-A ceiling comes from outside the session: the rules file, the autonomy envelope, a human. Tool availability, repository permission and confidence never raise it. `merge` and `deploy` are never granted to an unattended session. A human decision reaches the guard only through `/devanity decide`, typed by the human.
+A ceiling comes from outside the session: the rules file, the autonomy envelope, a human. Tool availability, repository permission and confidence never raise it. `merge` and `deploy` are never granted to an unattended session. A human decision reaches the guard only through `/devanity decide`, typed by the human, or a human editing the ledger by hand.
 
 ## The outer loop
 
@@ -94,7 +94,7 @@ prose → path-scoped context → procedure → enforcement (types, schemas, lin
 
 The mechanism for legacy code is the **ratchet**: the current state is frozen in a baseline, nothing may get worse, only better. Ratchets are the repository's own dependencies (ESLint, ruff, jscpd, knip, dependency-cruiser, import-linter, Stryker, betterer, ESLint bulk suppressions), proposed by PR with thresholds calibrated from the repository's own distribution; devanity ships none.
 
-The ledger (`<git-common-dir>/devanity/`) is local and episodic: the raw material of the loop, never memory the agent reads. There is no agent-written memory file. A recurring lesson becomes a map entry, a test, a lint rule or a ratchet, through a reviewed PR. `debt` reads the signals and proposes in three lanes: it fixes a dominant, reversible fix outside the high-risk class; it proposes and stops to tighten a guardrail, because a tighter guardrail creates blocks; it never loosens a verifier.
+The ledger (`<git-common-dir>/devanity/`) is local and episodic: the raw material of the loop, never memory the agent reads. There is no agent-written memory file. A recurring lesson becomes a map entry, a test, a lint rule or a ratchet, through a reviewed PR. `debt` reads the signals and proposes in three lanes: it routes a dominant, reversible fix outside the high-risk class to `improve`, which applies one unit; it proposes and stops to tighten a guardrail, because a tighter guardrail creates blocks; it never loosens a verifier.
 
 ## Host independence
 

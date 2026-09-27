@@ -86,6 +86,22 @@ describe('rules: instruction files are never trivial (SPEC §0.3)', () => {
   });
 });
 
+describe('rules: the loader enforces the schema (confirming gate)', () => {
+  test('unknown keys, a scalar delta, a trivial default and a nested CLAUDE.md under trivial are errors', () => {
+    for (const [raw, what] of [
+      [{ version: 1, paths: { 'a/**': { tier: 'normal', owner: 'x' } } }, 'owner'],
+      [{ version: 1, extra: 1 }, 'extra'],
+      [{ version: 1, paths: { 'a/**': { delta: 5 } } }, 'delta'],
+      [{ version: 1, defaults: { tier: 'trivial' } }, 'instruction'],
+      [{ version: 1, paths: { 'packages/**': { tier: 'trivial' } } }, 'instruction'],
+    ]) {
+      const errors = rules.validate(raw);
+      assert.ok(errors.some((e) => e.includes(what)), `${JSON.stringify(raw)} -> ${errors.join('; ')}`);
+    }
+    assert.deepEqual(rules.validate({ version: 1, verifiers: ['package.json', 'pytest.ini'] }), [], 'verifiers is a known key');
+  });
+});
+
 describe('rules: matching', () => {
   const R = rules.loadRules.bind(null);
   let loaded;

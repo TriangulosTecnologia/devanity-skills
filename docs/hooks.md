@@ -67,7 +67,7 @@ No prompt text, no diffs, no file contents: metadata only, and nothing is sent a
 
 ## Injection (`devanity-inject.js`)
 
-On `SessionStart` (startup, resume, clear, compact) and on `SubagentStart` for agents other than the verifier and the worker, the kernel is followed by the repository rules (when `devanity.rules.json` at the repository root is present and valid, see below; a session started in a subdirectory still finds it), then by the queue of pending human decisions an unattended session left (`Pending human decisions (n): <id> (<path>), …`, at most five named), and, when a change is open, by its summary:
+On `SessionStart` (startup, resume, clear, compact) and on `SubagentStart` for agents other than the verifier and the worker, the kernel is followed by the queue of pending human decisions an unattended session left (`Pending human decisions (n): <id> (<path>), …`, at most five named; the last section ever dropped for size), then by the repository rules (when `devanity.rules.json` at the repository root is present and valid, see below; a session started in a subdirectory still finds it), and, when a change is open, by its summary:
 
 ```
 ## Open change C-2026-09-24-1
@@ -83,7 +83,7 @@ The last line depends on the phase: `EXECUTE` names scope, proof and forbidden d
 
 The **verifier** never receives the kernel, the rules or this section. Its one-line note gains only the change id and its proof: "… Open change C-…: falsify its claims; its proof is …". The **worker** receives nothing, as before.
 
-The host caps `SessionStart` stdout at 10,000 characters. The hook assembles autonomous line, kernel, rules and change, and when the total would exceed 9,500 characters it drops the change section first, then the rules, never the kernel, and records `{kind: 'inject_truncated', dropped: [...]}` in `events.jsonl`.
+The host caps `SessionStart` stdout at 10,000 characters. The hook assembles autonomous line, kernel, rules and change, and when the total would exceed 9,500 characters it drops the change section first, then the rules, then the queue, never the kernel, and records `{kind: 'inject_truncated', dropped: [...]}` in `events.jsonl`.
 
 ### Repository rules in context
 
@@ -112,7 +112,7 @@ Type, as a whole message in the Claude Code prompt:
 ```
 
 - `decide` appends `{id, status: decided, by: human, chosen, path, contract?}` to `decisions.jsonl`. For an id that is not yet in the ledger, `--path` is mandatory: a human decision must name what it authorizes. For a pending id (queued by an autonomous session) the path is inherited.
-- An answer of `no`, `n`, `reject`, `deny`, `refuse` or `não` records `status: rejected`: it answers the pending question and authorizes nothing (`DEVANITY DECISION REJECTED: … stay blocked`).
+- An answer whose first word is `no`, `n`, `nope`, `reject`, `deny`, `decline`, `refuse`, `não`, `rejeitar`, `negado` or `recuso` (trailing punctuation ignored; also `no way`, `not now`, `don't`) records `status: rejected`: it answers the pending question and authorizes nothing (`DEVANITY DECISION REJECTED: … stay blocked`).
 - A decision is scoped: it is tied to the change open when it was typed and authorizes while that change is open; with no open change it expires after 24 hours. It never authorizes every later session.
 - `pending` lists the queue.
 - Both are handled by the `UserPromptSubmit` hook only. That event is trusted because its payload is the text the human typed; the model does not author it and no tool reaches it. No devanity tool, command or env var writes `by: human` for the agent (guardrail 12; `tests/guard.test.mjs` asserts it against the source); a direct write into the ledger file is a limit, see [Limits](#limits).
@@ -144,7 +144,7 @@ Neither exists without git: the reply says `no ledger here`.
 
 Everything else is allowed. Paths outside the repository are ignored. A high-risk path is only unblocked by a decision record with `status: decided`, `by: human`, a `path` (glob or prefix) that covers it, and still in scope (given for a change: while that change is open; given with no open change: for 24 hours); `by: agent`, `by: agent-default`, rejected and pending records authorize nothing.
 
-Command authority (`hooks/devanity-rules.js` `BUILTIN_COMMANDS`, plus `rules.json#commands`): `git commit` and `git push` need `commit`; `git merge`, `gh pr merge` and a forced push (`--force`, `--force-with-lease`, `-f`) need `merge`; `terraform apply`, `kubectl apply|delete`, `npm publish` and `deploy` as a command (`./deploy.sh`, `npm run deploy`, `make deploy`) need `deploy`. The git patterns also match git's global options before the subcommand (`git -C dir push`, `git -C "my dir" push`, `git -c k=v push`, `git --git-dir .git push`, `git -P push`). A word inside an argument never counts: `cat docs/deploy.md`, `npm install --force` and `rm --force build/x` need nothing.
+Command authority (`hooks/devanity-rules.js` `BUILTIN_COMMANDS`, plus `rules.json#commands`): `git commit` and `git push` need `commit`; `git merge`, `gh pr merge` and a forced push (`--force`, `--force-with-lease`, `-f`, `-fu`, `+ref`) need `merge`; `terraform apply`, `kubectl apply|delete`, `npm publish` and `deploy` as a command (`./deploy.sh`, `bash deploy.sh`, `npm run deploy`, `make deploy`) need `deploy`. The git patterns also match git's global options before the subcommand (`git -C dir push`, `git -C "my dir" push`, `git -c k=v push`, `git --git-dir .git push`, `git -P push`). A word inside an argument never counts: `cat docs/deploy.md`, `npm install --force`, `rm --force build/x` and a quoted `grep -rn "git push" docs` need nothing; a quoted string that a shell or `eval` will run (`bash -c "git push"`) still counts.
 
 The session's authority is, in order: `DEVANITY_AUTHORITY` when it names a valid rung; otherwise `rules.json#autonomy.authority` in an autonomous session (see SPEC §7.3) or `rules.json#defaults.authority` (default `commit`). An autonomous session is capped at `commit`: `merge` and `deploy` are never reachable unattended, whatever the env says.
 
@@ -262,7 +262,7 @@ node scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-
 2. Changed files: `git diff --numstat` from the merge base of `--base` (default `origin/main`, then `main`) to `HEAD`.
 3. The map stays alive: every `paths` glob must match a tracked file (`git ls-files`), or the job fails naming the dead entry.
 4. Per touched path: `delta` budgets (files and added lines per glob); the distinct `check` of every touched high-risk path is run in the repository root, and when the diff changes `devanity.rules.json` every check it declares is run too, so a check that does not pass cannot enter the map; a `devanity-proof:` block with a `status:` line is required in the PR body (`--pr-body-file`, else `GITHUB_EVENT_PATH` `pull_request.body`) when any touched path is tier normal or high-risk, unless `--no-proof-required`. Without any PR context (a push), the requirement is reported, not failed.
-5. Verifier sovereignty (SPEC §0.2): when the diff removes or rewrites lines of existing test files (the `tests` globs) together with code, the PR body must carry a `verifier-change: <why>` line, so review treats the change to the checks separately from the change they judge. Adding tests next to a fix is not a verifier change.
+5. Verifier sovereignty (SPEC §0.2): when the diff, together with code, removes or rewrites lines of existing test files (the `tests` globs), edits a file the map declares under `verifiers` (package scripts, test-runner config), or changes what the rules file makes a judge (a path's `check` or `tier`, `tests`, `defaults`, `verifiers`), the PR body must carry a `verifier-change: <why>` line, so review treats the change to the checks separately from the change they judge. Adding tests next to a fix is not a verifier change.
 6. Exit 1 with the list of failures, 0 otherwise.
 
 `--self-check` is the dogfood mode: this repository's own `devanity.rules.json` is validated and steps 2–5 run on `HEAD~1..HEAD` (the checks execute) without a PR body (`.github/workflows/validate.yml` runs it; a shallow clone with no parent validates the rules and reports an empty change set).

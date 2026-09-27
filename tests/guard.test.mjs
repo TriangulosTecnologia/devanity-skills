@@ -232,6 +232,52 @@ describe('guard: gate-review fixes (phase V)', () => {
   });
 });
 
+describe('guard: confirming-gate fixes (phase V)', () => {
+  const at = (h) => new Date(Date.now() - h * 3600 * 1000).toISOString();
+  const seedLedger = (d, rows) => { const dir = ledger.ledgerDir(d); mkdirSync(dir, { recursive: true }); for (const [kind, recs] of Object.entries(rows)) writeFileSync(join(dir, `${kind}.jsonl`), recs.map((r) => JSON.stringify(r)).join('\n') + '\n'); };
+
+  test('two autonomous blocks after an answered id queue two entries; neither overwrites the other', async () => {
+    const d = repo();
+    seedLedger(d, { decisions: [{ ts: at(0.1), session_id: 'x', id: 'D-billing', status: 'decided', by: 'human', chosen: 'yes', path: 'billing/x.py' }] });
+    for (const f of ['y.py', 'z.py']) writeFileSync(join(d, 'billing', f), 'a\n');
+    const env = baseEnv({ DEVANITY_AUTONOMOUS: '1' });
+    await run(GUARD, { input: edit(d, 'billing/y.py'), cwd: d, env });
+    await run(GUARD, { input: edit(d, 'billing/z.py'), cwd: d, env });
+    const paths = ledger.pendingDecisions(d).map((x) => x.path).sort();
+    assert.equal(new Set(ledger.pendingDecisions(d).map((x) => x.id)).size, ledger.pendingDecisions(d).length, 'distinct ids');
+    assert.ok(paths.length >= 1 && paths.every(Boolean), JSON.stringify(ledger.pendingDecisions(d)));
+    assert.equal(ledger.decisions(d).find((x) => x.id === 'D-billing').status, 'decided');
+  });
+
+  test('re-deciding an id after its change closed authorizes as the reply says', async () => {
+    const d = repo();
+    seedLedger(d, {
+      contracts: [{ ts: at(2), id: 'C-1', phase: 'EXECUTE' }, { ts: at(1), id: 'C-1', phase: 'DONE' }],
+      decisions: [{ ts: at(1.5), session_id: 'x', id: 'D-billing', status: 'decided', by: 'human', chosen: 'yes', path: 'billing/**', contract: 'C-1' }],
+    });
+    const m = await run(MODE, { input: prompt(d, '/devanity decide D-billing yes --path billing/**'), cwd: d });
+    assert.ok(m.stdout.includes('for 24 h'), m.stdout);
+    assertAllowed(await run(GUARD, { input: edit(d, 'billing/x.py'), cwd: d }));
+  });
+
+  test('"No!", "no way", "decline" are rejections', async () => {
+    for (const answer of ['No!', 'no way', 'decline', 'nope!!']) {
+      const d = repo();
+      const m = await run(MODE, { input: prompt(d, `/devanity decide D-billing ${answer} --path billing/**`), cwd: d });
+      assert.ok(m.stdout.includes('REJECTED'), `${answer}: ${m.stdout}`);
+    }
+  });
+
+  test('a command word inside a quoted argument does not need authority; a forced push in any spelling needs merge', async () => {
+    const d = repo();
+    const prepare = baseEnv({ DEVANITY_AUTHORITY: 'prepare' });
+    for (const cmd of ['grep -rn "git push" docs', 'echo "remember to git commit"', "git log --grep='git push'"]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d, env: prepare }));
+    for (const [cmd, need] of [['git push -fu origin main', 'merge'], ['git push origin +main', 'merge'], ['bash deploy.sh', 'deploy'], ['bash -c "git push"', 'commit']]) {
+      assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d, env: prepare }), `needs authority: ${need}`);
+    }
+  });
+});
+
 describe('guard: enforcement by install origin (f) (g) (h)', () => {
   test('no rules file: everything is normal, nothing blocks, no event', async () => {
     const d = repo({ rules: null });

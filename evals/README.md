@@ -26,7 +26,7 @@ What the harness measures, why, and against whom. One row per axis of the regist
 
 Served elsewhere: "in the five judgment traps, `devanity` ≥ `superpowers` and > `senior-oneliner`" is the arm comparison over the tasks above; "false blocks ≤ 5% in real use" is field-only (PLAN F2.9); "an internal repository accepts the `audit`'s rules with ≤ 20% edits" is field-only too, and `mode-audit` is its lab precondition. "None (C2-1)" marks a task SPEC §13 keeps diagnostic until a round shows signal (PLAN decision C2-1, 2026-09-25).
 
-Deliberately unmeasured: the verifier finding a bug the ticket does not name (`judge-hiddenbug`, PLAN F3.3: "detection with a probe budget > without" needs an ablated verifier, not a deterministic scorer); the modes against the field (only the candidate has the verbs, so the mode tasks measure whether each mode works, not who wins); `improve`, `docs`, `debt` and `init` (each needs an approved finding, an instruction surface or a ledger history as input, and no deterministic success condition was found that is cheaper than a human read).
+Deliberately unmeasured: the verifier finding a bug the ticket does not name (`judge-hiddenbug`, PLAN F3.3: "detection with a probe budget > without" needs an ablated verifier, not a deterministic scorer); the modes against the field (only the candidate has the verbs, so the mode tasks measure whether each mode works, not who wins); `improve`, `debt` and `init` (each needs an approved finding, an instruction surface or a ledger history as input, and no deterministic success condition was found that is cheaper than a human read).
 
 ## Reading results
 

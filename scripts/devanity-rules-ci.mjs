@@ -169,11 +169,15 @@ if (base && rulesMod && !loaded.errors.length) {
     const before = git('show', `${mb.ok && mb.out ? mb.out : base}:${rulesMod.FILE}`);
     const judges = (text) => {
       const raw = (() => { try { return JSON.parse(text); } catch (e) { return {}; } })();
-      return JSON.stringify([Object.entries(raw.paths || {}).map(([g, r]) => [g, r && r.check, r && r.tier]).sort(), raw.tests || null]);
+      return JSON.stringify([Object.entries(raw.paths || {}).map(([g, r]) => [g, r && r.check, r && r.tier]).sort(), raw.tests || null, raw.defaults || null, raw.verifiers || null]);
     };
     if (!before.ok || judges(before.out) !== judges(readFileSync(join(root, rulesMod.FILE), 'utf8'))) verifierEdits.push(rulesMod.FILE);
   }
-  const codeTouched = touched.some((t) => !rulesMod.isTestPath(rules, t.path) && t.path !== rulesMod.FILE && !/\.md$/i.test(t.path));
+  // The files the declared checks read (map `verifiers`: package scripts, runner config) judge too.
+  const verifierRes = (loaded.raw && Array.isArray(loaded.raw.verifiers) ? loaded.raw.verifiers : []).map((g) => rulesMod.globToRegExp(g));
+  for (const t of touched) if (verifierRes.some((re) => re.test(t.path)) && !verifierEdits.includes(t.path)) verifierEdits.push(t.path);
+  const isVerifier = (p) => rulesMod.isTestPath(rules, p) || p === rulesMod.FILE || verifierRes.some((re) => re.test(p));
+  const codeTouched = touched.some((t) => !isVerifier(t.path) && !/\.md$/i.test(t.path));
   if (verifierEdits.length && codeTouched) {
     const body = selfCheck ? null : prBody();
     const declaredChange = body !== null && /^\s*verifier-change\s*:\s*\S/m.test(body);

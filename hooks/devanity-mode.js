@@ -86,7 +86,8 @@ function pendingList(cwd) {
 }
 
 // `/devanity decide <id> <option> [--path <glob>]`. An unknown id must name what it authorizes.
-const REJECT = /^(?:no|n|nope|não|nao|reject(?:ed)?|deny|denied|refuse[ds]?|rejeit(?:ar|o|ad[oa])|negad[oa]|negar|recus(?:ar|o|ad[oa]))\.?$/i;
+const REJECT = /^(?:no|n|nope|não|nao|reject(?:ed)?|deny|denied|refuse[ds]?|decline[ds]?|rejeit(?:ar|o|ad[oa])|negad[oa]|negar|recus(?:ar|o|ad[oa]))$/i;   // the first word
+const REJECT_PHRASE = /^(?:no way|not now|do not|don't)\b/i;
 function decide(args, cwd, sessionId) {
   const toks = String(args || '').trim().split(/\s+/).filter(Boolean);
   let pathGlob = null;
@@ -102,13 +103,13 @@ function decide(args, cwd, sessionId) {
     return `DEVANITY DECIDE: "${id}" is not a known decision; a human decision must name what it authorizes. Re-run with \`--path <glob>\`, or pick a pending id: ${ids.length ? ids.join(', ') : 'none pending'}.`;
   }
   // A "no" answers the question and authorizes nothing: recorded as rejected, never as decided.
-  const rejected = REJECT.test(chosen);
+  const rejected = REJECT.test(chosen.trim().toLowerCase().replace(/[.!?,;:]+$/, '').split(/[\s,;:!?.]+/)[0] || '') || REJECT_PHRASE.test(chosen.trim());
   const record = { id, status: rejected ? 'rejected' : 'decided', by: 'human', chosen, kind: (known && known.kind) || 'human' };
   if (pathGlob) record.path = pathGlob;
   // Scope: the decision serves the open change (and lives as long as it is open), else it expires
   // after ledger.DECISION_TTL_MS; it never authorizes every later session (SPEC §0.5).
   const change = ledger.openContract(cwd);
-  if (change) record.contract = change.id;
+  record.contract = change ? change.id : null;   // null, not absent: the ledger merges field by field
   if (!ledger.append(cwd, 'decisions', record, sessionId)) return 'DEVANITY DECIDE: the ledger could not be written; nothing recorded.';
   const scope = pathGlob || (known && known.path) || '(no path: authorizes no edit)';
   if (rejected) return `DEVANITY DECISION REJECTED: ${id} = ${chosen}, by human. Guarded edits under ${scope} stay blocked.`;

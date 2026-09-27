@@ -81,17 +81,22 @@ function phaseLine(c) {
 
 // The "Open change" section for SessionStart and non-verifier subagents, or '' without one.
 function changeContext(cwd) {
-  // The queue an unattended session left (SPEC §7.3) comes back first thing, open change or not.
-  const pending = ledger.pendingDecisions(cwd);
-  const queue = pending.length ? `Pending human decisions (${pending.length}): ${pending.slice(0, 5).map((d) => `${clip(d.id, 30)} (${clip(d.path || 'no path', 40)})`).join(', ')}${pending.length > 5 ? ', …' : ''}. Record one with /devanity decide <id> <option>.` : '';
   const c = ledger.openContract(cwd);
-  if (!c) return queue;
+  if (!c) return '';
   const lines = [`## Open change ${clip(c.id)}`, `phase: ${c.phase} · pending: ${clip(c.pending) || '0'}`];
   for (const k of ['intent', 'scope', 'forbidden', 'proof']) if (c[k]) lines.push(`${k}: ${clip(c[k])}`);
   lines.push(phaseLine(c));
-  if (queue) lines.push(queue);
   const text = lines.join('\n');
   return text.length > CHANGE_CONTEXT_MAX_CHARS ? text.slice(0, CHANGE_CONTEXT_MAX_CHARS - 1) + '…' : text;
+}
+
+// The queue an unattended session left (SPEC §7.3): its own section, placed before the rules and
+// the change, and the last one ever dropped for size.
+function queueContext(cwd) {
+  const pending = ledger.pendingDecisions(cwd);
+  if (!pending.length) return '';
+  const named = pending.slice(0, 5).map((d) => `${clip(d.id, 30)} (${clip(d.path || 'no path', 40)})`).join(', ');
+  return `Pending human decisions (${pending.length}): ${named}${pending.length > 5 ? ', …' : ''}. Record one with /devanity decide <id> <option>.`;
 }
 
 // The verifier's note, still one line, naming what to falsify when a change is open.
@@ -114,13 +119,16 @@ function contextFor(payload) {
   try { rules = rulesContext(cwd); } catch (e) { rules = ''; }
   let change = '';
   try { change = changeContext(cwd); } catch (e) { change = ''; }
+  let queue = '';
+  try { queue = queueContext(cwd); } catch (e) { queue = ''; }
   const head = rt.isAutonomous() ? rt.AUTONOMOUS_LINE + '\n\n' : '';
   const assemble = (parts) => head + parts.filter(Boolean).join('\n\n');
   // Never exceed the host's cap: drop the change section first, then the rules, and say so.
   const dropped = [];
-  let out = assemble([kernel, rules, change]);
-  if (out.length > OUTPUT_BUDGET_CHARS && change) { dropped.push('change'); out = assemble([kernel, rules]); }
-  if (out.length > OUTPUT_BUDGET_CHARS && rules) { dropped.push('rules'); out = assemble([kernel]); }
+  let out = assemble([kernel, queue, rules, change]);
+  if (out.length > OUTPUT_BUDGET_CHARS && change) { dropped.push('change'); out = assemble([kernel, queue, rules]); }
+  if (out.length > OUTPUT_BUDGET_CHARS && rules) { dropped.push('rules'); out = assemble([kernel, queue]); }
+  if (out.length > OUTPUT_BUDGET_CHARS && queue) { dropped.push('queue'); out = assemble([kernel]); }
   if (dropped.length) {
     try { ledger.append(cwd, 'events', { kind: 'inject_truncated', dropped, chars: out.length, event: payload.hook_event_name || null }, payload.session_id || null); } catch (e) { /* recorded best effort */ }
   }

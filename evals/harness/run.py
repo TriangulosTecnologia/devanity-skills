@@ -497,6 +497,7 @@ def seed_workspace(task, workdir: Path, refs=None):
     {filename: content}, a callable is an action on the workspace (a commit, a push)."""
     def write(files):
         for fn, content in files.items():
+            if content is None: (workdir / fn).unlink(missing_ok=True); continue   # a reference that removes a seed file
             (workdir / fn).parent.mkdir(parents=True, exist_ok=True)
             (workdir / fn).write_text(content, encoding="utf-8")
     write(task.get("seed", {}))
