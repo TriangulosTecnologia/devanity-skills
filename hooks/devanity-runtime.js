@@ -84,7 +84,7 @@ const FALLBACK_KERNEL = [
   '2. Trivial and reversible (never an instruction file)? -> do it, shortest form, no ceremony, no test.',
   '3. Changes behavior? -> one check that fails first, then the fix.',
   '4. Alters a contract in the high-risk class (security, auth, permissions, privacy, billing/payments, data loss or deletion, migrations, public APIs, infra, audit trails)? -> Propose and stop; authorization comes from outside this session.',
-  '5. Moves a boundary or state? -> <=10 lines of shape (modules, state owners, the boundary) before code.',
+  '5. Moves a boundary or state, or alters an invariant of a `core` path? -> <=10 lines of shape (modules, state owners, the boundary) before code.',
   '6. Can\'t tell? -> read until you can; still can\'t -> ask ONE thing, the one whose answer changes what you build.',
   '',
   'Writing code: exists in this codebase -> standard library -> native platform feature -> installed dependency -> one line -> the minimum that works. Bug = root cause, fixed once where all callers route through. Reuse behavior through its interface, never the shape of debt: debt is what the repository\'s gates say, and new code meets them.',

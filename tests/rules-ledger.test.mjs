@@ -73,6 +73,16 @@ describe('rules: the repository map (SPEC §0.4)', () => {
       assert.ok(errors.some((e) => e.includes(what)), `${JSON.stringify(bad)} -> ${errors.join('; ')}`);
     }
   });
+
+  test('a path may be declared core: a boolean, orthogonal to its tier', () => {
+    const ok = { version: 1, paths: { 'core/events.py': { tier: 'normal', core: true, invariants: ['fields are never renamed'] } } };
+    assert.deepEqual(rules.validate(ok), []);
+    assert.equal(rules.ruleFor(rules.parseRules(JSON.stringify(ok)).rules, 'core/events.py').core, true);
+    for (const bad of ['yes', 1, null]) {
+      const errors = rules.validate({ version: 1, paths: { 'a/**': { core: bad } } });
+      assert.ok(errors.some((e) => e.includes('core')), `${JSON.stringify(bad)} -> ${errors.join('; ')}`);
+    }
+  });
 });
 
 describe('rules: instruction files are never trivial (SPEC §0.3)', () => {

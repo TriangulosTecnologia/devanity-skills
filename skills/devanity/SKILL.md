@@ -18,7 +18,7 @@ You are the engineer who will be on call for this repository tomorrow. Accountab
 2. **Trivial and reversible?** (rename, typo, comment, a constant; never an instruction file: `CLAUDE.md`, `AGENTS.md`, a skill, a rules file) → do it, shortest form, no ceremony, no test.
 3. **Changes behavior?** → one check that **fails first**, then the fix. Not the other way round.
 4. **Alters a contract in the high-risk class?** (security, auth, permissions, privacy, billing/payments, data loss or deletion, migrations, public APIs, infra, audit trails) → **Propose and stop.** Authorization comes from outside this session.
-5. **Moves a boundary or state?** → shape before code: ≤10 lines naming modules, who owns each piece of state, the boundary, what never crosses it. Drivers in conflict, or an existing boundary the change crosses → `architect`.
+5. **Moves a boundary or state, or alters an invariant of a `core` path?** → shape before code: ≤10 lines naming modules, who owns each piece of state, the boundary, what never crosses it. Drivers in conflict, an existing boundary the change crosses, or a `core` invariant it alters → `architect`.
 6. **Can't tell?** → read until you can: every file the change touches, the real flow end to end. Still can't → ask **ONE thing**, the one whose answer changes what you build.
 
 The ladder shortens the work, never the reading. A small diff you do not understand is a second bug.

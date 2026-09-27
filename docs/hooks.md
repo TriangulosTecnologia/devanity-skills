@@ -93,12 +93,13 @@ On `SessionStart`, and on `SubagentStart` for agents other than the verifier and
 ## Repository rules (devanity.rules.json)
 Autonomy envelope: authority commit; high-risk queue; irreversible queue
 Guards: enforcing
-Map (high-risk: rung 4, propose and stop):
+Map (high-risk: rung 4, propose and stop; core: rung 5, its invariants survive pivots):
 - `hooks/**` high-risk: plugin runtime in every user's session; invariants: failure paths allow and leave a trace; check: node --test tests/*.test.mjs
+- `core/events.py` normal core: the event envelope every module reads; invariants: fields are never renamed or removed
 - `src/ui/**` normal: React views; no data access here
 ```
 
-This is the **repository map** (SPEC §0.4): one line per path that declares a `purpose`, `invariants` or the high-risk tier, high-risk first. Hard cap: 1,600 characters (about 400 tokens). The fixed lines always fit; entries are added whole while they fit, and the rest is named (`… N more path(s) in devanity.rules.json`), never cut mid-line. No rules file, or an invalid one, adds nothing.
+This is the **repository map** (SPEC §0.4): one line per path that declares a `purpose`, `invariants`, `core` or the high-risk tier, high-risk first, then core. Hard cap: 1,600 characters (about 400 tokens). The fixed lines always fit; entries are added whole while they fit, and the rest is named (`… N more path(s) in devanity.rules.json`), never cut mid-line. No rules file, or an invalid one, adds nothing.
 
 ## Commands (`devanity-mode.js`)
 

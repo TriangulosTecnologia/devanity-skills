@@ -26,6 +26,7 @@ export const INVARIANTS = [
   'pending',                    // the decision queue
   'shape of debt',              // context hygiene (SPEC §0.3): reuse behavior, never the shape of debt
   'never weaken',               // verifier sovereignty (SPEC §0.2): no check relaxed to go green
+  'a `core` path',              // the pivot-surviving core (SPEC §0.4): its invariants are rung 5
 ];
 
 export function checkInvariants(files) {

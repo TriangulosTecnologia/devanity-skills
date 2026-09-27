@@ -88,7 +88,7 @@ function validate(raw) {
     if (typeof raw.paths !== 'object' || Array.isArray(raw.paths)) bad('paths must be an object of glob → rule');
     else for (const [glob, rule] of Object.entries(raw.paths)) {
       if (!rule || typeof rule !== 'object') { bad(`paths["${glob}"] must be an object`); continue; }
-      known(rule, ['tier', 'authority', 'check', 'delta', 'purpose', 'invariants'], `paths["${glob}"]`);
+      known(rule, ['tier', 'authority', 'check', 'delta', 'purpose', 'invariants', 'core'], `paths["${glob}"]`);
       checkTier(rule.tier, `paths["${glob}"]`); checkAuth(rule.authority, `paths["${glob}"]`);
       if (rule.tier === 'trivial') {
         const re = globToRegExp(glob);
@@ -99,6 +99,7 @@ function validate(raw) {
       // The map (SPEC §0.4): what the path is, and what never changes there.
       if (rule.purpose !== undefined && !(typeof rule.purpose === 'string' && rule.purpose.trim() && rule.purpose.length <= PURPOSE_MAX)) bad(`paths["${glob}"].purpose must be a non-empty string of at most ${PURPOSE_MAX} characters`);
       if (rule.invariants !== undefined && !(Array.isArray(rule.invariants) && rule.invariants.every((v) => typeof v === 'string' && v.trim()))) bad(`paths["${glob}"].invariants must be an array of non-empty strings`);
+      if (rule.core !== undefined && typeof rule.core !== 'boolean') bad(`paths["${glob}"].core must be true or false`);
       if (rule.delta !== undefined && (!rule.delta || typeof rule.delta !== 'object' || Array.isArray(rule.delta))) bad(`paths["${glob}"].delta must be an object {files?, lines?}`);
       else if (rule.delta !== undefined) {
         known(rule.delta, ['files', 'lines'], `paths["${glob}"].delta`);

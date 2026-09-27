@@ -62,6 +62,7 @@ A folder per concept, or a layered, feature or hexagonal template chosen by tast
 ## Checks on the design
 
 - **Basis-form**, applied to the design itself: *irreducible* (no duplicate semantic owner, rule, schema or state authority that can drift); *orthogonal* (each concern changes for one reason); *spanning* (the model covers the relevant states, failures and change classes, not only today's examples); *decodable* (meaning, ownership, contracts and local checks can be found with bounded context). They are not a score, and a material trade between them needs a human decision.
+- **Pivot test**, for any core the design draws or touches (a `core` path in `devanity.rules.json`, or the stable center the phases derive): name the two or three adjacent pivots it must survive (a new channel, market, pricing model, product line) and the one it refuses. Its invariants are rigid and its content flexible, so a pivot is absorbed at the boundary (an adapter, a projection, a new optional field), never by editing an invariant. A core that survives every pivot is generic and fails; one that a named adjacent pivot breaks is too narrow. Projections (reports, exports, views, prompts) are never its source of truth.
 - **Minimality**: for each element, ask which driver needs it, which failure or change it contains, what it costs, and whether something smaller satisfies the same properties. If no driver survives, remove the element.
 - **A novel problem**: derive in this order: outcome or loss → property → invariant → one owner → the smallest boundary that preserves it → stress it → encode it → the evidence that would falsify it → the revision condition.
 - **Reject on sight**: microservices or modularity as goals; abstractions for hypothetical consumers; async without ordering and idempotency semantics; logical ownership conflated with deployment; eventual consistency without a stated invariant; domain meaning duplicated across code, schemas, docs and prompts without one authority; scalability, security or reliability claims without a scenario; a diagram offered as proof: diagrams are optional projections, and a box diagram never stands in for state, failure or contract semantics.
@@ -76,6 +77,7 @@ purpose_and_scope:
 drivers_and_critical_properties:
 semantic_model:
 state_and_invariants:
+core_and_pivots:            # only when a core is drawn: what it holds, the pivots it survives, the one it refuses
 boundaries_and_ownership:
 contracts_and_dependencies:
 repository_topology:        # only when placement is material

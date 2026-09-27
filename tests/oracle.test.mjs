@@ -360,6 +360,18 @@ describe('inject: repository rules context (F2.5)', () => {
     assert.ok(!ctx.includes('`docs/**`'), 'a path with nothing to say is not injected');
   });
 
+  test('the map: a core path is injected as core, after high-risk, and the header names rung 5', async () => {
+    const d = fresh();
+    writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: {
+      'src/ui/**': { tier: 'normal', purpose: 'React views' },
+      'core/events.py': { core: true },
+      'billing/**': { tier: 'high-risk', purpose: 'charges' } } }));
+    const ctx = (await runHook(INJECT, { input: sessionStart(d), env: baseEnv(), args: ['SessionStart'], cwd: d })).stdout;
+    assert.ok(ctx.includes('core: rung 5'), ctx);
+    const [hr, core, ui] = ['`billing/**` high-risk', '`core/events.py` normal core', '`src/ui/**` normal'].map((s) => ctx.indexOf(s));
+    assert.ok(hr > 0 && core > hr && ui > core, ctx);
+  });
+
   test('pending human decisions are listed at session start; a session in a subdirectory still gets the map', async () => {
     const d = fresh(); initRepo(d);
     writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', purpose: 'charges' } } }));
