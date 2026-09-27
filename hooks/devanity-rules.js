@@ -22,17 +22,21 @@ const DEFAULT_TESTS = ['test_*', '*_test.*', '*.test.*', '*.spec.*', 'tests/**']
 // Commands above the `execute` rung, whatever the repository declares (SPEC §7.2 (c)). `GIT` also
 // matches the global options git accepts before its subcommand (`git -C dir push`, `git -c k=v
 // push`), which a plain `git\s+push` let through.
-const GIT = '\\bgit(?:\\s+-[Cc]\\s+\\S+|\\s+--[\\w-]+(?:=\\S+)?)*\\s+';
+const ARG = '(?:"[^"]*"|\'[^\']*\'|\\S+)';
+const GIT = `\\bgit(?:\\s+-[Cc]\\s+${ARG}|\\s+--(?:git-dir|work-tree|namespace|exec-path|config-env)(?:=|\\s+)${ARG}|\\s+--?[\\w-]+(?:=${ARG})?)*\\s+`;
 const BUILTIN_COMMANDS = {
   [`${GIT}commit\\b`]: 'commit',
   [`${GIT}push\\b`]: 'commit',
-  '--force(-with-lease)?\\b': 'merge',
+  [`${GIT}push\\b[^;&|]*\\s(?:--force(?:-with-lease)?|-f)\\b`]: 'merge',   // a forced push rewrites shared history
   [`${GIT}merge\\b`]: 'merge',
   '\\bgh\\s+pr\\s+merge\\b': 'merge',
   'terraform\\s+apply': 'deploy',
   'kubectl\\s+(apply|delete)': 'deploy',
   'npm\\s+publish': 'deploy',
-  '\\bdeploy\\b': 'deploy',
+  // `deploy` as the command, or as the target of a runner; never a word inside an argument
+  // (`cat docs/deploy.md`, `grep deploy`).
+  '(?:^|[;&|(]\\s*)(?:\\S*/)?deploy(?:\\.sh)?(?=\\s|$)': 'deploy',
+  '\\b(?:npm|pnpm|yarn|bun)\\s+(?:run\\s+)?deploy\\b|\\bmake\\s+(?:\\S+\\s+)*deploy\\b': 'deploy',
 };
 
 function stripBom(text) { return String(text || '').replace(/^﻿/, ''); }

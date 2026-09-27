@@ -27,9 +27,9 @@ Install it once; the kernel applies to every coding turn without being invoked. 
 
 ```text
 1. Does it need to change?        → no: say why, NO_CHANGE
-2. Trivial and reversible?        → do it, shortest form, no ceremony
+2. Trivial and reversible?        → do it, shortest form, no ceremony (never an instruction file)
 3. Changes behavior?              → a check that fails first, then the fix
-4. Touches the high-risk class?   → propose and stop; authorization comes from outside
+4. Alters a high-risk contract?   → propose and stop; authorization comes from outside
 5. Moves a boundary or state?     → shape before code; architect when the shape is not enough
 6. Can't tell?                    → read until you can; then ask ONE thing
 ```

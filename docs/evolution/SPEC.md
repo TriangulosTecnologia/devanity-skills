@@ -47,7 +47,7 @@ O ledger (`<git-common-dir>/devanity/`, §8) continua **local e episódico**: é
 
 ### 0.5 Hooks e oracle (emenda §7.2 e §7.4)
 
-- **O oracle executa só o `check` declarado no mapa**, que é escrito por humano e passou por PR. O `check` que o agente escreve no bloco de prova é registrado e nunca executado. Num caminho sem check declarado, o status é o do agente, marcado não medido, e o `audit` propõe declarar um. Fecha o P0 da revisão (comando do agente executado sem guard) e o `VERIFIED` forjado com um check que não testa nada.
+- **O oracle executa só o `check` declarado no mapa**, que é escrito por humano e passou por PR. O `check` que o agente escreve no bloco de prova é registrado e nunca executado. Num caminho sem check declarado, o status é o do agente, marcado não medido, e o `debt` propõe declarar um (evento `unmeasured`). Fecha o P0 da revisão (comando do agente executado sem guard) e o `VERIFIED` forjado com um check que não testa nada.
 - **Furos de erro honesto, fechados:** `/devanity decide` distingue aprovar de rejeitar (um "não" não autoriza); o mapa de autoridade de comandos cobre `gh pr merge`, `git -C <dir> push` e `git commit`; uma decisão humana vale para a mudança aberta ou expira, nunca por 90 dias em qualquer sessão.
 - **Limites declarados, não perseguidos:** escrever no ledger por `cd`, no config global ou num arquivo de regras corrompido de propósito são contornos de adversário (§0.2). Ficam documentados em `docs/hooks.md` como limite.
 
@@ -328,7 +328,7 @@ Fonte única, compilada para três superfícies: contexto por caminho injetado n
 - `check`: comando que o `Stop` executa para o oráculo, lido do arquivo **como commitado em HEAD** (§0.5). É o único check que o oráculo executa; sem ele, a prova fica registrada como não medida.
 - `purpose` (≤160 caracteres) e `invariants` (lista): o mapa do repositório (§0.4), injetado em toda sessão. O dono vem do CODEOWNERS.
 - Um `tier: trivial` cujo glob cobre um arquivo de instrução (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, skills, agentes) é erro de validação (§0.3).
-- `delta`: orçamento de arquivos/linhas; excedido → o `Stop` marca `unbounded delta` e exige decisão.
+- `delta`: orçamento de arquivos/linhas por glob; excedido → o job de CI reprova (§7.5). O `Stop` não mede delta.
 - Sem arquivo: tudo é `normal`, guardas não bloqueiam, apenas anotam no ledger. O `init` e o `audit` propõem a primeira versão a partir de CODEOWNERS, nomes de diretório e testes existentes.
 - O job de CI mantém o mapa vivo: um glob que não casa com nenhum arquivo rastreado reprova, e quando o arquivo muda todo check declarado roda (§7.5).
 
@@ -340,7 +340,7 @@ Fonte única, compilada para três superfícies: contexto por caminho injetado n
 | `SubagentStart` | inject | `agent_type` = verifier → uma linha: seu contrato é `agents/verifier.md`, e, se há mudança aberta, o id e a prova a falsificar; = worker → nada; outros → o mesmo que `SessionStart` | igual |
 | `UserPromptSubmit` | mode | trata `/devanity off|on|status|pending|reset|decide …` e `stop devanity` / `normal mode`, só como mensagem inteira; os verbos de modo (`plan`, `review`…) pertencem ao skill; `decide` é o único escritor de `by: human`, `reset` só grava `ABANDONED` em contratos | silencioso |
 | `PreToolUse` (Edit, Write, MultiEdit, Bash) | guard | (a) caminho `high-risk` sem decisão humana em escopo para esse caminho (ligada à mudança aberta, ou com menos de 24 h; `no` a registra como rejeitada) → exit 2 com mensagem que nomeia a regra e como registrar a decisão; (b) Bash: comando que escreve em caminho `high-risk` (`sed -i`, `>`, `tee`, `mv`, `rm`, `git checkout --`) → mesma regra; (c) Bash: comando acima do teto de autoridade da sessão (`git commit`, `git push`, `git merge`, também com as opções globais do git antes do subcomando; `gh pr merge`; `--force`; `terraform apply`, `kubectl apply`, `npm publish`, `deploy`; lista configurável em `rules.json#commands`) → exit 2 | rules ausente/inválido → não bloqueia, anota. Detecção em Bash é heurística por padrão: é piso, e o CI de referência (§7.5) é o teto |
-| `Stop` | oracle | dispara só se a última mensagem do assistente (`last_assistant_message`, que o host entrega no payload junto com `transcript_path`; verificado em 2026-09-24) contém um bloco de certificado (§7.4). Então: worktree de HEAD em tmp **com os arquivos de teste da árvore atual sobrepostos**, roda o check que `rules.json` **em HEAD** declara para os caminhos alterados (nunca o `check:` que o agente escreveu, §0.5), exige falha; roda na árvore atual, exige sucesso; senão devolve `NOT_VERIFIED` com o motivo e bloqueia o fim do turno **uma vez** (respeita `stop_hook_active`: na segunda passagem, deixa terminar com `NOT_VERIFIED` visível). Arquivos de teste = os que casam com `rules.json#tests` (default: `test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `tests/**`) | sem git → `NOT_VERIFIED: no baseline`; nenhum check declarado → registrado como não medido, sem bloqueio, evento `unmeasured` para o `debt`; timeout configurável (default 120s) → `NOT_VERIFIED: timeout`. Nunca trava |
+| `Stop` | oracle | dispara só se a última mensagem do assistente (`last_assistant_message`, que o host entrega no payload junto com `transcript_path`; verificado em 2026-09-24) contém um bloco de certificado (§7.4). Então: worktree de HEAD em tmp **com os arquivos de teste da árvore atual sobrepostos**, roda o check que `rules.json` **em HEAD** declara para os caminhos alterados (nunca o `check:` que o agente escreveu, §0.5), exige falha; roda na árvore atual, exige sucesso; senão devolve `NOT_VERIFIED` com o motivo e bloqueia o fim do turno **uma vez** (respeita `stop_hook_active`: na segunda passagem, deixa terminar com `NOT_VERIFIED` visível). Arquivos de teste = os que casam com `rules.json#tests` (default: `test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `tests/**`) | sem git → registrado como não medido (`reason: no baseline`), sem bloqueio; nenhum check declarado → registrado como não medido, sem bloqueio, evento `unmeasured` para o `debt`; timeout configurável (default 120s) → `NOT_VERIFIED: timeout`. Nunca trava |
 
 Contrato de todos os hooks (herdado do ponytail, obrigatório):
 
@@ -349,15 +349,15 @@ Contrato de todos os hooks (herdado do ponytail, obrigatório):
 - Toda saída em JSON no formato do host; nunca texto solto em `SubagentStart`.
 - BOM UTF-8 removido antes de `JSON.parse`.
 - Caminhos com metacaracteres nunca embutidos em comandos shell; allowlist como `isShellSafe` do ponytail.
-- Windows: sem `exec` bash-only; PowerShell testado.
+- Windows: sem `exec` bash-only; os comandos do `hooks.json` são neutros de shell (um teste confere), mas o caminho `cmd /c` do oracle está escrito, não executado.
 
 ### 7.3 Sessão autônoma (vibecoding, CI, agente sem humano presente)
 
-Uma sessão é autônoma quando `DEVANITY_AUTONOMOUS=1` (e `=0` força o contrário), quando o Claude Code roda sem humano (`CLAUDE_CODE_ENTRYPOINT` começando por `sdk`, o valor de `claude -p`; `CLAUDE_CODE_SESSION_ATTENDED=0`; `CI=true`), ou quando o `rules.json` a declara para o branch. Ausência de TTY não é sinal: os hooks recebem pipes em qualquer sessão, atendida ou não (medido em F1.10). Nela:
+Uma sessão é autônoma quando `DEVANITY_AUTONOMOUS=1` (e `=0` força o contrário), quando o Claude Code roda sem humano (`CLAUDE_CODE_ENTRYPOINT` começando por `sdk`, o valor de `claude -p`; `CLAUDE_CODE_SESSION_ATTENDED=0`; `CI=true`). (Declarar autonomia por branch no `rules.json` fica fora da v1.) Ausência de TTY não é sinal: os hooks recebem pipes em qualquer sessão, atendida ou não (medido em F1.10). Nela:
 
 - **Envelope de autoridade** vem do `rules.json#autonomy` ou da variável `DEVANITY_AUTHORITY` (`observe|recommend|prepare|execute|commit`; `merge` e `deploy` nunca são concedíveis a uma sessão autônoma). Exemplo: `"autonomy": { "authority": "commit", "high-risk": "queue", "irreversible": "queue" }`.
 - **`queue`**: a decisão vai para `decisions.jsonl` com status `pending`, o slice dependente fica marcado (stub com `deferred:` ou branch separado, conforme o modo), e o trabalho não dependente continua. **`default`**: o agente toma o default recomendado e registra `by: agent-default` (só permitido para decisões reversíveis, nunca para `high-risk`).
-- **Fim da sessão**: o resumo final lista a fila de decisões pendentes com os `[DECIDE]` completos; o `SessionStart` seguinte reapresenta a fila antes de qualquer coisa.
+- **Fim da sessão**: o resumo final lista a fila de decisões pendentes com os `[DECIDE]` completos; o `SessionStart` seguinte reapresenta a fila (`Pending human decisions (n): …`) antes de qualquer coisa.
 - **Nenhum comando do devanity concede autoridade ao agente**: o guard só aceita decisões registradas com `by: human` (via `/devanity decide <id> <opção>` ou edição humana do ledger) ou pré-concedidas no envelope. É um piso contra o erro honesto, não uma fronteira contra quem tenta contornar (§0.2): a fronteira vinculante é o CI (§7.5).
 
 ### 7.4 Certificado de prova
@@ -384,7 +384,7 @@ Job de exemplo (GitHub Actions) que o `init` oferece: valida `rules.json`, mant�
 
 | Instalação | Guardas | Ledger |
 |---|---|---|
-| Plugin no repositório (`.claude-plugin` do repo ou `devanity.rules.json` presente) | ligadas | ligado |
+| `devanity.rules.json` presente e válido | ligadas | ligado |
 | Instalação pessoal sem `rules.json` | anotam, não bloqueiam | ligado |
 | `DEVANITY_GUARDS=off` ou `config.json { "guards": false }` | desligadas | conforme config |
 

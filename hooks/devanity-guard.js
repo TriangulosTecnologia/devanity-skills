@@ -205,8 +205,13 @@ function evaluate(payload, env) {
     // Autonomy envelope (SPEC §7.3 `queue`): a blocked high-risk edit joins the pending queue so
     // the end-of-session summary can list it. `by: agent` marks who queued it; it authorizes nothing.
     if (enforce && auth.autonomous && f.pending) {
-      const exists = ledger.pendingDecisions(root).some((d) => d.path === f.pending.path || d.id === f.pending.id);
-      if (!exists) ledger.append(root, 'decisions', f.pending, sid);
+      const all = ledger.decisions(root);
+      const exists = all.some((d) => d.status === 'pending' && (d.path === f.pending.path || d.id === f.pending.id));
+      // Never append over an answered id: a later pending record with the same id would become the
+      // latest and silently revoke the human's decision (latest per id wins).
+      let id = f.pending.id;
+      for (let k = 2; all.some((d) => d.id === id && d.status !== 'pending'); k++) id = `${f.pending.id}-${k}`;
+      if (!exists) ledger.append(root, 'decisions', { ...f.pending, id }, sid);
     }
   }
   if (!enforce) return { allow: true, reason: 'not enforcing' };

@@ -30,8 +30,14 @@ const CHANGE_FIELD_MAX_CHARS = 60;
 // The host caps plain SessionStart stdout at 10,000 chars; below this budget every section fits.
 const OUTPUT_BUDGET_CHARS = 9500;
 
+// The repository root for cwd (a session may start in a subdirectory), else cwd itself.
+function repoRoot(cwd) {
+  const r = require('child_process').spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
+  return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : cwd;
+}
+
 function rulesContext(cwd) {
-  const loaded = rulesMod.loadRules(cwd);
+  const loaded = rulesMod.loadRules(repoRoot(cwd));
   if (!loaded.present || loaded.errors.length) return '';
   const r = loaded.rules;
   // The map (SPEC §0.4): one line per path that has something to say (a purpose, invariants, or
@@ -75,11 +81,15 @@ function phaseLine(c) {
 
 // The "Open change" section for SessionStart and non-verifier subagents, or '' without one.
 function changeContext(cwd) {
+  // The queue an unattended session left (SPEC §7.3) comes back first thing, open change or not.
+  const pending = ledger.pendingDecisions(cwd);
+  const queue = pending.length ? `Pending human decisions (${pending.length}): ${pending.slice(0, 5).map((d) => `${clip(d.id, 30)} (${clip(d.path || 'no path', 40)})`).join(', ')}${pending.length > 5 ? ', …' : ''}. Record one with /devanity decide <id> <option>.` : '';
   const c = ledger.openContract(cwd);
-  if (!c) return '';
+  if (!c) return queue;
   const lines = [`## Open change ${clip(c.id)}`, `phase: ${c.phase} · pending: ${clip(c.pending) || '0'}`];
   for (const k of ['intent', 'scope', 'forbidden', 'proof']) if (c[k]) lines.push(`${k}: ${clip(c[k])}`);
   lines.push(phaseLine(c));
+  if (queue) lines.push(queue);
   const text = lines.join('\n');
   return text.length > CHANGE_CONTEXT_MAX_CHARS ? text.slice(0, CHANGE_CONTEXT_MAX_CHARS - 1) + '…' : text;
 }

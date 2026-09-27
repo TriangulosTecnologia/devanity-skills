@@ -147,6 +147,29 @@ describe('oracle: verifier sovereignty (SPEC §0.5)', () => {
   });
 });
 
+describe('oracle: HEAD rules decide the whole judgment (gate review)', () => {
+  const declareCommit = (d, extra = {}) => { writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'mod.js': { tier: 'normal', check: 'node --test mod.test.js' } }, ...extra })); };
+  test('a working-tree edit of the test globs does not turn a no-oracle claim into VERIFIED', async () => {
+    const d = fresh(); initRepo(d);
+    writeFileSync(join(d, 'mod.js'), 'module.exports = (a, b) => a - b;\n'); declareCommit(d); commitAll(d);
+    writeFileSync(join(d, 'mod.js'), 'module.exports = (a, b) => a + b;\n');
+    writeFileSync(join(d, 'mod.test.js'), "const t=require('node:test');t('always green',()=>{});\n");
+    declareCommit(d, { tests: ['nothing/**'] });
+    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified(null)), env: baseEnv(), cwd: d });
+    assert.equal(r.code, 0, r.stderr);
+    assert.ok(parseBlock(r.stdout).includes(oracle.REASONS.passedBefore), r.stdout);
+  });
+  test('deleting the rules file in the working tree does not switch enforcement off', async () => {
+    const d = fresh(); initRepo(d);
+    writeFileSync(join(d, 'mod.js'), 'module.exports = (a, b) => a - b;\n'); declareCommit(d); commitAll(d);
+    writeFileSync(join(d, 'mod.js'), 'module.exports = (a, b) => a + b;\n');
+    writeFileSync(join(d, 'mod.test.js'), "const t=require('node:test');t('always green',()=>{});\n");
+    rmSync(join(d, 'devanity.rules.json'));
+    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified(null)), env: baseEnv(), cwd: d });
+    assert.ok(parseBlock(r.stdout).includes(oracle.REASONS.passedBefore), r.stdout || 'not measured');
+  });
+});
+
 describe('oracle: measurement', () => {
   test('(a) a real oracle: the declared check fails on HEAD + tests overlay and passes now -> stays VERIFIED, proof recorded, no block', async () => {
     const d = seedBuggyRepo('node --test mod.test.js');
@@ -335,6 +358,18 @@ describe('inject: repository rules context (F2.5)', () => {
     assert.ok(ctx.includes('`billing/**` high-risk: charges and refunds; invariants: amounts are integer cents; check: pytest tests/billing'), ctx);
     assert.ok(ctx.includes('`src/ui/**` normal: React views; no data access here'), ctx);
     assert.ok(!ctx.includes('`docs/**`'), 'a path with nothing to say is not injected');
+  });
+
+  test('pending human decisions are listed at session start; a session in a subdirectory still gets the map', async () => {
+    const d = fresh(); initRepo(d);
+    writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', purpose: 'charges' } } }));
+    mkdirSync(join(d, 'billing', 'sub'), { recursive: true });
+    const dir = join(d, '.git', 'devanity'); mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'decisions.jsonl'), JSON.stringify({ ts: new Date().toISOString(), id: 'D-billing', status: 'pending', by: 'agent', path: 'billing/**' }) + '\n');
+    const sub = join(d, 'billing', 'sub');
+    const r = await runHook(INJECT, { input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: sub }), env: baseEnv(), args: ['SessionStart'], cwd: sub });
+    assert.ok(r.stdout.includes('`billing/**` high-risk: charges'), 'the map is found from the repository root');
+    assert.ok(r.stdout.includes('Pending human decisions (1): D-billing (billing/**)'), r.stdout.slice(-400));
   });
 
   test('size cap: many globs are hard-truncated at 1600 chars with an ellipsis', async () => {

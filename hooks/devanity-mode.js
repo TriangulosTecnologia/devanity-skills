@@ -86,7 +86,7 @@ function pendingList(cwd) {
 }
 
 // `/devanity decide <id> <option> [--path <glob>]`. An unknown id must name what it authorizes.
-const REJECT = /^(?:no|n|não|nao|reject(?:ed)?|deny|denied|refuse[ds]?)\.?$/i;
+const REJECT = /^(?:no|n|nope|não|nao|reject(?:ed)?|deny|denied|refuse[ds]?|rejeit(?:ar|o|ad[oa])|negad[oa]|negar|recus(?:ar|o|ad[oa]))\.?$/i;
 function decide(args, cwd, sessionId) {
   const toks = String(args || '').trim().split(/\s+/).filter(Boolean);
   let pathGlob = null;

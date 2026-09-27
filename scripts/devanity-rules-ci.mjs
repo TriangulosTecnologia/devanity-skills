@@ -9,13 +9,17 @@
 //    found next to this script inside the plugin, or under --plugin-dir / DEVANITY_PLUGIN_DIR);
 // 2. computes the files changed between the merge base of --base (default origin/main, then main)
 //    and HEAD, with added lines per file (`git diff --numstat`);
-// 3. per touched path: delta budgets (files and added lines per glob), the distinct `check` of
-//    every touched high-risk path is run, and a `devanity-proof:` block is required in the PR body
-//    (--pr-body-file, or GITHUB_EVENT_PATH pull_request.body) when any touched path is tier normal or
-//    high-risk (the rung-3+ proxy) unless --no-proof-required;
-// 4. --self-check: the dogfood mode for the plugin repository itself: validates its rules and
-//    dry-runs steps 2–3 on HEAD~1..HEAD without requiring a PR body (a shallow clone with no parent
-//    validates the rules and reports an empty change set).
+// 3. the map stays alive: every `paths` glob must match a tracked file;
+// 4. per touched path: delta budgets (files and added lines per glob); the distinct `check` of
+//    every touched high-risk path runs, and every declared check runs when the rules file changed;
+//    a `devanity-proof:` block is required in the PR body (--pr-body-file, or GITHUB_EVENT_PATH
+//    pull_request.body) when any touched path is tier normal or high-risk (the rung-3+ proxy)
+//    unless --no-proof-required;
+// 5. verifier sovereignty: a diff that removes or rewrites lines of existing tests, or changes a
+//    declared check/tier/test glob, together with code needs a `verifier-change:` line in the body;
+// 6. --self-check: the dogfood mode for the plugin repository itself: validates its rules and runs
+//    steps 2–5 on HEAD~1..HEAD (the checks execute) without requiring a PR body (a shallow clone
+//    with no parent validates the rules and reports an empty change set).
 //
 // Exit 1 with a list of failures, 0 otherwise. Node >= 18, no dependencies.
 
@@ -159,6 +163,16 @@ if (base && rulesMod && !loaded.errors.length) {
   // verifier sovereignty (SPEC §0.2): a diff that removes or rewrites lines of existing tests
   // together with code is reviewed as a verifier change, declared in the PR body
   const verifierEdits = touched.filter((t) => t.deleted > 0 && rulesMod.isTestPath(rules, t.path)).map((t) => t.path);
+  // The rules file is a verifier too: a changed `check`, `tier` or `tests` is a change to what judges.
+  if (rulesChanged) {
+    const mb = git('merge-base', base, 'HEAD');
+    const before = git('show', `${mb.ok && mb.out ? mb.out : base}:${rulesMod.FILE}`);
+    const judges = (text) => {
+      const raw = (() => { try { return JSON.parse(text); } catch (e) { return {}; } })();
+      return JSON.stringify([Object.entries(raw.paths || {}).map(([g, r]) => [g, r && r.check, r && r.tier]).sort(), raw.tests || null]);
+    };
+    if (!before.ok || judges(before.out) !== judges(readFileSync(join(root, rulesMod.FILE), 'utf8'))) verifierEdits.push(rulesMod.FILE);
+  }
   const codeTouched = touched.some((t) => !rulesMod.isTestPath(rules, t.path) && t.path !== rulesMod.FILE && !/\.md$/i.test(t.path));
   if (verifierEdits.length && codeTouched) {
     const body = selfCheck ? null : prBody();

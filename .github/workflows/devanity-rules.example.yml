@@ -17,9 +17,8 @@ jobs:
     # This job lives in the plugin repository as an example; remove the `if` in your copy.
     if: github.repository != 'TriangulosTecnologia/devanity-skills'
     env:
-      # Pin to a release tag or a commit sha of the plugin before relying on this job.
+      # Pin to a release tag or a full 40-character commit sha of the plugin before relying on this job.
       DEVANITY_REF: main
-      DEVANITY_PLUGIN_DIR: ${{ runner.temp }}/devanity
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,8 +26,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # Add here the setup steps your declared checks need (the same ones your existing CI uses:
+      # a language toolchain, a service container). The job runs those checks on this runner.
       - name: Fetch the devanity plugin
-        run: git clone --depth 1 --branch "$DEVANITY_REF" https://github.com/TriangulosTecnologia/devanity-skills "$DEVANITY_PLUGIN_DIR"
+        # A fetch by ref works for a branch, a tag and a commit sha alike (`clone --branch` takes no sha).
+        run: |
+          dir="$RUNNER_TEMP/devanity"
+          git init -q "$dir"
+          git -C "$dir" fetch -q --depth 1 https://github.com/TriangulosTecnologia/devanity-skills "$DEVANITY_REF"
+          git -C "$dir" checkout -q FETCH_HEAD
       - name: devanity rules
         # The PR body is read from the event payload (GITHUB_EVENT_PATH); no extra input needed.
-        run: node "$DEVANITY_PLUGIN_DIR/scripts/devanity-rules-ci.mjs" --base "origin/${{ github.base_ref }}"
+        run: node "$RUNNER_TEMP/devanity/scripts/devanity-rules-ci.mjs" --base "origin/${{ github.base_ref }}"

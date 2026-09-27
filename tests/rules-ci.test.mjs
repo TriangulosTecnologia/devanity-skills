@@ -149,6 +149,20 @@ describe('rules CI', () => {
     assert.equal(r.code, 0, r.out);
   });
 
+  test('verifier sovereignty: weakening a declared check together with code needs a verifier-change line too', () => {
+    const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+    write(d, 'devanity.rules.json', JSON.stringify({ version: 1, paths: { 'src/**': { tier: 'normal', check: 'node src/t.js' } } }));
+    write(d, 'src/a.js', 'module.exports = 1;\n'); write(d, 'src/t.js', "process.exit(require('./a.js') === 1 ? 0 : 1);\n");
+    commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature');
+    write(d, 'src/a.js', 'module.exports = 2;\n');
+    write(d, 'devanity.rules.json', JSON.stringify({ version: 1, paths: { 'src/**': { tier: 'normal', check: 'true' } } }));
+    commitAll(d, 'change');
+    const body = join(temp, `rbody${n}.md`);
+    writeFileSync(body, 'Change.\n```\ndevanity-proof:\n  check: true\n  failed_before: yes\n  passed_after: yes\n  status: VERIFIED\n  pending: 0\n```\n');
+    const r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+    assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*devanity\.rules\.json/);
+  });
+
   // When HEAD touches hooks/**, the self-check runs this repository's own check (the whole test
   // suite), which would reach this test again: the nested run skips it.
   test('--self-check passes on this repository', { skip: Boolean(process.env.DEVANITY_SELF_CHECK_NESTED) }, () => {

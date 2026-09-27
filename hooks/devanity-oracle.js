@@ -293,7 +293,9 @@ function decide(payload, env = process.env) {
   if (!found) return { action: 'exit' };
   const agent = found.fields;
   const agentStatus = String(agent.status || '').trim();
-  const loaded = rulesMod.loadRules(root);
+  // The whole judgment (enforcing or not, the test overlay, the check) comes from the rules a human
+  // reviewed: HEAD's, or the working tree's before the first commit.
+  const loaded = info ? declaredRules(root, info.head) : rulesMod.loadRules(root);
   const enforce = rt.guardsEnforcing(loaded, env);
   const pending = agent.pending !== undefined ? agent.pending : String(ledger.pendingDecisions(root).length);
   // A proof without a `contract` field links to the contract declared in the same message.
@@ -313,7 +315,7 @@ function decide(payload, env = process.env) {
   // recording there is no authority to block; with no declared check there is nothing the agent
   // could fix, so the claim is recorded as unmeasured and `debt` proposes declaring one.
   const paths = info ? changedPaths(root, info.head) : [];
-  const check = info ? ruleCheckFor(declaredRules(root, info.head).rules, paths) : null;
+  const check = info ? ruleCheckFor(loaded.rules, paths) : null;
   if (!enforce || !info || !check) {
     const reason = !info ? REASONS.noBaseline : !check ? REASONS.noDeclaredCheck : null;
     ledger.append(root, 'proofs', { ...base, check, failed_before: null, passed_after: null, status: agentStatus, measured: null, reason }, sid);

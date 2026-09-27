@@ -20,7 +20,7 @@ The hooks run only when devanity is installed as a Claude Code plugin (`hooks/ho
 |---|---|---|
 | `contracts.jsonl` | `Stop` (a `devanity-contract:` block); `/devanity reset` | `{id, phase, intent?, scope?, forbidden?, proof?, pending?, reason?}`; the latest record per id wins field by field |
 | `decisions.jsonl` | `PreToolUse` guard (`by: agent`, `status: pending`); `/devanity decide` (the only hook that writes `by: human`) | `{id, path?, kind, status: pending\|decided\|rejected, by, chosen?, contract?}`; latest per id wins |
-| `proofs.jsonl` | `Stop` oracle | `{kind: 'proof', contract, check, head, failed_before, passed_after, status, agent_status, pending, measured, reason}` |
+| `proofs.jsonl` | `Stop` oracle | `{kind: 'proof', contract, check, agent_check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason}` |
 | `deferrals.jsonl` | nothing yet (`debt` reads the `deferred:` markers in the code instead) | reserved |
 | `events.jsonl` | guard, oracle, inject | `{kind: blocked \| would_block \| false_ready \| unmeasured \| rules_invalid \| guard_payload_missing \| inject_truncated, …}` |
 
@@ -67,7 +67,7 @@ No prompt text, no diffs, no file contents: metadata only, and nothing is sent a
 
 ## Injection (`devanity-inject.js`)
 
-On `SessionStart` (startup, resume, clear, compact) and on `SubagentStart` for agents other than the verifier and the worker, the kernel is followed by the repository rules (when `devanity.rules.json` is present and valid, see below) and then, when a change is open, by its summary:
+On `SessionStart` (startup, resume, clear, compact) and on `SubagentStart` for agents other than the verifier and the worker, the kernel is followed by the repository rules (when `devanity.rules.json` at the repository root is present and valid, see below; a session started in a subdirectory still finds it), then by the queue of pending human decisions an unattended session left (`Pending human decisions (n): <id> (<path>), …`, at most five named), and, when a change is open, by its summary:
 
 ```
 ## Open change C-2026-09-24-1
@@ -142,9 +142,9 @@ Neither exists without git: the reply says `no ledger here`.
 | (c) | A Bash command needs more authority than the session holds (`git push` → `commit`, `--force` / `git merge` → `merge`, `terraform apply` / `kubectl apply` / `npm publish` / `deploy` → `deploy`, plus `rules.json#commands`) | block |
 | built-in | Any tool that would rewrite `devanity.rules.json` or `.git/devanity/**` | treated as `high-risk` whatever the rules say: rewriting them is the only way an agent could grant itself authority |
 
-Everything else is allowed. Paths outside the repository are ignored. A high-risk path is only unblocked by a decision record with `status: decided`, `by: human`, a `path` (glob or prefix) that covers it, and still in scope (its change open, or younger than 24 hours); `by: agent`, `by: agent-default`, rejected and pending records authorize nothing.
+Everything else is allowed. Paths outside the repository are ignored. A high-risk path is only unblocked by a decision record with `status: decided`, `by: human`, a `path` (glob or prefix) that covers it, and still in scope (given for a change: while that change is open; given with no open change: for 24 hours); `by: agent`, `by: agent-default`, rejected and pending records authorize nothing.
 
-Command authority (`hooks/devanity-rules.js` `BUILTIN_COMMANDS`, plus `rules.json#commands`): `git commit` and `git push` need `commit`; `git merge`, `gh pr merge` and `--force` need `merge`; `terraform apply`, `kubectl apply|delete`, `npm publish` and `deploy` need `deploy`. The git patterns also match git's global options before the subcommand (`git -C dir push`, `git -c k=v push`).
+Command authority (`hooks/devanity-rules.js` `BUILTIN_COMMANDS`, plus `rules.json#commands`): `git commit` and `git push` need `commit`; `git merge`, `gh pr merge` and a forced push (`--force`, `--force-with-lease`, `-f`) need `merge`; `terraform apply`, `kubectl apply|delete`, `npm publish` and `deploy` as a command (`./deploy.sh`, `npm run deploy`, `make deploy`) need `deploy`. The git patterns also match git's global options before the subcommand (`git -C dir push`, `git -C "my dir" push`, `git -c k=v push`, `git --git-dir .git push`, `git -P push`). A word inside an argument never counts: `cat docs/deploy.md`, `npm install --force` and `rm --force build/x` need nothing.
 
 The session's authority is, in order: `DEVANITY_AUTHORITY` when it names a valid rung; otherwise `rules.json#autonomy.authority` in an autonomous session (see SPEC §7.3) or `rules.json#defaults.authority` (default `commit`). An autonomous session is capped at `commit`: `merge` and `deploy` are never reachable unattended, whatever the env says.
 
@@ -215,7 +215,7 @@ devanity-proof:
 
 1. **`status` does not start with `VERIFIED`** (an honest `NOT_VERIFIED`, or nothing claimed): the agent's values are recorded in the ledger (`proofs.jsonl`, `measured: null`) and the turn ends. The check is never re-run.
 2. **`VERIFIED`, and the oracle cannot measure it**: outside git (no baseline, no ledger) or with guards recording, the claim is recorded and never blocked. Guards enforce when `DEVANITY_GUARDS=on`, or, absent `DEVANITY_GUARDS=off` and `config.json { "guards": false }`, when `devanity.rules.json` is present and valid (SPEC §7.6).
-3. **The check** is only ever one the repository declares (verifier sovereignty, SPEC §0.5): the `check` of the most specific high-risk (then normal) rule matched by a changed path (`git diff --name-only HEAD` plus untracked files), read from `devanity.rules.json` **as committed at HEAD**, the version a human reviewed (before the first commit, the working tree's). The `check:` the agent wrote in its block is recorded as `agent_check` and never executed, and a working-tree edit of the rules never chooses the check that judges the same change. With no declared check for the changed paths, the claim is recorded as unmeasured (`reason: no declared check`), never blocked, and an `unmeasured` event lets `debt` propose declaring one.
+3. **The judgment comes from the reviewed rules** (verifier sovereignty, SPEC §0.5): whether guards enforce, the test globs of the overlay and the check are all read from `devanity.rules.json` as committed at HEAD, so deleting or editing the file in the working tree changes none of them. **The check** is only ever one the repository declares: the `check` of the most specific high-risk (then normal) rule matched by a changed path (`git diff --name-only HEAD` plus untracked files), read from `devanity.rules.json` **as committed at HEAD**, the version a human reviewed (before the first commit, the working tree's). The `check:` the agent wrote in its block is recorded as `agent_check` and never executed, and a working-tree edit of the rules never chooses the check that judges the same change. With no declared check for the changed paths, the claim is recorded as unmeasured (`reason: no declared check`), never blocked, and an `unmeasured` event lets `debt` propose declaring one.
 4. **The run**, within one budget (`DEVANITY_ORACLE_TIMEOUT_MS`, default 120 s; the `Stop` entry in `hooks.json` allows 150 s, raise both together):
    - baseline = `git worktree add --detach <tmp> HEAD`; on an unborn repository (no commit yet) the baseline is an empty directory;
    - overlay = every changed or untracked file that matches the test globs (`rules.json#tests`, default `test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `tests/**`) copied into the baseline at the same relative path;
@@ -265,7 +265,7 @@ node scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-
 5. Verifier sovereignty (SPEC §0.2): when the diff removes or rewrites lines of existing test files (the `tests` globs) together with code, the PR body must carry a `verifier-change: <why>` line, so review treats the change to the checks separately from the change they judge. Adding tests next to a fix is not a verifier change.
 6. Exit 1 with the list of failures, 0 otherwise.
 
-`--self-check` is the dogfood mode: this repository's own `devanity.rules.json` is validated and steps 2–5 are dry-run on `HEAD~1..HEAD` without a PR body (`.github/workflows/validate.yml` runs it; a shallow clone with no parent validates the rules and reports an empty change set).
+`--self-check` is the dogfood mode: this repository's own `devanity.rules.json` is validated and steps 2–5 run on `HEAD~1..HEAD` (the checks execute) without a PR body (`.github/workflows/validate.yml` runs it; a shallow clone with no parent validates the rules and reports an empty change set).
 
 ### Wiring it in a consumer repository
 
