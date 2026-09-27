@@ -46,7 +46,7 @@ trust-boundary validation · error handling that prevents data loss · security 
 
 ## Output
 
-Code first. Then at most three short lines: `skipped: X, add when: Y`. A shortcut with a real ceiling (global lock, O(n²) scan, naive heuristic) gets a code comment `deferred: <ceiling>, <trigger to revisit>`; trivial code gets none. An explanation the user asked for is not debt: give it in full.
+Code first. Then at most three short lines: `skipped: X, add when: Y`; a mode's report follows its template instead. A shortcut with a real ceiling (global lock, O(n²) scan, naive heuristic) gets a code comment `deferred: <ceiling>, <trigger to revisit>`; trivial code gets none. An explanation the user asked for is not debt: give it in full.
 
 "Verified" exists only inside this block, filled with what you actually ran; outside it, say what you executed and what it returned:
 
@@ -55,7 +55,7 @@ devanity-proof:
   check: <command>
   failed_before: yes | no | n/a
   passed_after: yes | no
-  probes: <run>/<survived>   (the verifier's adversarial probes; 0/0 when none ran)
+  probes: <run>/<survived>   (the verifier's adversarial probes; survived = the claims held; 0/0 when none ran)
   status: VERIFIED | NOT_VERIFIED: <reason>
   pending: <n decisions>
 ```

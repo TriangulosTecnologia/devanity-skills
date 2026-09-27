@@ -10,10 +10,10 @@ Probe NUL-safe, over tracked and untracked files alike:
 
 ```txt
 { git ls-files -z <scope…>; git ls-files -z --others --exclude-standard <scope…>; } | tr '\0' '\n' | grep -c .   # files
-{ git ls-files -z <scope…>; git ls-files -z --others --exclude-standard <scope…>; } | xargs -0 cat | wc -l       # lines, one total
+{ git ls-files -z <scope…> <excl…>; git ls-files -z --others --exclude-standard <scope…> <excl…>; } | xargs -0 cat | wc -l   # lines, one total
 ```
 
-`<scope…>` is one pathspec argument per path, never one quoted string. Binary and generated files are listed with that reason, and never line-counted or swept.
+`<scope…>` is one pathspec argument per path, never one quoted string. Binary and generated files (lockfiles, build output, vendored, snapshots, `linguist-generated` in `.gitattributes`) are listed with that reason, never swept, and kept out of every line count: `<excl…>` is one `':(exclude)<glob>'` per such path.
 
 The contract is exhaustive: every file read, every syndrome applied, every dimension scored with a cited check. Past about 100 files or 30k lines it degrades silently. Then propose 2–4 sub-scopes along seams (package, layer, domain) as a `scope` decision (a menu when interactive, `reference/claude-code.md`), and audit the one chosen. Narrowing hides what lives between sub-scopes, such as duplication across them and cycles between them. So still run any repository-wide mechanical check at full width, and list the cross-scope checks you did not run under Coverage. An instruction scope past about 15 surfaces batches the same way: every surface inventoried, the unread ones `pending (batch k)`, the options bounded `audit instructions <directory>` batches under the manifest rule (`reference/baseline.md`); the run that finishes the last batch owes the verdict.
 
@@ -26,7 +26,7 @@ A surface is one file; for JSDoc/TSDoc, one file's doc blocks, whose claims tag 
 - A named target absent from disk → `absent`, and stop. An unreadable one is `absent (unreadable: <reason>)`.
 - No surfaces at all does not end the run: each rule in force with no agent-legible home and no enforcement is a finding. The absence bounds the syndromes, never reconciliation or severity.
 - `### Surfaces found / reviewed` lists every surface the Deep baseline discovers as `reviewed` (enforced or prose-only, context cost LOW|MEDIUM|HIGH) or `absent`. One missing from the list is a defect of the run; the verdict is owed only when every one is dispositioned.
-- A fix inside one surface runs as `/devanity improve <path>`; one that writes a second file, as `/devanity improve <Key>`.
+- A fix inside one surface runs as `/devanity improve <path>`, and so does one that writes a missing home: its `fix:` names the new file's path, which its Key carries. One that edits a second file runs as `/devanity improve <Key>`.
 
 ## Steps
 
@@ -48,21 +48,21 @@ A surface is one file; for JSDoc/TSDoc, one file's doc blocks, whose claims tag 
 Change frequency, from `git log` alone:
 
 ```txt
-git log --since=12.months --no-merges --format= --name-only -- <scope…> | grep . | sort | uniq -c | sort -rn | head -20
+git log -n 300 --no-merges --format= --name-only -- <scope…> | grep . | grep -Fxf <(git ls-files) | sort | uniq -c | sort -rn | head -20
 ```
 
-Priority is frequency × complexity (the ratchet's metric when one runs, else line count). A shallow clone (`git rev-parse --is-shallow-repository`) or a history younger than the window makes frequency `UNKNOWN`; never extrapolate.
+The window is the last 300 commits from HEAD, never a date relative to today, so the same HEAD ranks the same; paths that no longer exist drop out. Fewer commits than the window → the ranking covers the whole history; say so. Priority is frequency × complexity (the ratchet's metric when one runs, else line count, generated files excluded). A shallow clone (`git rev-parse --is-shallow-repository`) makes frequency `UNKNOWN`; never extrapolate.
 
 ## Map proposal
 
 Draft or amend `devanity.rules.json` (`reference/rules.schema.json`): one entry per path whose rule differs from the defaults, each field with its evidence.
 
-- `tier`: `high-risk` for paths whose owners, names or findings put them in the class; `trivial` for docs and generated output, never for an instruction surface (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, skill, mode and agent files), which is `normal` at least.
-- `check`: a command the repository already runs (CI, package scripts), never invented. Every high-risk path, and every path where this run found `focused check: none`, gets one or a line saying none exists: the Stop oracle runs only the declared check.
+- `tier`: set by directory (`src/billing/**`); a file glob only for an exception inside one. `high-risk` where a change alters a guarded contract (the membership test of `reference/quality.md`, Severity), never every file of a high-risk domain: its docs and fixtures take their own tier. `trivial` for docs and generated output, never for an instruction surface (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, skill, mode and agent files), which is `normal` at least.
+- `check`: a command the repository already runs (CI, package scripts), never invented, and one the CI job can run on its runner: one that needs a service the job does not provide (a database, docker) is replaced by the narrower command that runs without it, or by none. Every high-risk path, and every path with no check that could fail for it, gets one, or a report line saying none exists and why (the schema has no field for it): the Stop oracle runs only the declared check.
 - `purpose`: one line, what the path is, in the repository's own words (a README, an ADR).
 - `invariants`: what never changes there, each from a test, an ADR, a rule in force or a finding; none found → omit it, never guess.
 - Owners stay in `CODEOWNERS`, never in the map. `tests` globs only when the naming differs from the defaults.
-- Each glob matches a tracked file (`git ls-files -- '<glob>'`): the CI job refuses a dead path, and a check that does not run.
+- Each glob matches a tracked file under the loader's glob semantics, which a `git ls-files` pathspec does not share: once the file is on disk, `node "${CLAUDE_PLUGIN_ROOT}/scripts/devanity-rules-ci.mjs" --self-check` (one parent commit needed) refuses a dead path, as the CI job does. Until then the match is `NOT_RUN`.
 
 Show the whole file. The guards read it, so writing it is a hook-affecting change: this run never writes it.
 
@@ -71,7 +71,7 @@ Show the whole file. The guards read it, so writing it is a hook-affecting chang
 A ratchet freezes the legacy in a baseline and fails only what gets worse. Propose one, as a finding, for each class a gate can decide that recurs or sits in a top hotspot:
 
 - **Tool:** one the repository already runs first; otherwise the stack's standard (Foundations, `reference/quality.md`). It is the repository's dependency, proposed for its PR; devanity never adds one.
-- **Threshold:** measured, never a default. Run the metric over the scope, cite the distribution (median, p90, max), and set the limit where only genuine outliers report. Today's outliers go into the baseline, never into a looser limit.
+- **Threshold:** measured, never a default. Run the metric over the scope, cite the distribution (median, p90, max), and set the limit where only genuine outliers report. Today's outliers go into the baseline, never into a looser limit. A flat distribution with no outliers → the limit is today's max, and the baseline is empty.
 - **Where it fires:** a CI step, or the map's `check`. A new dependency or a CI change is a trade: propose and stop.
 
 ## Output
@@ -166,7 +166,7 @@ Anything altering the billing path, `sumLineItems` included (G-003).
 
 ### Map proposal
 `{ "version": 1, "paths": { "src/payments/**": { "tier": "high-risk", "check": "pnpm test --filter payments", "purpose": "order totals, refunds and payment capture", "invariants": ["money is integer cents"] } } }`
-Evidence: tier, G-001 (billing arithmetic); check, the command the CI test job runs; purpose, src/payments/README.md:1; invariant, CLAUDE.md:31, pending G-004; the glob matches 14 tracked files.
+Evidence: tier, G-001 (billing arithmetic); check, the command the CI test job runs; purpose, src/payments/README.md:1; invariant, CLAUDE.md:31, pending G-004; glob match NOT_RUN until the file is written (self-check).
 
 ### Ratchets
 - **[P2][trade][G-005][pattern-hygiene][enforcement] Function complexity unbounded in `src/payments`**
@@ -177,4 +177,73 @@ Evidence: tier, G-001 (billing arithmetic); check, the command the CI test job r
 
 ### First safe improvement
 `/devanity improve G-001`: high-risk class, so it proposes the patch and stops at G-003.
+```
+
+## Example: instruction scope
+
+`audit instructions` in a repository with a 412-line root `CLAUDE.md`, no `AGENTS.md`, and a README that says the team also works in Codex.
+
+```md
+### Verdict AUDIT_BACKLOG
+
+### Scope audited
+instruction surfaces, whole repository (Deep inventory: 1 on disk)
+
+### Surfaces found / reviewed
+- `CLAUDE.md` — reviewed: prose-only, 412 lines, context cost HIGH
+- `AGENTS.md`, `.claude/rules/**`, `.github/copilot-instructions.md`, `.cursorrules`, skill files — absent
+
+### Coverage
+Read CLAUDE.md 412/412; checks: the instruction syndromes, claim diff CLAUDE.md vs package.json scripts and ci.yml. Not checked: nothing in scope.
+
+### Baseline
+Enforced: lint and tests (CI). Prose-only: every rule in CLAUDE.md. Absent: AGENTS.md, pre-commit hooks, devanity.rules.json.
+
+### Dimension status
+| Dimension | Status | Evidence |
+| --- | --- | --- |
+| compressibility | NOT_RELEVANT | no code in an instruction scope |
+| executable-spec | NOT_RELEVANT | no code in an instruction scope |
+| co-located-spec | NOT_RELEVANT | no `*.spec.md` or doc blocks among the surfaces |
+| verification-loop | NOT_RELEVANT | no code in an instruction scope |
+| boundary-integrity | NOT_RELEVANT | no code in an instruction scope |
+| pattern-hygiene | NOT_RELEVANT | no code in an instruction scope |
+| debt-containment | NOT_RELEVANT | no code in an instruction scope |
+| instruction-hygiene | BAD | open P1 G-001, G-002 |
+
+### Foundations
+Understandability BAD · every other Foundation NOT_RELEVANT: the scope holds no artifact it governs.
+
+### Hotspots
+`CLAUDE.md` 31 commits × 412 lines.
+
+### Required fixes
+- **[P1][dominant][G-001][instruction-hygiene][prose] `CLAUDE.md` grown into a manual, with a stale command**
+  - fix: cut it to what only Claude needs, each removed block replaced by a pointer to its home  ·  CLAUDE.md:88
+  - Key: CLAUDE.md:Testing:instruction-hygiene:manual-growth
+  - why: claim diff: CLAUDE.md:88 runs `npm run test:unit`, which package.json does not define; lines 210–370 repeat README.md's setup. 412 lines against the 200-line bound.
+  - basis: checked: every removed block has a home (README.md, or AGENTS.md after G-002); one file; no rule dropped.
+- **[P1][dominant][G-002][instruction-hygiene][prose] No home Codex reads for the rules in force**
+  - fix: create `AGENTS.md` holding the four cross-tool rules of CLAUDE.md:12–30  ·  AGENTS.md (new)
+  - Key: AGENTS.md:(new):instruction-hygiene:missing-home
+  - why: README.md:5 names Codex, which reads AGENTS.md and never CLAUDE.md: its sessions run with none of the rules.
+  - basis: checked: one new file whose content exists; propagation, not an empty axis (`reference/quality.md`, Basis-form).
+
+### Suggested improvements
+none
+
+### Suggested sequence
+G-002, then G-001 (its pointers target the new AGENTS.md).
+
+### Do-not-touch without approval
+none
+
+### Map proposal
+none — no surface's rule differs from the defaults
+
+### Ratchets
+none — no gate in this stack decides instruction bloat
+
+### First safe improvement
+`/devanity improve AGENTS.md`: creates the missing home G-002 names.
 ```

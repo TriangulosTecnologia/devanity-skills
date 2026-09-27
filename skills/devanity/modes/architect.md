@@ -27,7 +27,7 @@ Classify first (`reference/vocabulary.md`):
 
 ## Phases (A2)
 
-The phases are ordered by dependency. Skip depth that cannot change a decision, but never skip a kind of information that a later decision needs. Name every skip on one `Skipped: <what> — <why>` line. Close each phase with `Gate: PASS` or `Gate: FAIL — <unmet criterion>`.
+The phases are ordered by dependency. Skip depth that cannot change a decision, but never skip a kind of information that a later decision needs. Name every skip on one `Skipped: <what> — <why>` line. Each phase adds one class of information and never redefines another phase's; a later phase that needs to change an earlier one reopens that phase's gate. Close each phase with `Gate: PASS` or `Gate: FAIL — <unmet criterion>`.
 
 **P1 Align**: what must be true, for whom, and why. Cover purpose and boundary, stakeholders and who decides, capabilities, non-goals, drivers, critical properties, hard constraints, dominant losses, and the time horizon. Turn each abstract quality into a scenario: `property · source · stimulus · environment · artifact · expected response · measure · criticality · owner`. *Critical*, here and below, means a scenario with high criticality, or a hard constraint.
 Gate: no critical driver is left undispositioned; purpose, boundary, non-goals, authority and critical properties constrain the later choices.
@@ -64,7 +64,7 @@ A folder per concept, or a layered, feature or hexagonal template chosen by tast
 - **Basis-form**, applied to the design itself: *irreducible* (no duplicate semantic owner, rule, schema or state authority that can drift); *orthogonal* (each concern changes for one reason); *spanning* (the model covers the relevant states, failures and change classes, not only today's examples); *decodable* (meaning, ownership, contracts and local checks can be found with bounded context). They are not a score, and a material trade between them needs a human decision.
 - **Minimality**: for each element, ask which driver needs it, which failure or change it contains, what it costs, and whether something smaller satisfies the same properties. If no driver survives, remove the element.
 - **A novel problem**: derive in this order: outcome or loss → property → invariant → one owner → the smallest boundary that preserves it → stress it → encode it → the evidence that would falsify it → the revision condition.
-- **Reject on sight**: microservices or modularity as goals; abstractions for hypothetical consumers; async without ordering and idempotency semantics; logical ownership conflated with deployment; eventual consistency without a stated invariant; domain meaning duplicated across code, schemas, docs and prompts without one authority; scalability, security or reliability claims without a scenario.
+- **Reject on sight**: microservices or modularity as goals; abstractions for hypothetical consumers; async without ordering and idempotency semantics; logical ownership conflated with deployment; eventual consistency without a stated invariant; domain meaning duplicated across code, schemas, docs and prompts without one authority; scalability, security or reliability claims without a scenario; a diagram offered as proof: diagrams are optional projections, and a box diagram never stands in for state, failure or contract semantics.
 
 ## Output: the decision packet
 

@@ -6,10 +6,10 @@ Fix exactly one approved unit, on the ladder (`reference/quality.md`): a finding
 
 ## Resolve
 
-A path to an instruction surface, not a Key, makes that one file the unit: run the instruction syndromes on it (`reference/quality.md`) and apply its dominant fixes inside it. A fix that must write a second file is not this unit: audit it and improve the resulting Key.
+A path to an instruction surface, not a Key, makes that one file the unit: run the instruction syndromes on it (`reference/quality.md`) and apply its dominant fixes inside it. A fix that must write a second file is not this unit: audit it and improve the resulting Key. A path absent from disk is a unit only as the missing home a finding's `fix:` names (`modes/audit.md`, Instruction surfaces): `improve <path>` creates that file with exactly the rules the finding lists, which is propagation, never an empty axis (`reference/quality.md`, Basis-form). No such finding this session → ask.
 
 1. **Find the Key.** A `G-###` in this session's findings → its Key. A full Key resolves on its own, because it carries its path. An unambiguous suffix of a Key → resolve it against this session's findings. Several matches → list them and ask. No match (always the case in a fresh session) → ask for the full Key. A stale or cross-session alias → ask, or re-run the diagnostic. Parse the Key right to left: the last segment is the rule, then the dimension, and the rest splits at its first colon into path and symbol. Fewer than four segments, or a dimension not in `reference/quality.md` → the Key is malformed: ask.
-2. **Locate.** Read the path and find the symbol. If either is gone, stop and ask: a vanished file is not a fixed finding.
+2. **Locate.** Read the path and find the symbol. If either is gone, stop and ask: a vanished file is not a fixed finding. The exception is a Key whose path is the missing home its finding's `fix:` names: that path is the target, with no symbol to find.
 3. **Re-verify.** Violation absent → `ALREADY_RESOLVED [<ref>] — <evidence run this session>`, and stop. Violation present, but the evidence shows an undeclared invariant (the divergence is intended and the rule is stale; `reference/baseline.md`, Reconciliation) → `RECLASSIFIED [<ref>] — <the stale rule and its evidence>` with the replacement finding, and stop.
 
 ## Fix
@@ -37,7 +37,7 @@ Before verifying, name the expected files in order: oracle first, then implement
 ## Output
 
 ```md
-### Finding fixed [G-### or Key]
+### Finding fixed [G-###, Key or path]
 ### Ladder rung targeted             enforcement | path-scoped-context | procedure | prose
 ### Files changed                    oracle: <files> (or `oracle: n/a`) · implementation: <files>
 ### Why this improves the repository
