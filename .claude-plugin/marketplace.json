@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "devanity",
+  "description": "Always-on engineering judgment for coding agents, for the person who answers for the repository.",
+  "owner": {
+    "name": "Triângulos Tecnologia",
+    "url": "https://github.com/TriangulosTecnologia"
+  },
+  "plugins": [
+    {
+      "name": "devanity",
+      "description": "Rigor proportional to what is at stake: stop at the first rung that holds, write the minimum that works, leave a check that fails before the fix, never spend authority you were not given.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

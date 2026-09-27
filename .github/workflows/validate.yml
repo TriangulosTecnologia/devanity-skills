@@ -14,5 +14,9 @@ jobs:
         with:
           node-version: 22
       - run: node scripts/validate-skills.mjs
-      - run: node --test scripts/validate-skills.test.mjs
       - run: node scripts/validate-open.mjs
+      - run: python3 evals/harness/run.py --selftest
+      - run: node scripts/kernel.mjs invariants
+      - run: node scripts/kernel.mjs check-agents
+      - run: npm test
+      - run: node scripts/devanity-rules-ci.mjs --self-check
