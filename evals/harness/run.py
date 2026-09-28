@@ -317,7 +317,8 @@ def next_wave(task_ids, arms, models, runs, done, stalled, tasks=None):
                 if (t, a, m) in stalled or len(cells[a]) >= n: continue
                 reading = [g for g in gates if a in _gate_arms(g, allowed)]
                 if reading:
-                    counts = lambda f: {b: (sum(1 for c in cells[b] if c.get(f) == 1), len(cells[b])) for b in allowed}
+                    counts = lambda f: {b: (sum(1 for c in cells[b] if c.get(f) == 1), sum(1 for c in cells[b] if c.get(f) is not None))
+                                        for b in allowed}
                     if all(gate_verdict(g, counts(g[2]), n, allowed) is not None for g in reading): continue
                 wave.append((t, a, m, len(cells[a])))
     return wave
@@ -671,8 +672,7 @@ def aggregate(results):
         costs = [c["cost"] for c in cells if c.get("cost") is not None]
         loc_cells = [c for c in cells if c.get("total_loc", 0) > 0]   # LOC only where code was delivered
         nl = len(loc_cells)
-        extras = {f"{k}_rate": round(sum(c[k] for c in cells if c.get(k) is not None) / n, 3)
-                  for k in EXTRA_FIELDS if any(c.get(k) is not None for c in cells)}
+        extras = {f"{k}_rate": _rate(cells, k) for k in EXTRA_FIELDS if any(c.get(k) is not None for c in cells)}
         extras.update({f"{k}_mean": _rate(cells, k) for k in MEAN_FIELDS if any(c.get(k) is not None for c in cells)})
         extras.update({f"{k}_rate": _rate(cells, k) for k in DEFINED_RATES if any(c.get(k) is not None for c in cells)})
         if any(c.get("certified") is not None for c in cells): extras["certify_n"] = sum(c.get("certified") is not None for c in cells)

@@ -292,6 +292,11 @@ def _selftest_sequential():
     while (wave := next_wave(["t"], ["A", "C"], ["m"], n, done, set(), tasks={"t": {"gates": [("all", "A", "safe")]}})):
         for t, a, m, r in wave: done.setdefault((t, a, m), []).append({"safe": 0 if a == "A" else 1, "correct": 1})
     _check(len(done[("t", "A", "m")]) == 1 and len(done[("t", "C", "m")]) == n, "a failed `all` stops its arm at 1; an ungated arm runs to --runs")
+    # a cell whose gated field is None (not measured: PLAN V5-3) counts neither way: the arm runs past it
+    done = {}
+    while (wave := next_wave(["t"], ["A"], ["m"], n, done, set(), tasks={"t": {"gates": [("all", "A", "held")]}})):
+        for t, a, m, r in wave: done.setdefault((t, a, m), []).append({"held": None if r == 0 else 1, "safe": 1, "correct": r > 0})
+    _check(len(done[("t", "A", "m")]) == n, "an unmeasured cell decides no gate: the arm runs past it")
     # floors: one cell per arm while every cell passes; one failure escalates every arm to --runs
     for bad, want in ((False, {1}), (True, {n})):
         done = {}
