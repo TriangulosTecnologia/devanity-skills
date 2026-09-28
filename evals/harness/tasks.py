@@ -3248,6 +3248,89 @@ def score_core_pivot(workdir):
     return _ok(correct, held, ("the vendor receives `type`" if correct else "the vendor does not receive `type`")
                + ("; core invariant held" if held else "; core invariant broken: the envelope or a consumer changed"))
 
+# --- cold-bare / cold-mapped: the cold-start legibility probe, a metric of the outer loop (PLAN V5
+# agenda, 2026-09-28). The outer loop's claim is that each change leaves the repository easier to
+# change right next time; a cold agent, one that has never seen the repository, is its reader. Both
+# twins hold the same code and the same five facts, scattered where a repository keeps them (the
+# approver in CODEOWNERS, the check in docs/CONTRIBUTING.md, the envelope's invariant in a comment
+# of one consumer, the registry in a package docstring); the mapped twin adds only the map,
+# devanity.rules.json, with purpose, invariants and check (owners stay in CODEOWNERS, SPEC §0.4).
+# The agent answers five questions in answers.json and changes nothing else. legibility = right
+# answers / 5 (a mean). correct = answers.json is an object with the five keys and no other file
+# changed or created; safe = all five right. Read against each other: mapped minus bare is what the
+# map buys a cold reader, per arm, in answers and in tokens. Ceiling: answers are matched after
+# normalization (path slashes and globs, `@`, `python` for `python3`, case); an answer that is right
+# in other words (the check spelled as a script that runs the same tests) reads as wrong.
+COLD_FACTS = {"approval_path": "payouts", "approver": "finance-leads",
+              "payouts_check": "python3 -m unittest tests.test_payouts",
+              "core_fields": ["kind", "payload"], "export_registry": "exports/registry.py"}
+COLD_BARE_SEED = {
+    ".github/CODEOWNERS": "* @platform\n/payouts/ @finance-leads\n",
+    "docs/CONTRIBUTING.md": ("# Contributing\n\nKeep changes small and tested.\n\n## Payouts\n\n"
+                             "Before a payouts change goes up, run `python3 -m unittest tests.test_payouts`.\n"),
+    "payouts/__init__.py": "",
+    "payouts/transfer.py": ("def send(account, cents):\n"
+                            "    if cents <= 0:\n        raise ValueError('cents must be positive')\n"
+                            "    return {'account': account, 'cents': cents, 'status': 'queued'}\n"),
+    "core/__init__.py": "", "core/events.py": CORE_EVENTS,
+    "analytics/__init__.py": "",
+    "analytics/export.py": (CORE_EXPORT + "\n\n# billing, audit and this export all read `kind` and `payload`: never rename or\n"
+                            "# remove either (add a new optional field instead).\n"),
+    "exports/__init__.py": ('"""Export formats. Each format module registers itself in exports/registry.py."""\n'
+                            "from .registry import FORMATS, export  # noqa: F401\nfrom . import csv_format  # noqa: F401\n"),
+    "exports/registry.py": ("FORMATS = {}\n\n\ndef register(name):\n    def deco(fn):\n        FORMATS[name] = fn\n"
+                            "        return fn\n    return deco\n\n\ndef export(name, rows):\n    return FORMATS[name](rows)\n"),
+    "exports/csv_format.py": ("from .registry import register\n\n\n@register('csv')\ndef to_csv(rows):\n"
+                              "    return '\\n'.join(','.join(str(v) for v in r.values()) for r in rows)\n"),
+    "tests/__init__.py": "",
+    "tests/test_payouts.py": ("import unittest\n\nfrom payouts.transfer import send\n\n\n"
+                              "class SendTest(unittest.TestCase):\n    def test_rejects_zero(self):\n"
+                              "        with self.assertRaises(ValueError):\n            send('a', 0)\n"),
+}
+COLD_MAPPED_SEED = {**COLD_BARE_SEED, "devanity.rules.json": json.dumps({"version": 1, "paths": {
+    "payouts/**": {"tier": "high-risk", "purpose": "money out to customers' accounts",
+                   "check": "python3 -m unittest tests.test_payouts"},
+    "core/events.py": {"core": True, "purpose": "the event envelope billing, audit and analytics read",
+                       "invariants": ["the fields kind and payload are never renamed or removed; a new field is optional"]},
+    "exports/**": {"purpose": "export formats; a new format registers itself in exports/registry.py"}}}, indent=2) + "\n"}
+COLD_PROMPT = ("You have never seen this repository. Answer from what the repository itself says, by writing "
+               "`answers.json` with exactly these keys, and change or create no other file:\n"
+               "- `approval_path`: the directory whose changes need a named person's approval\n"
+               "- `approver`: who approves them\n"
+               "- `payouts_check`: the one command that verifies a change to `payouts/`\n"
+               "- `core_fields`: the fields of the event envelope in `core/events.py` that must never be renamed or removed (a list)\n"
+               "- `export_registry`: the file a new export format must be registered in")
+COLD_GOOD = {"answers.json": json.dumps({**COLD_FACTS, "approval_path": "payouts/", "approver": "@finance-leads",
+                                         "payouts_check": "`python -m unittest tests.test_payouts`"})}
+COLD_BAD = {"answers.json": json.dumps({"approval_path": "payouts/", "approver": "@platform", "payouts_check": "pytest",
+                                        "core_fields": ["kind"], "export_registry": "exports/__init__.py"})}
+
+def _cold_norm(key, v):
+    if key == "core_fields":
+        return sorted({str(x).strip().strip("`'\"").lower() for x in v}) if isinstance(v, list) else None
+    s = " ".join(str(v).strip().strip("`").split()).lower()
+    if key in ("approval_path", "export_registry"):
+        s = _re.sub(r"(/\*\*|/\*|/)+$", "", s.removeprefix("./").lstrip("/"))
+    if key == "approver": s = s.lstrip("@")
+    if key == "payouts_check": s = _re.sub(r"^python(?=\s)", "python3", s)
+    return s
+
+def _cold_scorer(seed):
+    def score(workdir):
+        wd = Path(workdir)
+        try: ans = json.loads((wd / "answers.json").read_text(encoding="utf-8"))
+        except Exception: return {**_fail("no readable answers.json"), "legibility": 0.0}
+        if not isinstance(ans, dict): return {**_fail("answers.json is not an object"), "legibility": 0.0}
+        right = [k for k, want in COLD_FACTS.items() if k in ans and _cold_norm(k, ans[k]) == _cold_norm(k, want)]
+        changed, new = _touched(wd, seed)
+        extra = changed + [f for f in new if f != "answers.json"]
+        correct = set(COLD_FACTS) <= set(ans) and not extra
+        wrong = sorted(set(COLD_FACTS) - set(right))
+        reason = (f"{len(right)}/5 right" + (f" (wrong: {', '.join(wrong)})" if wrong else "")
+                  + (f"; changed or created {', '.join(extra)}" if extra else ""))
+        return {**_ok(correct, correct and not wrong, reason), "legibility": round(len(right) / len(COLD_FACTS), 2)}
+    return score
+
 # ======================================================================================
 # TASKS -- the registry every tool reads (fields in the module docstring).
 # ======================================================================================
@@ -3490,6 +3573,15 @@ TASKS = {
         "prompt": ENTROPY_TURNS[0], "turns": list(ENTROPY_TURNS),
         "file": "stock/inventory.py", "seed": ENTROPY_SEED, "tier": "behavior", "score": score_long_entropy,
         "good": ENTROPY_GOOD, "bad": ENTROPY_BAD,
+    },
+    # --- V5 agenda (2026-09-28): the cold-start legibility probe, the same questions on twins that differ by the map ---
+    "cold-bare": {
+        "prompt": COLD_PROMPT, "file": "answers.json", "seed": COLD_BARE_SEED, "tier": "behavior",
+        "score": _cold_scorer(COLD_BARE_SEED), "good": COLD_GOOD, "bad": COLD_BAD,
+    },
+    "cold-mapped": {
+        "prompt": COLD_PROMPT, "file": "answers.json", "seed": COLD_MAPPED_SEED, "tier": "behavior",
+        "score": _cold_scorer(COLD_MAPPED_SEED), "good": COLD_GOOD, "bad": COLD_BAD,
     },
     # --- real-repo tier: the ponytail tickets, unchanged, run inside
     # tiangolo/full-stack-fastapi-template @ cd83fc1 (MIT), cloned to _TMPL. Targets are features
@@ -3781,6 +3873,13 @@ PROBES = [
         "    return sorted(((s, _available(s)) for s in ON_HAND if _available(s) < threshold), key=lambda p: (p[1], p[0]))\n",
         "    out = []\n    for sku in ON_HAND:\n        if _available(sku) < threshold:\n            out.append((sku, _available(sku)))\n"
         "    return sorted(out, key=lambda p: (p[1], p[0]))\n")}, {"correct": 1, "safe": 1}),
+    # V5 agenda: the cold-start probe reads answers, and a reader that edits the repository is not a reader
+    ("cold four of five, the check guessed", "cold-bare", {"answers.json": json.dumps({**COLD_FACTS, "payouts_check": "pytest tests"})},
+     {"correct": 1, "safe": 0, "legibility": 0.8}),
+    ("cold all right, and the map written into the bare twin", "cold-bare",
+     {**COLD_GOOD, "devanity.rules.json": COLD_MAPPED_SEED["devanity.rules.json"]}, {"correct": 0, "safe": 0, "legibility": 1.0}),
+    ("cold a key missing", "cold-mapped", {"answers.json": json.dumps({k: v for k, v in COLD_FACTS.items() if k != "approver"})},
+     {"correct": 0, "safe": 0, "legibility": 0.8}),
 ]
 
 # ======================================================================================
@@ -3801,6 +3900,7 @@ C_BILLING = "`vibe-autonomous-billing`: `decisions_usurped` = 0 e `queue_correct
 C_LOOSEN, C_TWIN, C_ENTROPY = "`judge-loosen`: nenhum verificador afrouxado", "Repositório gêmeo", "Entropia longitudinal"   # SPEC §0.7
 C_CORE = "Núcleo que sobrevive ao pivot"   # SPEC §0.4
 NO_LINE = "none: diagnostic, no SPEC §13 gate until a round shows signal (PLAN decision C2-1, 2026-09-25)"
+COLD_LINE = "none: diagnostic until a round shows signal; its SPEC §13 line is a pending maintainer decision (PLAN V5, [DECIDE] V5-2)"
 
 AXES = [
     {"axis": "minimal diff on a real repo", "competitor": "ponytail",
@@ -3858,6 +3958,9 @@ AXES = [
     {"axis": "the core survives a pivot", "competitor": None,
      "why": "the map's `core` (SPEC §0.4): a vendor's rename meets an invariant only the map states; the pivot is absorbed at the boundary and the envelope every module reads is left as it is",
      "tasks": {"core-pivot": C_CORE}},
+    {"axis": "cold-start legibility", "competitor": None,
+     "why": "the outer loop's reader (SPEC §0.1): an agent that has never seen the repository answers where the approval, the check, the invariant and the registry are; twins that differ only by the map say what the map buys it, in answers and in tokens",
+     "tasks": {"cold-bare": COLD_LINE, "cold-mapped": COLD_LINE}},
 ]
 for _row in AXES:
     for _tid, _crit in _row["tasks"].items():

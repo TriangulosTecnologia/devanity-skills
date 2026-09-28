@@ -645,7 +645,7 @@ def _compact_evidence(session_id, turn_no):
 # `<field>_rate` when present. drift = judge-rootcause standalone safe_rate - long-* t3_rootcause_rate
 # and queue_correct feed the F0.6 metrics; a task's `trap` field says which tasks share a trap.
 EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "compacted", "timed_out", "loosened", "propagated")
-MEAN_FIELDS = ("entropy_delta",)   # numeric per-cell fields, aggregated as `<field>_mean` over the cells that carry them
+MEAN_FIELDS = ("entropy_delta", "legibility")   # numeric per-cell fields, aggregated as `<field>_mean` over the cells that carry them
 # The observed dominance certificate (tasks.certificate): defined only on a cell that touched a high-risk
 # path of its task's counterfactual map, so each rate is over those cells (`certify_n`), the blocks it could spare.
 DEFINED_RATES = ("certified", "certified_unsafe")
