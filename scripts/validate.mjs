@@ -396,10 +396,12 @@ export function checkRepository(root) {
   // installed copy's root, so a path outside plugin/ is a command that fails on the user's machine.
   for (const file of pluginFiles) {
     const rel = file.slice(root.length + 1);
-    // Whatever stands between the variable and its first slash (a brace, a `:-` default, a quote, a
-    // quote escaped inside hooks.json's JSON) is skipped, bounded so the scan stays linear; a doubled
+    // The expansion as the shell reads it: `$VAR`, or `${VAR}` up to its own closing brace, a `:-`
+    // default read inside it (one nested `${…}` allowed, both bounded so the scan stays linear), then
+    // an optional closing quote, bare or escaped inside hooks.json's JSON, then the path. A doubled
     // slash is the same path to the shell, so `//..` still climbs out.
-    for (const m of readFileSync(file, 'utf8').matchAll(/\$\{?CLAUDE_PLUGIN_ROOT[^/\s]{0,80}\/([A-Za-z0-9_./-]+)/g)) {
+    const EXPANSION = /\$(?:\{CLAUDE_PLUGIN_ROOT(?::-(?:[^{}]|\$\{[^{}]{0,80}\}){0,80})?\}|CLAUDE_PLUGIN_ROOT\b)\\?["']?\/([A-Za-z0-9_./-]+)/g;
+    for (const m of readFileSync(file, 'utf8').matchAll(EXPANSION)) {
       const target = posix.normalize(m[1].replace(/^\/+/, ''));
       if (target.startsWith('..') || !existsSync(join(root, 'plugin', target))) fail(`${rel} runs \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which is not in plugin/: an installed copy has no such file`);
     }
@@ -409,14 +411,15 @@ export function checkRepository(root) {
   // the repository, so a pointer to them from plugin/ is a pointer an installed copy cannot follow.
   // SPEC and PLAN in capitals only: `plan` is a mode. A feature id is dotted (F2.2b): bare F1 is a
   // phase, a key or a score. A guardrail number has one or two digits. A docs/ or evals/ path (bare,
-  // or after ./) is a citation when it names a file of this repository, with or without .md, so a
-  // consumer's own evals/ is not one. URLs
+  // or after ./) is a citation when it names something inside them in this repository, with or
+  // without .md, so a consumer's own docs/ or evals/ is not one. URLs
   // are skipped: they resolve anywhere.
   const cited = (line) => {
     const bare = line.replace(/https?:\/\/\S+/g, '');
     const repoPath = [...bare.matchAll(/(?<![\w.-])(?<!(?<!\.)\/)(?:docs|evals)\/[\w.-][\w./-]*/g)]
-      .find((m) => { const p = join(root, m[0].replace(/[.]+$/, '')); return existsSync(p) || existsSync(`${p}.md`); });
-    return bare.match(/\bSPEC\b|\bPLAN\b|\bF[0-9]+\.[0-9]+[a-z]?\b|\bCONTRIBUTING\.md\b/) || bare.match(/\bguard-?rails?\s*[-#]?\s*[0-9]{1,2}\b/i) || repoPath;
+      .map((m) => m[0].replace(/[./]+$/, ''))
+      .find((rel) => rel.includes('/') && (existsSync(join(root, rel)) || existsSync(join(root, `${rel}.md`))));   // a name inside, not the bare directory
+    return bare.match(/\bSPEC\b|\bPLAN\b|\bF[0-9]+\.[0-9]+[a-z]?\b|\bCONTRIBUTING\.md\b/) || bare.match(/\bguard-?rails?\s*[-#]?\s*[0-9]{1,2}\b/i) || (repoPath && [repoPath]);
   };
   for (const file of pluginFiles) {
     const rel = file.slice(root.length + 1);
