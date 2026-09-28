@@ -194,8 +194,9 @@ function main() {
   }
 
   // Repository migration is complete only when published install/source references use the canonical repo.
-  // Derive the legacy token so this validator does not contain the literal it is searching for.
-  const legacyRepo = ['ttoss', 'skills'].join('/');
+  // Derive the legacy tokens so this validator does not contain the literals it is searching for.
+  const CANONICAL_REPO = 'usedevanity/skills';
+  const legacyRepos = [['ttoss', 'skills'].join('/'), ['TriangulosTecnologia', 'devanity-skills'].join('/')];
   const textFiles = [];
   const walk = (dir) => {
     for (const name of readdirSync(dir)) {
@@ -208,7 +209,8 @@ function main() {
   };
   walk(root);
   for (const file of textFiles) {
-    if (readFileSync(file, 'utf8').includes(legacyRepo)) fail(`${file.slice(root.length + 1)} still references ${legacyRepo}`);
+    const text = readFileSync(file, 'utf8');
+    for (const legacy of legacyRepos) if (text.includes(legacy)) fail(`${file.slice(root.length + 1)} still references ${legacy}; the repository is ${CANONICAL_REPO}`);
   }
 
   // What the model loads speaks one interface: the `/devanity <verb>` invocations and one spelling of
@@ -257,7 +259,7 @@ function main() {
     for (const key of ['id', 'state', 'intent', 'scope', 'requirements', 'decisions', 'impact', 'authority', 'verification', 'execution', 'evidence', 'findings', 'completion']) {
       if (!required.has(key)) fail(`change.schema.json must require ${key}`);
     }
-    if (!String(schema.$id ?? '').includes('TriangulosTecnologia/devanity-skills')) fail('change.schema.json $id must use the canonical repository');
+    if (!String(schema.$id ?? '').includes(CANONICAL_REPO)) fail('change.schema.json $id must use the canonical repository');
     const ceiling = schema.properties?.authority?.properties?.ceiling?.enum ?? [];
     for (const action of ['observe', 'recommend', 'prepare', 'execute', 'commit', 'merge', 'deploy']) {
       if (!ceiling.includes(action)) fail(`change.schema.json authority ceiling missing ${action}`);
@@ -282,7 +284,7 @@ function main() {
   for (const skill of expectedSkills) {
     const path = `skills/${skill}/README.md`;
     if (!existsSync(join(root, path))) fail(`${skill} missing README.md`);
-    else if (!read(path).includes('TriangulosTecnologia/devanity-skills')) fail(`${path} does not name the canonical install source`);
+    else if (!read(path).includes(CANONICAL_REPO)) fail(`${path} does not name the canonical install source`);
   }
 
   if (errors.length) {

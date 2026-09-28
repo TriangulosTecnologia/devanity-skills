@@ -7,7 +7,7 @@
     "email": "enniolopes@gmail.com",
     "url": "https://github.com/TriangulosTecnologia"
   },
-  "repository": "https://github.com/TriangulosTecnologia/devanity-skills",
+  "repository": "https://github.com/usedevanity/skills",
   "license": "CC-BY-NC-4.0",
   "keywords": ["engineering", "code-review", "planning", "architecture", "verification"],
   "hooks": "./hooks/hooks.json"

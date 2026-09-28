@@ -57,14 +57,14 @@ You normally **do not invoke Worker or Verifier yourself**: Worker collects evid
 As a plugin (recommended: the kernel is then injected on every session, compaction and subagent, and the verbs become available):
 
 ```
-/plugin marketplace add TriangulosTecnologia/devanity-skills
+/plugin marketplace add usedevanity/skills
 /plugin install devanity@devanity
 ```
 
 Or as a skill only (the kernel loads when the skill is invoked or matched; no hooks, no persistence across compaction):
 
 ```bash
-npx skills add TriangulosTecnologia/devanity-skills --skill devanity --agent claude-code
+npx skills add usedevanity/skills --skill devanity --agent claude-code
 ```
 
 Optional companion agents (the plugin ships them; the skill-only install needs this step):
@@ -73,7 +73,7 @@ Optional companion agents (the plugin ships them; the skill-only install needs t
 mkdir -p .claude/agents
 for agent in worker verifier; do
   curl -fsSL \
-    "https://raw.githubusercontent.com/TriangulosTecnologia/devanity-skills/main/agents/${agent}.md" \
+    "https://raw.githubusercontent.com/usedevanity/skills/main/agents/${agent}.md" \
     -o ".claude/agents/${agent}.md"
 done
 ```
