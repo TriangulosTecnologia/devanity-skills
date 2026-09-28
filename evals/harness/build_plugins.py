@@ -102,6 +102,52 @@ rt.readStdinJson(() => {
 });
 """
 
+# Experiment arms (PLAN V5 agenda, 2026-09-28): the candidate, copied whole, plus exactly one declared
+# difference, so a delta against `devanity` has one cause. A sentence earns the kernel only by moving
+# a number (SPEC guardrail 1); these arms are where it is measured first.
+#   devanity-examples: one kernel sentence, plain-language acceptance examples for vibe coding
+#     (read on vibe-app-cli, vibe-app-web, vibe-autonomous-billing: complete, has_check).
+#   devanity-nudge: arms/devanity-nudge.js behind one PostToolUse and one more Stop entry, one-line
+#     reminders at the trigger (read on judge-loosen, judge-falsetest, core-pivot, authority-ship;
+#     the cell's `nudges` says whether a trigger fired at all).
+# run.py --selftest (_selftest_experiment_arms) asserts each arm is the candidate plus that difference.
+EXAMPLES_ANCHOR = "3. **Changes behavior?** → one check that **fails first**, then the fix. Not the other way round.\n"
+EXAMPLES_SENTENCE = ("   Greenfield, or a request with no acceptance criteria → before code, write 3–5 acceptance examples in plain "
+                     "language (`given … → expect …`), show them, and make each one a check.\n")
+_NUDGE_CMD = 'node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-nudge.js"'
+_NUDGE_ENTRY = {"hooks": [{"type": "command", "command": _NUDGE_CMD, "timeout": 5}]}
+EXPERIMENTS = {
+    "devanity-examples": {"kernel": (EXAMPLES_ANCHOR, EXAMPLES_SENTENCE),
+                          "description": "Devanity candidate plus one kernel sentence (acceptance examples), harness-only"},
+    "devanity-nudge": {"files": {"hooks/devanity-nudge.js": "arms/devanity-nudge.js"},
+                       "hooks": {"PostToolUse": {"matcher": "Edit|Write|MultiEdit|NotebookEdit", **_NUDGE_ENTRY}, "Stop": _NUDGE_ENTRY},
+                       "description": "Devanity candidate plus one-line reminders at the trigger, harness-only"},
+}
+
+def build_experiment(name, out=None):
+    """One experiment arm: the working tree's plugin/ plus EXPERIMENTS[name], nothing else."""
+    spec = EXPERIMENTS[name]
+    out = Path(out) if out else PLUGINS / name
+    if out.exists(): shutil.rmtree(out)
+    shutil.copytree(UNIT, out, ignore=IGNORE)
+    if "kernel" in spec:
+        anchor, sentence = spec["kernel"]
+        skill = out / "skills" / "devanity" / "SKILL.md"
+        text = skill.read_text(encoding="utf-8")
+        if text.count(anchor) != 1: sys.exit(f"{name}: the kernel anchor is not in plugin/skills/devanity/SKILL.md exactly once; re-anchor EXPERIMENTS")
+        skill.write_text(text.replace(anchor, anchor + sentence), encoding="utf-8")
+    for dest, src in spec.get("files", {}).items():
+        shutil.copy(Path(__file__).resolve().parent / src, out / dest)
+    if spec.get("hooks"):
+        hooks_file = out / "hooks" / "hooks.json"
+        hooks = json.loads(hooks_file.read_text(encoding="utf-8"))
+        for event, entry in spec["hooks"].items(): hooks["hooks"].setdefault(event, []).append(entry)
+        hooks_file.write_text(json.dumps(hooks, indent=2) + "\n", encoding="utf-8")
+    manifest = out / ".claude-plugin" / "plugin.json"
+    manifest.write_text(json.dumps({**json.loads(manifest.read_text(encoding="utf-8")), "name": name,
+                                    "description": spec["description"]}, indent=2) + "\n", encoding="utf-8")
+    return out
+
 def main():
     # The released baseline is pinned: once the v1 PR merges, `main` is the candidate itself, and an
     # arm built from it would measure devanity against devanity. 890cb48 is main before that merge
@@ -113,7 +159,9 @@ def main():
     print(f"built {out} from arms/devanity-v0 ({sum(1 for p in out.rglob('*') if p.is_file())} files)")
     out, skills = build_candidate()
     if out: print(f"built {out} from the working tree ({sum(1 for p in out.rglob('*') if p.is_file())} files)")
-    else: print("candidate: skills/devanity/SKILL.md not present, nothing built")
+    else: print("candidate: skills/devanity/SKILL.md not present, nothing built"); return
+    for name in EXPERIMENTS:
+        print(f"built {build_experiment(name)} (the candidate plus the {name} difference)")
 
 if __name__ == "__main__":
     main()

@@ -35,7 +35,7 @@ Scoring is a second line: every scorer but the tmpl-* git diff executes delivere
 runs only in the container too (require_container_to_score), and the git diff reads a cell only
 while its .git/config is the one git init wrote (tasks.fixture_git_refusal).
 """
-import argparse, concurrent.futures, datetime, json, os, re, shutil, signal, statistics, subprocess, sys, tempfile, uuid
+import argparse, concurrent.futures, datetime, json, math, os, re, shutil, signal, statistics, subprocess, sys, tempfile, uuid
 from collections import defaultdict
 from pathlib import Path
 
@@ -106,7 +106,12 @@ ARMS = {
     "devanity-released": {"plugins": ["devanity-released"], "prompt_prefix": "/devanity-released:maestro "},
     "devanity-v0":       {"plugins": ["devanity-v0"]},
     "devanity":          {"plugins": ["devanity"]},
+    # V5 experiment arms (PLAN agenda, 2026-09-28): the candidate plus one declared difference each
+    # (build_plugins.EXPERIMENTS), harness-only; run them with --arms, they are not the field
+    "devanity-examples": {"plugins": ["devanity-examples"]},
+    "devanity-nudge":    {"plugins": ["devanity-nudge"]},
 }
+FIELD = [a for a in ARMS if a not in ("devanity-examples", "devanity-nudge")]   # the default --arms
 MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-4-6", "opus": "claude-opus-4-8"}
 
 PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
@@ -118,6 +123,8 @@ _LOCAL_PLUGINS = {
     "devanity-released": "run `python3 evals/harness/build_plugins.py` (exports the released ref)",
     "devanity-v0":       "run `python3 evals/harness/build_plugins.py` (packages arms/devanity-v0)",
     "devanity":          "run `python3 evals/harness/build_plugins.py` (packages the working tree's plugin/skills/devanity)",
+    "devanity-examples": "run `python3 evals/harness/build_plugins.py` (the candidate plus one kernel sentence)",
+    "devanity-nudge":    "run `python3 evals/harness/build_plugins.py` (the candidate plus the nudge hook)",
 }
 
 def _env_key(name): return "DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_", name.upper())
@@ -256,6 +263,66 @@ def plan_cells(task_ids, arms, models, runs):
     return [(t, a, m, r) for t in task_ids for m in models for a in arms for r in range(runs)
             if a in TASKS[t].get("arms", arms)]
 
+def _gate_one(op, a, b, arg, n):
+    """One gate on (successes, cells) bounds: True/False once decided, None while the cells still
+    to run could turn it. An arm with k of n cells has a final count in [s, s + n - k]."""
+    lo, hi = a[0], a[0] + n - a[1]
+    if op in ("ge", "gt", "lt"):
+        blo, bhi = b[0], b[0] + n - b[1]
+        yes, no = {"ge": (lo >= bhi, hi < blo), "gt": (lo > bhi, hi <= blo), "lt": (hi < blo, lo >= bhi)}[op]
+    else:
+        need = {"all": n, "none": 0, "any": 1, "notall": n - 1, "atleast": math.ceil((arg or 0) * n - 1e-9)}[op]
+        yes, no = {"all": (lo >= need, hi < need), "any": (lo >= need, hi < need), "atleast": (lo >= need, hi < need),
+                   "none": (hi <= need, lo > need), "notall": (hi <= need, lo > need)}[op]
+    return True if yes else False if no else None
+
+def gate_verdict(gate, counts, n, arms):
+    """A tasks.GATES entry over counts {arm: (successes, cells)}: True, False, or None (undecided).
+    "*" as the other arm expands to every other arm of the run, all of which must hold. A gate
+    that names an arm the run does not have is None: it can decide nothing."""
+    op, arm, _field, *rest = gate
+    arg = rest[0] if rest else None
+    if arm not in arms: return None
+    zero = (0, 0)
+    if op not in ("ge", "gt", "lt"): return _gate_one(op, counts.get(arm, zero), None, arg, n)
+    others = [o for o in arms if o != arm] if arg == "*" else [arg] if arg in arms else []
+    if not others: return None
+    vs = [_gate_one(op, counts.get(arm, zero), counts.get(o, zero), None, n) for o in others]
+    return False if False in vs else True if all(v is True for v in vs) else None
+
+def _gate_arms(gate, arms):
+    op, arm, _field, *rest = gate
+    if op not in ("ge", "gt", "lt"): return {arm}
+    return {arm} | ({o for o in arms if o != arm} if rest[0] == "*" else {rest[0]})
+
+def next_wave(task_ids, arms, models, runs, done, stalled, tasks=None):
+    """The next cells of a sequential run (PLAN V5 agenda, 2026-09-28): one more cell for every
+    (task, arm, model) still open. `done` maps (task, arm, model) to its scored cells, `stalled`
+    holds the pairs whose last cell errored or hit a limit (never rescheduled: --fill is for them).
+    A pair is closed when it has its cells, or when the arm is read by at least one of the task's
+    `gates` and every gate reading it is decided. A `floor` task has one cell per arm until any cell
+    of it fails correct or safe, and then --runs. Pure, so the selftest proves it offline."""
+    tasks = TASKS if tasks is None else tasks
+    wave = []
+    for t in task_ids:
+        spec = tasks[t]
+        allowed = [a for a in arms if a in spec.get("arms", arms)]
+        gates = spec.get("gates", [])
+        for m in models:
+            cells = {a: done.get((t, a, m), []) for a in allowed}
+            n = runs
+            if spec.get("floor") and all(c.get("correct") == 1 and c.get("safe") == 1 for cs in cells.values() for c in cs):
+                n = 1
+            for a in allowed:
+                if (t, a, m) in stalled or len(cells[a]) >= n: continue
+                reading = [g for g in gates if a in _gate_arms(g, allowed)]
+                if reading:
+                    counts = lambda f: {b: (sum(1 for c in cells[b] if c.get(f) == 1), sum(1 for c in cells[b] if c.get(f) is not None))
+                                        for b in allowed}
+                    if all(gate_verdict(g, counts(g[2]), n, allowed) is not None for g in reading): continue
+                wave.append((t, a, m, len(cells[a])))
+    return wave
+
 def _cell_cmd_flags(task, in_container=IN_CONTAINER):
     """Tool flags for one cell by tier. Size: no Bash (comparable to ponytail's numbers). Behavior:
     Bash allowed, container required -- the agent runs code it wrote (SPEC guardrail 15)."""
@@ -320,6 +387,8 @@ def _cell_meta(workdir: Path):
     meta["timed_out"] = int(any("[KILLED after" in f.read_text(encoding="utf-8", errors="ignore")
                                 for f in err_files if f.exists()))
     meta["final_chars"] = len(result_text or "")        # answer length: caveman's axis, the rung-2 cost
+    nudges = workdir / "_nudges.jsonl"                   # the devanity-nudge arm's fires (build_plugins.EXPERIMENTS)
+    if nudges.is_file(): meta["nudges"] = sum(1 for ln in nudges.read_text(encoding="utf-8", errors="ignore").splitlines() if ln.strip())
     return meta, result_text
 
 # Every scorer but the fixture tasks' git diff imports and runs delivered code, and that code can
@@ -372,6 +441,7 @@ def require_container_to_score(task_ids):
 def score_workspace(task_id, arm, model, workdir: Path):
     require_container_to_score([task_id])
     meta, result_text = _cell_meta(workdir)
+    if arm == "devanity-nudge": meta.setdefault("nudges", 0)   # a cell of the arm with no fire is a 0, not a missing value
     fixture = bool(TASKS[task_id].get("fixture"))
     refused = fixture and fixture_git_refusal(workdir)          # review G-036: never run git on agent-written config
     stats = (dict.fromkeys(("files", "src_files", "total_loc", "src_loc", "test_files", "test_loc"), 0) if refused
@@ -586,7 +656,10 @@ def _compact_evidence(session_id, turn_no):
 # `<field>_rate` when present. drift = judge-rootcause standalone safe_rate - long-* t3_rootcause_rate
 # and queue_correct feed the F0.6 metrics; a task's `trap` field says which tasks share a trap.
 EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "compacted", "timed_out", "loosened", "propagated")
-MEAN_FIELDS = ("entropy_delta",)   # numeric per-cell fields, aggregated as `<field>_mean` over the cells that carry them
+MEAN_FIELDS = ("entropy_delta", "legibility", "nudges")   # numeric per-cell fields, aggregated as `<field>_mean` over the cells that carry them
+# The observed dominance certificate (tasks.certificate): defined only on a cell that touched a high-risk
+# path of its task's counterfactual map, so each rate is over those cells (`certify_n`), the blocks it could spare.
+DEFINED_RATES = ("certified", "certified_unsafe")
 
 def aggregate(results):
     groups = defaultdict(list)
@@ -599,9 +672,10 @@ def aggregate(results):
         costs = [c["cost"] for c in cells if c.get("cost") is not None]
         loc_cells = [c for c in cells if c.get("total_loc", 0) > 0]   # LOC only where code was delivered
         nl = len(loc_cells)
-        extras = {f"{k}_rate": round(sum(c[k] for c in cells if c.get(k) is not None) / n, 3)
-                  for k in EXTRA_FIELDS if any(c.get(k) is not None for c in cells)}
+        extras = {f"{k}_rate": _rate(cells, k) for k in EXTRA_FIELDS if any(c.get(k) is not None for c in cells)}
         extras.update({f"{k}_mean": _rate(cells, k) for k in MEAN_FIELDS if any(c.get(k) is not None for c in cells)})
+        extras.update({f"{k}_rate": _rate(cells, k) for k in DEFINED_RATES if any(c.get(k) is not None for c in cells)})
+        if any(c.get("certified") is not None for c in cells): extras["certify_n"] = sum(c.get("certified") is not None for c in cells)
         rows.append({"task": t, "arm": a, "model": m, "n": n, "trap": TASKS.get(t, {}).get("trap"), **extras,
                      "safe_rate": round(sum(c["safe"] for c in cells) / n, 3),
                      "correct_rate": round(sum(c["correct"] for c in cells) / n, 3),
@@ -678,13 +752,13 @@ def print_table(rows):
     by = defaultdict(list)
     for r in rows: by[(r["task"], r["model"])].append(r)
     for (task, model), rs in sorted(by.items()):
-        print(f"\n=== {task}  ({model}, n={rs[0]['n']}) ===")
-        print(f"  {'arm':16} {'wrote%':>7} {'correct':>8} {'safe':>6} {'LOC':>7} {'tot_tok':>9} {'chars':>6} {'$/run':>8} {'time_s':>7}")
+        print(f"\n=== {task}  ({model}) ===")
+        print(f"  {'arm':16} {'n':>3} {'wrote%':>7} {'correct':>8} {'safe':>6} {'LOC':>7} {'tot_tok':>9} {'chars':>6} {'$/run':>8} {'time_s':>7}")
         for r in sorted(rs, key=lambda x: x["arm"]):
             c = ("$" + format(r["cost_mean"], ".4f")) if r["cost_mean"] is not None else "-"
             tt = r.get("total_tokens_mean"); t = r.get("time_s_mean")
             fc = r.get("final_chars_mean")
-            print(f"  {r['arm']:16} {r.get('wrote_file_rate', 1.0):>7} {r['correct_rate']:>8} {r['safe_rate']:>6} "
+            print(f"  {r['arm']:16} {r['n']:>3} {r.get('wrote_file_rate', 1.0):>7} {r['correct_rate']:>8} {r['safe_rate']:>6} "
                   f"{r['total_loc_median']:>7} {(tt if tt is not None else '-'):>9} {(fc if fc is not None else '-'):>6} {c:>8} "
                   f"{(t if t is not None else '-'):>7}")
     traps = trap_summary(rows)
@@ -758,10 +832,11 @@ def main():
     ap.add_argument("--rescore", help="recompute metrics from a kept run dir (no API)")
     ap.add_argument("--task", help="single task id")
     ap.add_argument("--all", action="store_true", help="all tasks")
-    ap.add_argument("--arms", default=",".join(ARMS))
+    ap.add_argument("--arms", default=",".join(FIELD), help="default: the field; the experiment arms run only when named")
     ap.add_argument("--model", help="single model (shorthand for --models)")
     ap.add_argument("--models", default="haiku", help="comma list: haiku,sonnet,opus")
-    ap.add_argument("--runs", type=int, default=1)
+    ap.add_argument("--runs", type=int, default=1, help="cells per (task, arm, model), the most a sequential run spends")
+    ap.add_argument("--full", action="store_true", help="every cell --runs times: no floor, no sequential stop (tasks.FLOORS, tasks.GATES)")
     ap.add_argument("--workers", type=int, default=4, help="cells to run concurrently (default 4; cells are fully isolated)")
     ap.add_argument("--fill", help="re-run the cells of a kept run dir that ended in an error (limit, empty output) into a new stamp; failed workspaces move to <dir>/_failed/")
     ap.add_argument("--smoke", metavar="ARM", choices=list(ARMS),
@@ -799,47 +874,63 @@ def main():
     out_dir = RUNS_DIR / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.fill:
-        keep = src / "_failed"; keep.mkdir(exist_ok=True)
-        for tid, arm, model, r, ws, why in failed: shutil.move(str(ws), str(keep / ws.name))
-        cells = [(tid, arm, model, r) for tid, arm, model, r, ws, why in failed]
-        print(f"filling {len(cells)} failed cells of {src} into {out_dir} (originals kept under {keep})", flush=True)
-    else:
-        cells = plan_cells(task_ids, arms, models, args.runs)
-        skipped = sorted({(t, a) for t in task_ids for a in arms} - {(c[0], c[1]) for c in cells})
-        if skipped: print(f"skipping {len(skipped)} (task, arm) pairs outside a task's `arms`: "
-                          + ", ".join(f"{t}/{a}" for t, a in skipped[:6]) + (" ..." if len(skipped) > 6 else ""))
-    total = len(cells)
-    results, done = [], 0
+    results, scored, stalled = [], defaultdict(list), set()
 
     def _one(spec):
         tid, arm, model, r = spec
         ws = out_dir / f"{tid}__{arm}__{model}__{r}"
         ws.mkdir(parents=True, exist_ok=True)
-        return run_cell(tid, arm, model, ws)
+        return run_cell(tid, arm, model, ws), ws
 
-    print(f"running {total} cells, {args.workers} at a time", flush=True)
-    # Cells are fully isolated (own copy + own claude context), so they parallelize safely.
-    # To STOP a parallel run, kill the whole tree: taskkill /PID <pid> /T /F. Killing just the
-    # python orchestrator orphans the concurrent `claude` children and they keep spending.
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as ex:
-        futs = {ex.submit(_one, s): s for s in cells}
-        for fut in concurrent.futures.as_completed(futs):
-            tid, arm, model, r = futs[fut]
-            try:
-                res = fut.result()
-            except Exception as e:
-                res = {"task": tid, "arm": arm, "model": model, "error": str(e)[:200]}
-            results.append(res)
-            done += 1
-            print(f"  [{done}/{total}] {tid} / {arm} / {model} #{r}  "
-                  f"LOC={res.get('total_loc')} "
-                  f"tok={(res.get('in_tokens') or 0) + (res.get('out_tokens') or 0) + (res.get('cache_tokens') or 0)} "
-                  f"cost=${res.get('cost')} time={round((res.get('duration_ms') or 0) / 1000, 1)}s "
-                  f"correct={res.get('correct')}", flush=True)
-            (out_dir / "results.json").write_text(json.dumps(
-                {"date": stamp, "models": {m: MODELS[m] for m in models},
-                 "claude": _claude_version(), "results": results}, indent=2), encoding="utf-8")
+    def run_cells(cells, label):
+        """Run a batch of cells in parallel; each result joins `results`, and joins `scored` (what
+        next_wave decides on) unless the cell errored or holds no completed run (`stalled`)."""
+        print(f"running {len(cells)} cells{label}, {args.workers} at a time", flush=True)
+        # Cells are fully isolated (own copy + own claude context), so they parallelize safely.
+        # To STOP a parallel run, kill the whole tree: taskkill /PID <pid> /T /F. Killing just the
+        # python orchestrator orphans the concurrent `claude` children and they keep spending.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.workers) as ex:
+            futs = {ex.submit(_one, s): s for s in cells}
+            for k, fut in enumerate(concurrent.futures.as_completed(futs), 1):
+                tid, arm, model, r = futs[fut]
+                try:
+                    res, ws = fut.result()
+                    why = cell_failed(ws)
+                except Exception as e:
+                    res, why = {"task": tid, "arm": arm, "model": model, "error": str(e)[:200]}, "error"
+                results.append(res)
+                if why: stalled.add((tid, arm, model))
+                else: scored[(tid, arm, model)].append(res)
+                print(f"  [{k}/{len(cells)}] {tid} / {arm} / {model} #{r}  "
+                      f"LOC={res.get('total_loc')} "
+                      f"tok={(res.get('in_tokens') or 0) + (res.get('out_tokens') or 0) + (res.get('cache_tokens') or 0)} "
+                      f"cost=${res.get('cost')} time={round((res.get('duration_ms') or 0) / 1000, 1)}s "
+                      f"correct={res.get('correct')}" + (f"  [stalled: {why}]" if why else ""), flush=True)
+                (out_dir / "results.json").write_text(json.dumps(
+                    {"date": stamp, "models": {m: MODELS[m] for m in models},
+                     "claude": _claude_version(), "results": results}, indent=2), encoding="utf-8")
+
+    if args.fill:
+        keep = src / "_failed"; keep.mkdir(exist_ok=True)
+        for tid, arm, model, r, ws, why in failed: shutil.move(str(ws), str(keep / ws.name))
+        cells = [(tid, arm, model, r) for tid, arm, model, r, ws, why in failed]
+        print(f"filling {len(cells)} failed cells of {src} into {out_dir} (originals kept under {keep})", flush=True)
+        run_cells(cells, "")
+    else:
+        cells = plan_cells(task_ids, arms, models, args.runs)
+        skipped = sorted({(t, a) for t in task_ids for a in arms} - {(c[0], c[1]) for c in cells})
+        if skipped: print(f"skipping {len(skipped)} (task, arm) pairs outside a task's `arms`: "
+                          + ", ".join(f"{t}/{a}" for t, a in skipped[:6]) + (" ..." if len(skipped) > 6 else ""))
+        if args.full:
+            run_cells(cells, " (--full: every cell --runs times)")
+        else:                                        # floors and gates decide each next wave (next_wave)
+            wave_no = 0
+            while (wave := next_wave(task_ids, arms, models, args.runs, scored, stalled)):
+                wave_no += 1
+                run_cells(wave, f" (wave {wave_no})")
+            spent = sum(len(v) for v in scored.values())
+            print(f"sequential: {spent} scored cells of the {len(cells)} a --full run would spend"
+                  + (f"; {len(stalled)} stalled pair(s), re-run with --fill" if stalled else ""), flush=True)
 
     rows = aggregate(results)
     (out_dir / "summary.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")

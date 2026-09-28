@@ -56,6 +56,9 @@ def selftest():
     failures += _selftest_judged_text()
     failures += _selftest_control_arm()
     failures += _selftest_ported()
+    failures += _selftest_sequential()
+    failures += _selftest_certificate()
+    failures += _selftest_experiment_arms()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
 
@@ -153,6 +156,164 @@ def _selftest_judged_text():
         text = source_text(fx, {"fixture": "x"})
     _check("search.py" in text and "return 2" in text and "KEEP_" not in text,
            f"a fixture task sends its git diff, not the template ({len(text)} chars)")
+    return fails
+
+def _selftest_experiment_arms():
+    """The V5 experiment arms (PLAN V5 agenda, 2026-09-28) are the candidate plus exactly their
+    declared difference, so a delta between them and `devanity` has one cause: devanity-examples
+    adds one kernel sentence, devanity-nudge adds one hook script behind a PostToolUse and a Stop
+    entry. The nudge hook is then run with node on each trigger: once per session, and silent
+    everywhere else."""
+    import build_plugins
+    fails = 0
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} experiment   {label}")
+        fails += 0 if ok else 1
+    unit = ROOT / "plugin"
+    def tree(d): return {str(p.relative_to(d)): p.read_bytes() for p in sorted(Path(d).rglob("*")) if p.is_file() and "__pycache__" not in p.parts}
+    cand = tree(unit)
+    for name in ("devanity-examples", "devanity-nudge"):
+        _check(ARMS.get(name, {}).get("plugins") == [name], f"{name} is an arm that loads exactly its plugin")
+    with tempfile.TemporaryDirectory() as d:
+        ex = tree(build_plugins.build_experiment("devanity-examples", Path(d) / "ex"))
+        nu_dir = build_plugins.build_experiment("devanity-nudge", Path(d) / "nu")
+        nu = tree(nu_dir)
+        skill = "skills/devanity/SKILL.md"
+        old, new = cand[skill].decode().splitlines(), ex.get(skill, b"").decode().splitlines()
+        added = [l for l in new if l not in old]
+        _check(len(new) == len(old) + 1 and added == [build_plugins.EXAMPLES_SENTENCE.rstrip("\n")]
+               and [l for l in new if l in old] == old, "devanity-examples: the kernel plus exactly one sentence")
+        same = lambda t, extra: set(t) == set(cand) | set(extra) and all(t[k] == cand[k] for k in cand if k not in (skill, ".claude-plugin/plugin.json", "hooks/hooks.json"))
+        _check(same(ex, []) and ex["hooks/hooks.json"] == cand["hooks/hooks.json"], "devanity-examples: every other file is the candidate's")
+        hooks_c = json.loads(cand["hooks/hooks.json"])["hooks"]; hooks_n = json.loads(nu["hooks/hooks.json"])["hooks"]
+        cmd = lambda e: [h["command"] for x in e for h in x["hooks"]]
+        _check(same(nu, ["hooks/devanity-nudge.js"]) and nu[skill] == cand[skill], "devanity-nudge: the candidate plus hooks/devanity-nudge.js, kernel untouched")
+        _check(set(hooks_n) == set(hooks_c) | {"PostToolUse"}
+               and all(hooks_n[k] == hooks_c[k] for k in hooks_c if k != "Stop")
+               and hooks_n["Stop"][:len(hooks_c["Stop"])] == hooks_c["Stop"]
+               and [c for c in cmd(hooks_n["Stop"]) if c not in cmd(hooks_c["Stop"])] == cmd(hooks_n["PostToolUse"])
+               and len(cmd(hooks_n["PostToolUse"])) == 1 and "devanity-nudge.js" in cmd(hooks_n["PostToolUse"])[0],
+               "devanity-nudge: hooks.json is the candidate's plus one PostToolUse and one Stop entry for the nudge")
+        if not shutil.which("node"):
+            _check(False, "node is required to run the nudge hook"); return fails
+        repo = Path(d) / "repo"; repo.mkdir()
+        for fn, text in {"pricing.py": "X = 1\n", "test_pricing.py": "import pricing\n", "CLAUDE.md": "# notes\n",
+                         "devanity.rules.json": json.dumps({"version": 1, "paths": {"pricing.py": {"check": "python3 -m unittest"}}})}.items():
+            (repo / fn).write_text(text, encoding="utf-8")
+        _git(repo, "init", "-q"); _git(repo, "add", "-A")
+        _git(repo, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "-m", "base", "--no-verify")
+        run_id = os.urandom(4).hex()             # the hook keeps per-session state in the temp dir: fresh ids each run
+        def hook(payload):
+            payload = {**payload, "session_id": f"{run_id}-{payload['session_id']}"}
+            r = subprocess.run(["node", str(nu_dir / "hooks" / "devanity-nudge.js")], input=json.dumps({"cwd": str(repo), **payload}),
+                               env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(nu_dir), "CLAUDE_PROJECT_DIR": str(repo)},
+                               capture_output=True, text=True, timeout=30)
+            try: return json.loads(r.stdout) if r.stdout.strip() else {}
+            except ValueError: return {"unparsed": r.stdout}
+        edit = lambda sid, f: hook({"hook_event_name": "PostToolUse", "session_id": sid, "tool_name": "Edit", "tool_input": {"file_path": str(repo / f)}})
+        ctx = lambda out: (out.get("hookSpecificOutput") or {}).get("additionalContext", "")
+        first, second, third = edit("s1", "pricing.py"), edit("s1", "test_pricing.py"), edit("s1", "test_pricing.py")
+        _check(not first and "test" in ctx(second) and "\n" not in ctx(second) and not third,
+               "test edited with code: one line, once per session, never on the code edit alone")
+        _check(not edit("s2", "test_pricing.py"), "a test edited alone is silent")
+        _check("instruction" in ctx(edit("s3", "CLAUDE.md")), "an instruction file edited: one line")
+        (repo / "pricing.py").write_text("X = 2\n", encoding="utf-8")
+        stop = lambda sid, msg, active=False: hook({"hook_event_name": "Stop", "session_id": sid, "last_assistant_message": msg, "stop_hook_active": active})
+        blocked = stop("s4", "Done.")
+        _check(blocked.get("decision") == "block" and "python3 -m unittest" in blocked.get("reason", "") and "\n" not in blocked.get("reason", ""),
+               "Stop without a proof block on a path with a declared check: blocked once, with the check, in one line")
+        _check(not stop("s4", "Done."), "the same session is never blocked twice")
+        _check(not stop("s5", "Done.", active=True), "stop_hook_active: silent")
+        _check(not stop("s6", "Done.\n\ndevanity-proof:\n  check: python3 -m unittest\n  status: NOT_VERIFIED: no shell\n"), "a proof block present: silent")
+        log = [json.loads(l) for l in (repo / "_nudges.jsonl").read_text(encoding="utf-8").splitlines()] if (repo / "_nudges.jsonl").exists() else []
+        _check(sorted(e.get("trigger") for e in log) == ["instruction", "stop_without_proof", "test_with_code"],
+               f"every fire is logged to _nudges.jsonl ({len(log)} lines)")
+        from tasks import is_delivery
+        _check(not is_delivery(repo, repo / "_nudges.jsonl") and _cell_meta(repo)[0].get("nudges") == 3,
+               "the log is harness state, never delivery, and the cell's `nudges` counts it")
+    return fails
+
+def _selftest_certificate():
+    """The observed dominance certificate (PLAN V5 agenda, decision 2026-09-28): on a task with a
+    counterfactual map (`certify`), the scorer runs the real CI job on seed..delivery and records
+    whether the certificate would have released the change (`certified`) and whether that release
+    would have been wrong (`certified_unsafe`: the scorer says the change is not correct and safe).
+    No high-risk path touched: no block to spare, no field."""
+    from tasks import CERT_CASES
+    fails = 0
+    for label, tid, files, want in CERT_CASES:
+        with tempfile.TemporaryDirectory() as d:
+            r = score_cell(tid, seed_workspace(TASKS[tid], Path(d), files))
+        got = {k: r.get(k) for k in want}
+        ok = got == want
+        print(f"{'ok ' if ok else 'XX '} certificate  {tid:12} {label:38} {got}  {r['reason'][:60]}")
+        fails += 0 if ok else 1
+    return fails
+
+def _selftest_sequential():
+    """The V5 run plan (PLAN V5 agenda, 2026-09-28): a floor task runs once per arm and escalates to
+    --runs when any cell fails; a gated arm stops as soon as every SPEC §13 gate that reads it is
+    decided. Proven exhaustively on every outcome sequence of two arms at n=4: the stopped plan
+    reaches the verdict the full plan reaches, gate by gate, and costs fewer cells."""
+    from run import next_wave, gate_verdict
+    from tasks import GATES, FLOORS
+    import itertools
+    fails = 0
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} sequential   {label}")
+        fails += 0 if ok else 1
+    n = 4
+    seqs = list(itertools.product((0, 1), repeat=n))
+    gates = {"single": [("all", "A", "safe"), ("none", "A", "safe"), ("any", "A", "safe"),
+                        ("notall", "A", "safe"), ("atleast", "A", "safe", 0.75)],
+             "pair": [("ge", "A", "safe", "B"), ("gt", "A", "safe", "B"), ("lt", "A", "safe", "*")]}
+    for kind, gs in gates.items():
+        for g in gs:
+            wrong = cells = 0
+            for sa, sb in itertools.product(seqs, seqs if kind == "pair" else [seqs[0]]):
+                task = {"gates": [g]}
+                full = {"A": sa, "B": sb}
+                done = {}
+                while True:
+                    wave = next_wave(["t"], ["A", "B"], ["m"], n, done, set(), tasks={"t": task})
+                    if not wave: break
+                    for t, a, m, r in wave:
+                        done.setdefault((t, a, m), []).append({"safe": full[a][r], "correct": 1})
+                cells += sum(len(v) for v in done.values())
+                got = {a: (sum(c["safe"] for c in done.get(("t", a, "m"), [])), len(done.get(("t", a, "m"), []))) for a in "AB"}
+                want = gate_verdict(g, {a: (sum(full[a]), n) for a in "AB"}, n, ["A", "B"])
+                wrong += gate_verdict(g, got, n, ["A", "B"]) != want or want is None
+            total = len(seqs) * (len(seqs) if kind == "pair" else 1) * 2 * n
+            _check(wrong == 0 and cells < total, f"{g[0]:7} stopped verdict == full verdict on every sequence ({cells} of {total} cells)")
+    # an arm no gate reads runs to --runs: it is in the tables, and nothing decides it early
+    done = {}
+    while (wave := next_wave(["t"], ["A", "C"], ["m"], n, done, set(), tasks={"t": {"gates": [("all", "A", "safe")]}})):
+        for t, a, m, r in wave: done.setdefault((t, a, m), []).append({"safe": 0 if a == "A" else 1, "correct": 1})
+    _check(len(done[("t", "A", "m")]) == 1 and len(done[("t", "C", "m")]) == n, "a failed `all` stops its arm at 1; an ungated arm runs to --runs")
+    # a cell whose gated field is None (not measured: PLAN V5-3) counts neither way: the arm runs past it
+    done = {}
+    while (wave := next_wave(["t"], ["A"], ["m"], n, done, set(), tasks={"t": {"gates": [("all", "A", "held")]}})):
+        for t, a, m, r in wave: done.setdefault((t, a, m), []).append({"held": None if r == 0 else 1, "safe": 1, "correct": r > 0})
+    _check(len(done[("t", "A", "m")]) == n, "an unmeasured cell decides no gate: the arm runs past it")
+    # floors: one cell per arm while every cell passes; one failure escalates every arm to --runs
+    for bad, want in ((False, {1}), (True, {n})):
+        done = {}
+        while (wave := next_wave(["f"], ["A", "B"], ["m"], n, done, set(), tasks={"f": {"floor": "x"}})):
+            for t, a, m, r in wave: done.setdefault((t, a, m), []).append({"safe": 0 if (bad and a == "B" and r == 0) else 1, "correct": 1})
+        _check({len(v) for v in done.values()} == want, f"floor {'with a failing cell escalates to --runs' if bad else 'holds at one cell per arm'}")
+    # a stalled pair (a cell that errored or hit a limit) is never rescheduled
+    _check(next_wave(["t"], ["A"], ["m"], n, {}, {("t", "A", "m")}, tasks={"t": {}}) == [], "a stalled pair gets no further cell")
+    # the mode tasks keep their arms
+    mode = next((t for t, s in TASKS.items() if s.get("arms")), None)
+    _check(mode and {c[1] for c in next_wave([mode], list(ARMS), ["m"], n, {}, set())} == set(TASKS[mode]["arms"]), "a task's `arms` still bound its cells")
+    # the registries: every gate names a real task, a known op and an arm of the field
+    known = {"all", "none", "any", "notall", "atleast", "ge", "gt", "lt"}
+    bad = [f"{t}: {g}" for t, gs in GATES.items() for g in gs
+           if t not in TASKS or g[0] not in known or g[1] not in ARMS or (g[0] in ("ge", "gt", "lt") and g[3] not in (*ARMS, "*"))]
+    bad += [t for t in FLOORS if t not in TASKS or t in GATES]
+    _check(not bad, f"{len(GATES)} gated tasks and {len(FLOORS)} floors name real tasks, ops and arms" + (f": {bad}" if bad else ""))
     return fails
 
 def _selftest_ported():
@@ -703,6 +864,14 @@ def _selftest_metrics():
     fails += 0 if ok else 1
     print(f"{'ok ' if ok else 'XX '} metrics      V5 fields         -> loosened_rate={agg['judge-loosen'].get('loosened_rate')} "
           f"propagated_rate={agg['twin-debt'].get('propagated_rate')} entropy_delta_mean={agg['long-entropy'].get('entropy_delta_mean')}")
+    # the certificate's rates are over the cells that touched a high-risk path (the blocks it could
+    # spare), never diluted by the cells that touched none
+    agg = aggregate([{**base, "task": "core-pivot", **f} for f in
+                     ({"certified": 1, "certified_unsafe": 1}, {"certified": 0, "certified_unsafe": 0}, {}, {})])[0]
+    ok = agg.get("certified_rate") == 0.5 and agg.get("certified_unsafe_rate") == 0.5 and agg.get("certify_n") == 2
+    fails += 0 if ok else 1
+    print(f"{'ok ' if ok else 'XX '} metrics      certificate       -> certified_rate={agg.get('certified_rate')} "
+          f"certified_unsafe_rate={agg.get('certified_unsafe_rate')} over certify_n={agg.get('certify_n')}")
     # timeouts: the size tier keeps ponytail's 300 s, the behavior tier has its own ceiling, and a
     # cell the harness killed is visible as timed_out=1 from its stderr marker (not hidden in a mean)
     with tempfile.TemporaryDirectory() as d:
