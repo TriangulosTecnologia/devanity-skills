@@ -17,6 +17,7 @@
 
 const rt = require('./devanity-runtime');
 const ledger = require('./devanity-ledger');
+const rulesMod = require('./devanity-rules');
 
 // Accepts the bare command and the plugin-scoped form Claude Code may show.
 const COMMAND = /^\/(?:devanity:)?devanity(?:\s+(\S+))?$/;
@@ -81,7 +82,21 @@ function respond(intent) {
 function pendingList(cwd) {
   const pending = ledger.pendingDecisions(cwd);
   if (!pending.length) return 'DEVANITY PENDING: none.';
-  const lines = pending.map((d) => `- ${d.id}  path: ${d.path || '(none)'}  kind: ${d.kind || 'human'}  queued by: ${d.by || '?'}  at: ${d.ts || '?'}`);
+  // What the one who decides needs: the question and its options when an agent asked one, and what
+  // the path guards (from the map) when the guard queued it.
+  const root = rt.gitToplevel(cwd) || cwd;
+  const loaded = rulesMod.loadRules(root);
+  const lines = pending.map((d) => {
+    const head = `- ${d.id}${d.question ? `: ${d.question}` : ''}  path: ${d.path || '(none)'}  queued by: ${d.by || '?'}  at: ${d.ts || '?'}`;
+    const rule = d.path && !loaded.errors.length ? rulesMod.ruleFor(loaded.rules, d.path) : null;
+    const detail = [
+      d.options && `    options: ${d.options}`,
+      d.recommendation && `    recommendation: ${d.recommendation}`,
+      d.if_undecided && `    if undecided: ${d.if_undecided}`,
+      rule && Array.isArray(rule.invariants) && rule.invariants.length && `    never changes: ${rule.invariants.join('; ')}`,
+    ].filter(Boolean);
+    return [head, ...detail].join('\n');
+  });
   return `DEVANITY PENDING: ${pending.length} decision(s) waiting for a human (record one with \`/devanity decide <id> <option> [--path <glob>]\`):\n${lines.join('\n')}`;
 }
 

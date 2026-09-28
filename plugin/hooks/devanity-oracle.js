@@ -84,6 +84,42 @@ function findContractBlock(text) {
 }
 
 // Appends the contract record: the block's seven fields, latest per id wins (see ledger.contracts).
+// `[DECIDE]` blocks (reference/vocabulary.md, Decision): a blocking one becomes a pending decision
+// carrying its question, options and recommendation, so the human who answers later, from
+// `/devanity pending` or a new session, decides from the block and not from an id. Dormant ones
+// may sleep and are not queued. Recorded by the agent, as pending: it authorizes nothing.
+const DECIDE_HEAD = /^\s*-\s+\*\*\[DECIDE\]\[(blocking|dormant)\]\[(G-\d{3,})\]\[([a-z]+)\]\s*(.*?)\s*\*\*\s*$/;
+const DECIDE_FIELD = /^\s+-\s+(decision|context|options|recommendation|if undecided):\s*(.*)$/;
+function findDecideBlocks(text) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  const out = [];
+  for (let i = 0; i < lines.length; i++) {
+    const h = DECIDE_HEAD.exec(lines[i]);
+    if (!h) continue;
+    const b = { status: h[1], id: h[2], kind: h[3], question: h[4] };
+    for (let j = i + 1; j < lines.length && /^\s+\S/.test(lines[j]); j++) {
+      const f = DECIDE_FIELD.exec(lines[j]);
+      if (f) b[f[1].replace(' ', '_')] = f[2].trim();
+    }
+    out.push(b);
+  }
+  return out;
+}
+
+function persistDecisions(root, blocks, sid) {
+  for (const b of blocks.filter((x) => x.status === 'blocking' && x.question)) {
+    const all = ledger.decisions(root);
+    if (all.some((d) => d.status === 'pending' && d.question === b.question)) continue;   // re-emitted
+    // Never append over an id that holds another question or an answer: the latest record per id
+    // wins, so reusing it would rewrite a decision a human already made.
+    let id = b.id;
+    for (let k = 2; all.some((d) => d.id === id); k++) id = `${b.id}-${k}`;
+    const rec = { id, status: 'pending', by: 'agent', kind: 'human', decide_kind: b.kind, question: b.question };
+    for (const k of ['decision', 'context', 'options', 'recommendation', 'if_undecided']) if (b[k]) rec[k] = b[k];
+    ledger.append(root, 'decisions', rec, sid);
+  }
+}
+
 function persistContract(root, fields, sid) {
   const rec = { id: fields.id, phase: fields.phase };
   for (const k of ['intent', 'scope', 'forbidden', 'proof', 'pending']) if (fields[k] !== undefined && fields[k] !== '') rec[k] = fields[k];
@@ -283,10 +319,12 @@ function decide(payload, env = process.env) {
     : (payload.transcript_path ? lastAssistantFromTranscript(payload.transcript_path) : '');
   const found = findProofBlock(message);
   const contract = findContractBlock(message);
-  if (!found && !contract) return { action: 'exit' };
+  const decides = findDecideBlocks(message);
+  if (!found && !contract && !decides.length) return { action: 'exit' };
   const sid = payload.session_id || null;
   const info = repoInfo(cwd);
   const root = info ? info.root : cwd;
+  if (decides.length) persistDecisions(root, decides, sid);
   // The lifecycle block is persisted first and independently of the proof: a message that only
   // declares a phase records it and lets the turn end.
   if (contract) persistContract(root, contract.fields, sid);
@@ -356,7 +394,7 @@ function main() {
   });
 }
 
-module.exports = { REASONS, decide, findContractBlock, findProofBlock, lastAssistantFromTranscript, renderProofBlock };
+module.exports = { REASONS, decide, findContractBlock, findDecideBlocks, findProofBlock, lastAssistantFromTranscript, renderProofBlock };
 
 if (require.main === module) {
   try { main(); } catch (e) { rt.exitSoon(0); }

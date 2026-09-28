@@ -95,7 +95,7 @@ function changeContext(cwd) {
 function queueContext(cwd) {
   const pending = ledger.pendingDecisions(cwd);
   if (!pending.length) return '';
-  const named = pending.slice(0, 5).map((d) => `${clip(d.id, 30)} (${clip(d.path || 'no path', 40)})`).join(', ');
+  const named = pending.slice(0, 5).map((d) => `${clip(d.id, 30)} (${clip(d.question || d.path || 'no path', 60)})`).join(', ');
   return `Pending human decisions (${pending.length}): ${named}${pending.length > 5 ? ', …' : ''}. Record one with /devanity decide <id> <option>.`;
 }
 

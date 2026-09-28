@@ -92,7 +92,7 @@ Type, as a whole message in the Claude Code prompt:
 - `decide` appends `{id, status: decided, by: human, chosen, path, contract?}` to `decisions.jsonl`. For an id that is not yet in the ledger, `--path` is mandatory: a human decision must name what it authorizes. For a pending id (queued by an autonomous session) the path is inherited.
 - An answer whose first word is `no`, `n`, `nope`, `reject`, `deny`, `decline`, `refuse`, `não`, `rejeitar`, `negado` or `recuso` (trailing punctuation ignored; also `no way`, `not now`, `don't`) records `status: rejected`: it answers the pending question and authorizes nothing (`DEVANITY DECISION REJECTED: … stay blocked`).
 - A decision is scoped: it is tied to the change open when it was typed and authorizes while that change is open; with no open change it expires after 24 hours. It never authorizes every later session.
-- `pending` lists the queue.
+- `pending` lists the queue: each item's question, options, recommendation and fate when an agent asked one in a `[DECIDE]` block, and the path's invariants when the guard queued it.
 - Both are handled by the `UserPromptSubmit` hook only. That event is trusted because its payload is the text the human typed; the model does not author it and no tool reaches it. No devanity tool, command or env var writes `by: human` for the agent (guardrail 12; `tests/guard.test.mjs` asserts it against the source); a direct write into the ledger file is a limit, see [Limits](#limits).
 - In an autonomous session (`DEVANITY_AUTONOMOUS=1`, `claude -p`, `CI=true`) a blocked high-risk edit is also queued once as a pending decision (`by: agent`), so the end-of-session summary can list it; unrelated work continues.
 
@@ -234,7 +234,7 @@ This repository's own rules (`devanity.rules.json`) are its map: `plugin/hooks/*
 | file | written by | record |
 |---|---|---|
 | `contracts.jsonl` | `Stop` (a `devanity-contract:` block); `/devanity reset` | `{id, phase, intent?, scope?, forbidden?, proof?, pending?, reason?}`; the latest record per id wins field by field |
-| `decisions.jsonl` | `PreToolUse` guard (`by: agent`, `status: pending`); `/devanity decide` (the only hook that writes `by: human`) | `{id, path?, kind, status: pending\|decided\|rejected, by, chosen?, contract?}`; latest per id wins |
+| `decisions.jsonl` | `PreToolUse` guard and the `Stop` hook for a blocking `[DECIDE]` block (both `by: agent`, `status: pending`); `/devanity decide` (the only hook that writes `by: human`) | `{id, path?, kind, status: pending\|decided\|rejected, by, chosen?, contract?, question?, options?, recommendation?, if_undecided?}`; latest per id wins, field by field, so an answer keeps its question |
 | `proofs.jsonl` | `Stop` oracle | `{kind: 'proof', contract, check, agent_check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason}` |
 | `events.jsonl` | guard, oracle, inject | `{kind: blocked \| would_block \| false_ready \| unmeasured \| rules_invalid \| guard_payload_missing \| guard_error \| oracle_error \| inject_truncated, …}` |
 

@@ -124,6 +124,52 @@ describe('contract block (F3.1)', () => {
   });
 });
 
+const decideBlock = (id, question, extra = {}) => [
+  `- **[DECIDE][${extra.status || 'blocking'}][${id}][rule] ${question}**`,
+  '  - decision: how a refund is computed',
+  '  - context: the ticket asks for refunds; no rule exists · anchors G-004',
+  `  - options: ${extra.options || 'prorate by days used → partial refunds · full refund in 14 days → simple, costlier · no-op → refunds stay manual'}`,
+  '  - recommendation: prorate, it matches the billing invariant',
+  '  - if undecided: refund() stays a failing stub',
+].join('\n');
+
+describe('a [DECIDE] block becomes a pending decision a human can answer later', () => {
+  test('the Stop hook records the question, options and recommendation; dormant and repeats are not recorded', async () => {
+    const d = repo();
+    const msg = `Done except the refund rule.\n\n${decideBlock('G-001', 'How are refunds computed?')}\n\n${decideBlock('G-002', 'Later: currency support', { status: 'dormant' })}\n`;
+    let r = await run(ORACLE, { input: stopPayload(d, msg), cwd: d });
+    assert.equal(r.code, 0, r.stderr); assert.equal(r.stdout, '', 'recording a decision never blocks the turn');
+    let pending = ledger.pendingDecisions(d);
+    assert.equal(pending.length, 1, JSON.stringify(pending));
+    const q = pending[0];
+    assert.equal(q.id, 'G-001'); assert.equal(q.by, 'agent'); assert.equal(q.status, 'pending');
+    assert.equal(q.question, 'How are refunds computed?');
+    assert.ok(q.options.includes('prorate by days used') && q.recommendation.startsWith('prorate'), JSON.stringify(q));
+    r = await run(ORACLE, { input: stopPayload(d, msg), cwd: d });
+    assert.equal(ledger.pendingDecisions(d).length, 1, 'the same question re-emitted is not queued twice');
+    const ctx = await run(INJECT, { input: sessionStart(d), args: ['SessionStart'], cwd: d });
+    assert.ok(/Pending human decisions \(1\): G-001 \(How are refunds computed\?\)/.test(ctx.stdout), 'the next session sees the question, not only the id');
+    const m = await run(MODE, { input: prompt(d, '/devanity pending'), cwd: d });
+    for (const part of ['G-001', 'How are refunds computed?', 'prorate by days used', 'recommendation: prorate']) assert.ok(m.stdout.includes(part), `pending lacks "${part}":\n${m.stdout}`);
+    const ans = await run(MODE, { input: prompt(d, '/devanity decide G-001 prorate'), cwd: d });
+    assert.ok(ans.stdout.includes('G-001 = prorate') && ans.stdout.includes('no path: authorizes no edit'), ans.stdout);
+    assert.equal(ledger.pendingDecisions(d).length, 0);
+    const answered = ledger.decisions(d).find((x) => x.id === 'G-001');
+    assert.equal(answered.by, 'human'); assert.equal(answered.question, 'How are refunds computed?', 'the answer keeps its question');
+    r = await run(ORACLE, { input: stopPayload(d, decideBlock('G-001', 'Which currencies are accepted?')), cwd: d });
+    pending = ledger.pendingDecisions(d);
+    assert.equal(pending.length, 1); assert.equal(pending[0].id, 'G-001-2', 'a new question never overwrites an answered id');
+  });
+
+  test('a guard-queued decision shows what the path guards when listed', async () => {
+    const d = repo();
+    writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', invariants: ['amounts are integer cents'] } } }));
+    ledger.append(d, 'decisions', { id: 'D-billing', path: 'billing/x.py', kind: 'human', status: 'pending', by: 'agent' });
+    const m = await run(MODE, { input: prompt(d, '/devanity pending'), cwd: d });
+    assert.ok(m.stdout.includes('amounts are integer cents'), m.stdout);
+  });
+});
+
 describe('phase-aware injection (F3.2)', () => {
   test('no open contract -> no section; expired -> no section', async () => {
     const d = repo();
