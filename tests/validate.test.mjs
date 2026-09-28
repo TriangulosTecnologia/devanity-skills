@@ -149,7 +149,8 @@ test('the repository copy passes; each way of pointing outside the installed plu
       '// node "${CLAUDE_PLUGIN_ROOT}/../scripts/validate.mjs"', '// node "$CLAUDE_PLUGIN_ROOT/scripts/nope.mjs"', '// ${CLAUDE_PLUGIN_ROOT}/scripts/../../scripts/kernel.mjs',
       '// guardrail  12', '// guardrail-12', '// Guardrails #12', '// node "${CLAUDE_PLUGIN_ROOT}"/scripts/nope.mjs',
       '// "command": "node \\"${CLAUDE_PLUGIN_ROOT}\\"/../scripts/validate.mjs"', '// ${CLAUDE_PLUGIN_ROOT}//../hooks/devanity-mode.js', '// ${CLAUDE_PLUGIN_ROOT:-.}/../x.mjs',
-      '// ${CLAUDE_PLUGIN_ROOT:-${HOME}}/../x.mjs', '// the grammar is in ./docs/hooks.md', '// see docs/hooks for the grammar', '// guard-rail 12', '// see evals/RUNBOOK.md', '// evals/kernel-sentences.md']) {
+      '// ${CLAUDE_PLUGIN_ROOT:-${HOME}}/../x.mjs', '// node ${CLAUDE_PLUGIN_ROOT:?unset}/../scripts/validate.mjs', '// node ${CLAUDE_PLUGIN_ROOT-.}/../scripts/validate.mjs', '// ${CLAUDE_PLUGIN_ROOT%/}/../x.mjs',
+      `// \${CLAUDE_PLUGIN_ROOT:-${'d'.repeat(120)}}/../x.mjs`, '// the grammar is in ./docs/hooks.md', '// see docs/hooks for the grammar', '// guard-rail 12', '// see evals/RUNBOOK.md', '// evals/kernel-sentences.md']) {
       writeFileSync(hook, original); appendFileSync(hook, `\n${line}\n`);
       assert.ok(checkRepository(dir).some((e) => e.includes('plugin/hooks/devanity-mode.js')), `not caught: ${line}`);
     }

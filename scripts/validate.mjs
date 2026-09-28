@@ -396,11 +396,11 @@ export function checkRepository(root) {
   // installed copy's root, so a path outside plugin/ is a command that fails on the user's machine.
   for (const file of pluginFiles) {
     const rel = file.slice(root.length + 1);
-    // The expansion as the shell reads it: `$VAR`, or `${VAR}` up to its own closing brace, a `:-`
-    // default read inside it (one nested `${…}` allowed, both bounded so the scan stays linear), then
-    // an optional closing quote, bare or escaped inside hooks.json's JSON, then the path. A doubled
-    // slash is the same path to the shell, so `//..` still climbs out.
-    const EXPANSION = /\$(?:\{CLAUDE_PLUGIN_ROOT(?::-(?:[^{}]|\$\{[^{}]{0,80}\}){0,80})?\}|CLAUDE_PLUGIN_ROOT\b)\\?["']?\/([A-Za-z0-9_./-]+)/g;
+    // The expansion as the shell reads it: `$VAR`, or `${VAR…}` up to its own closing brace, whatever
+    // operator it carries (`:-`, `-`, `:?`, `%`, one nested `${…}`), then an optional closing quote,
+    // bare or escaped inside hooks.json's JSON, then the path. Each character has one way to match,
+    // so the scan is linear. A doubled slash is the same path to the shell: `//..` still climbs out.
+    const EXPANSION = /\$(?:\{CLAUDE_PLUGIN_ROOT(?:[^{}$]|\$(?!\{)|\$\{[^{}]*\})*\}|CLAUDE_PLUGIN_ROOT\b)\\?["']?\/([A-Za-z0-9_./-]+)/g;
     for (const m of readFileSync(file, 'utf8').matchAll(EXPANSION)) {
       const target = posix.normalize(m[1].replace(/^\/+/, ''));
       if (target.startsWith('..') || !existsSync(join(root, 'plugin', target))) fail(`${rel} runs \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which is not in plugin/: an installed copy has no such file`);
@@ -412,7 +412,8 @@ export function checkRepository(root) {
   // SPEC and PLAN in capitals only: `plan` is a mode. A feature id is dotted (F2.2b): bare F1 is a
   // phase, a key or a score. A guardrail number has one or two digits. A docs/ or evals/ path (bare,
   // or after ./) is a citation when it names something inside them in this repository, with or
-  // without .md, so a consumer's own docs/ or evals/ is not one. URLs
+  // without .md: a reader's own docs/ is not one, unless its name is also one of this repository's,
+  // where an installed reader cannot tell the two apart either, so the sentence is reworded. URLs
   // are skipped: they resolve anywhere.
   const cited = (line) => {
     const bare = line.replace(/https?:\/\/\S+/g, '');
