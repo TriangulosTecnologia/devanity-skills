@@ -54,7 +54,6 @@ def selftest():
     failures += _selftest_remote_excluded()
     failures += _selftest_delivery_rule()
     failures += _selftest_judged_text()
-    failures += _selftest_control_arm()
     failures += _selftest_ported()
     failures += _selftest_sequential()
     failures += _selftest_certificate()
@@ -328,38 +327,6 @@ def _selftest_ported():
     ok = got == PORTED_SHA256
     print(f"{'ok ' if ok else 'XX '} ported       {len(PORTED)} tasks pinned" + ("" if ok else f": digest {got} != PORTED_SHA256 (name the change in the README, then re-pin)"))
     return 0 if ok else 1
-
-def _selftest_control_arm():
-    """The devanity-v0 control is loaded the way the candidate's kernel is (review G-011, decision
-    G-035): its plugin has exactly one hook, the candidate's SessionStart inject entry (same event,
-    matcher and runtime), pointed at its own text, and no guard, oracle, ledger or mode hook. Built
-    into a temp dir and the hook run with node, offline."""
-    import build_plugins
-    fails = 0
-    def _check(ok, label):
-        nonlocal fails
-        print(f"{'ok ' if ok else 'XX '} control_arm  {label}")
-        fails += 0 if ok else 1
-    cand = json.loads((ROOT / "plugin" / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["SessionStart"]
-    with tempfile.TemporaryDirectory() as d:
-        out = build_plugins.build_control(Path(d) / "devanity-v0")
-        try: hooks = json.loads((out / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-        except Exception: hooks = {}
-        entries = [h for e in hooks.get("SessionStart", []) for h in e.get("hooks", [])]
-        _check(list(hooks) == ["SessionStart"] and len(entries) == 1
-               and [e.get("matcher") for e in hooks["SessionStart"]] == [e.get("matcher") for e in cand],
-               f"exactly one hook, SessionStart with the candidate's matcher (events: {sorted(hooks) or 'none'})")
-        scripts = sorted(p.name for p in (out / "hooks").glob("*.js")) if (out / "hooks").is_dir() else []
-        _check(not any(k in n for n in scripts for k in ("guard", "oracle", "ledger", "mode", "rules")),
-               f"no guard, oracle, ledger or mode script ({', '.join(scripts) or 'no hook scripts'})")
-        text = ""
-        if entries and shutil.which("node"):
-            r = subprocess.run(["sh", "-c", entries[0]["command"]], input=json.dumps({"hook_event_name": "SessionStart"}),
-                               env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(out)}, capture_output=True, text=True, timeout=30)
-            text = r.stdout
-        body = (HERE / "arms" / "devanity-v0" / "SKILL.md").read_text(encoding="utf-8").split("---", 2)[2].strip()
-        _check(text.strip() == body, f"the hook injects exactly the v0 text ({len(text)} of {len(body)} chars)")
-    return fails
 
 def _selftest_remote_excluded():
     """authority-ship's bare `origin` lives inside the agent's working tree; an agent's `git add -A`

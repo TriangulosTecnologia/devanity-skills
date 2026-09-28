@@ -2,7 +2,7 @@
 
 Executable benchmark for devanity ([SPEC](../../docs/evolution/SPEC.md) §9). Every cell is a real headless Claude Code session in an isolated workspace, scored on the files it leaves behind. What each task measures, and why, is the axis table in [`../README.md`](../README.md); this file is how to run it.
 
-`python3 run.py --selftest` proves every instrument offline, on the host and inside the container (and in CI): each task's good reference passes and its bad one is caught, the evals review's counter-examples (`tasks.PROBES`) score as they must, arm isolation and the `devanity-v0` control's one hook, the tier guard and the container rule for scoring, the metric definitions and gate rows, the multi-turn wiring, the seeded CI job of `judge-loosen` (red for both hidden reasons), the registry of axes, the memory-file guard, cross-cell isolation of the scorers, one delivery rule for scorers, judges and LOC, the seeded checks of the mode tasks, the pin on the ported tasks, the sequential run plan (every outcome sequence of two arms at n=4: the stopped verdict is the full one), the dominance certificate on the references, and the experiment arms (the candidate plus exactly their difference, and every trigger of the nudge hook).
+`python3 run.py --selftest` proves every instrument offline, on the host and inside the container (and in CI): each task's good reference passes and its bad one is caught, the evals review's counter-examples (`tasks.PROBES`) score as they must, arm isolation, the tier guard and the container rule for scoring, the metric definitions and gate rows, the multi-turn wiring, the seeded CI job of `judge-loosen` (red for both hidden reasons), the registry of axes, the memory-file guard, cross-cell isolation of the scorers, one delivery rule for scorers, judges and LOC, the seeded checks of the mode tasks, the pin on the ported tasks, the sequential run plan (every outcome sequence of two arms at n=4: the stopped verdict is the full one), the dominance certificate on the references, and the experiment arms (the candidate plus exactly their difference, and every trigger of the nudge hook).
 
 ## Reproduce from zero
 
@@ -12,11 +12,11 @@ Requirements: Python 3.11+, Node 22, git, Docker (behavior tier), the `claude` C
 cd evals/harness
 python3 run.py --selftest                      # 1. instruments, no API, must be green before anything else
 python3 complete.py --selftest-offline         # 2. completeness gate logic, no API
-python3 build_plugins.py                       # 3. package devanity-released (from main), devanity-v0 and devanity (working tree)
+python3 build_plugins.py                       # 3. package devanity-released (from main) and devanity (working tree)
 python3 fixture.py --clone                     # 4. real-repo fixture at cd83fc1 (once)
 ./container.sh                                 # 5. build the container and prove the instruments inside it
 export DEVANITY_HARNESS_RUNS_DIR=$HOME/devanity-runs   # no CLAUDE.md/AGENTS.md above the cells (see Arms)
-FIELD=baseline,ponytail,superpowers,caveman,feature-dev,security-guidance,senior-oneliner,devanity-released,devanity-v0,devanity
+FIELD=baseline,ponytail,superpowers,caveman,feature-dev,security-guidance,senior-oneliner,devanity-released,devanity
 # minimal diff on a real repo (size tier, no Bash, comparable to ponytail) — host or container:
 python3 run.py --task tmpl-fe-datepicker,tmpl-fe-colorpicker,tmpl-fe-command,tmpl-fe-dropzone,tmpl-fe-wizard,tmpl-fe-rating,tmpl-be-duplicate,tmpl-be-search,tmpl-be-count,tmpl-be-archive,tmpl-be-bulkdelete,tmpl-be-csv \
   --arms $FIELD --models sonnet --runs 4 --workers 6
@@ -73,7 +73,6 @@ The field a maintainer would choose from: each arm is one real plugin, one contr
 | `security-guidance` | security-guidance (official) | always-on security hook: the counterpart of the guards |
 | `senior-oneliner` | none; one sentence via `--append-system-prompt` | if a sentence does what the kernel does, the kernel is not worth its tokens |
 | `devanity-released` | the released skills + agents, packaged from `main` | regression reference; never in a public writeup |
-| `devanity-v0` | `arms/devanity-v0/SKILL.md`: the craft ladder, persona, never-cut list and output only, injected at SessionStart by the candidate's inject hook pointed at that text (no guard, oracle, ledger, mode or subagent hook; the full list of differences is `build_plugins.py`'s docstring) | separates "the ladder works" from "our wording works"; harness-only |
 | `devanity` | the candidate from the working tree (kernel, modes, agents, hooks, manifest) | ours |
 | `devanity-examples` | the candidate plus one kernel sentence after rung 3: plain-language acceptance examples before code on a greenfield or criteria-less request (`build_plugins.EXPERIMENTS`) | experiment (V5 agenda): does the sentence move `complete` and `has_check` on the vibe tasks? Not in the default `--arms` |
 | `devanity-nudge` | the candidate plus `arms/devanity-nudge.js` behind one PostToolUse and one more Stop entry: one-line reminders, once per session, when a test is edited with code, an instruction file is edited, or a turn ends without a proof block on a path with a declared check; each fire goes to `_nudges.jsonl`, counted as the cell's `nudges` | experiment (V5 agenda): do reminders at the trigger move `loosened` and `false_ready`? Not in the default `--arms` |

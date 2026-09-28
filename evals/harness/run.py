@@ -100,11 +100,8 @@ ARMS = {
     "security-guidance": {"plugins": ["security-guidance"]},   # official always-on security hook (devanity-guard's counterpart)
     # control
     "senior-oneliner":   {"plugins": [], "append": SENIOR_ONELINER},
-    # ours: released (regression reference, never in the public writeup), the v0 control (F1.1: the
-    # craft ladder alone, harness-only, never released; separates "the ladder works" from "our
-    # wording works") and the candidate
+    # ours: released (regression reference, never in the public writeup) and the candidate
     "devanity-released": {"plugins": ["devanity-released"], "prompt_prefix": "/devanity-released:maestro "},
-    "devanity-v0":       {"plugins": ["devanity-v0"]},
     "devanity":          {"plugins": ["devanity"]},
     # V5 experiment arms (PLAN agenda, 2026-09-28): the candidate plus one declared difference each
     # (build_plugins.EXPERIMENTS), harness-only; run them with --arms, they are not the field
@@ -121,7 +118,6 @@ PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
 HARNESS_PLUGINS = Path(__file__).resolve().parent / "plugins"
 _LOCAL_PLUGINS = {
     "devanity-released": "run `python3 evals/harness/build_plugins.py` (exports the released ref)",
-    "devanity-v0":       "run `python3 evals/harness/build_plugins.py` (packages arms/devanity-v0)",
     "devanity":          "run `python3 evals/harness/build_plugins.py` (packages the working tree's plugin/skills/devanity)",
     "devanity-examples": "run `python3 evals/harness/build_plugins.py` (the candidate plus one kernel sentence)",
     "devanity-nudge":    "run `python3 evals/harness/build_plugins.py` (the candidate plus the nudge hook)",
