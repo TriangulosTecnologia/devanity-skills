@@ -77,11 +77,14 @@ function main() {
   // the consolidation and the dated results; the harness names the released version's commands.
   const retiredNames = /\b(?:maestro|archer|guardian)\b/i;
   const spacedTokens = /\b(?:NOT VERIFIED|INVALID TARGET|NOT RUN|NOT ADJUDICATED|NOT FALSIFIED)\b/;
-  const history = ['docs/evolution/PLAN.md', 'docs/evolution/SPEC.md', 'evals/results/'];
+  // The harness keeps them too: it runs the released version, whose commands still carry them.
+  const history = ['docs/evolution/PLAN.md', 'docs/evolution/SPEC.md', 'evals/results/', 'evals/harness/'];
+  const read_by_people = (rel) => rel.startsWith('docs/') || rel.startsWith('evals/') || rel.startsWith('scripts/') || !rel.includes('/');
   for (const file of textFiles) {
     const rel = file.slice(root.length + 1);
     const loaded = rel.startsWith('skills/') || rel.startsWith('agents/');
-    if (!loaded && (!rel.startsWith('docs/') || history.some((h) => rel.startsWith(h)))) continue;
+    if (rel === 'scripts/validate-open.mjs') continue;   // it names them to find them
+    if (!loaded && (!read_by_people(rel) || history.some((h) => rel.startsWith(h)))) continue;
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
       const name = line.match(retiredNames);
       if (name) fail(`${rel}:${i + 1} names the retired "${name[0]}"; the interface is /devanity <verb>`);
@@ -107,6 +110,19 @@ function main() {
     try { return JSON.parse(read(path)); }
     catch (error) { fail(`${path} is not valid JSON: ${error.message}`); return null; }
   };
+
+  // One release version: the manifest's, restated wherever a person or the model reads it.
+  const version = parseJson('.claude-plugin/plugin.json')?.version;
+  const kernelVersion = read('skills/devanity/SKILL.md').match(/^\s*version:\s*(\S+)/m)?.[1];
+  if (!version) fail('.claude-plugin/plugin.json has no version');
+  else {
+    if (kernelVersion !== version) fail(`skills/devanity/SKILL.md metadata version ${kernelVersion} != plugin.json ${version}`);
+    for (const path of ['README.md', 'skills/devanity/README.md', 'evals/kernel-sentences.md']) {
+      const named = [...read(path).matchAll(/\b\d+\.\d+\.\d+(?:-[a-z0-9.]+)?\b/g)].map((m) => m[0]).filter((v) => v !== version);
+      if (!read(path).includes(version)) fail(`${path} does not state the release version ${version}`);
+      if (named.length) fail(`${path} names version(s) ${[...new Set(named)].join(', ')}; the release is ${version}`);
+    }
+  }
 
   const schema = parseJson('skills/devanity/reference/change.schema.json');
   if (schema) {

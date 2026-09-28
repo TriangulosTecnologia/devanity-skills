@@ -167,11 +167,11 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 
 ### 4.2 Estrutura de arquivos alvo
 
-Como consolidada em C1 (decisão de 2026-09-25, PLAN "Decisões registradas"): o kernel roteia cada verbo para `modes/<verbo>.md`; cada modo declara na linha `Load:` o que carrega de `reference/`, e cada gramática vive num só arquivo que os modos citam. Este é o único layout detalhado do repositório (o README resume o nível de cima); `validate-open.mjs` lê este bloco como árvore (a indentação abre diretórios) e falha quando um arquivo rastreado fora de `evals/harness/`, `evals/results/` e `tests/` não aparece no seu caminho, quando um caminho listado não existe, ou quando um diretório de topo falta no README.
+Como consolidada em C1 (decisão de 2026-09-25, PLAN "Decisões registradas"): o kernel roteia cada verbo para `modes/<verbo>.md`; cada modo declara na linha `Load:` o que carrega de `reference/`, e cada gramática vive num só arquivo que os modos citam. Este é o único layout detalhado do repositório (o `CONTRIBUTING.md` resume o nível de cima). Desde 2026-09-28 nenhum validador o confere (PLAN, "Decisões registradas"): é mantido à mão, junto da mudança que move um arquivo.
 
 ```
 skills/devanity/
-  SKILL.md                      kernel (≤130 linhas, ≤1,8k tokens; cap do validador)
+  SKILL.md                      kernel (≤1,8k tokens; cap do validador)
   README.md                     página de instalação como skill (`npx skills`)
   modes/
     plan.md                     ciclo da mudança (FRAME→INSPECT→PROVE→EXECUTE→VERIFY→ASSURE), bloco devanity-contract
@@ -199,8 +199,8 @@ hooks/                          só na instalação como plugin; documentados em
   devanity-guard.js             PreToolUse: caminhos high-risk, autoridade de comandos
   devanity-oracle.js            Stop: mede o bloco devanity-proof
 scripts/
-  validate-skills.mjs           tabela de roteamento ≡ argument-hint ≡ arquivos, linha Load: ⊇ citações, gramáticas, caps, orçamento
-  validate-open.mjs             conjunto deliberado de modos, protocolo, registro de eixos ≡ SPEC §13, atribuição do harness, este layout
+  validate-skills.mjs           frontmatter, referências e rotas existentes, tabela de roteamento ≡ argument-hint ≡ arquivos, linha Load: ⊇ citações, citações de degrau, cap do kernel, orçamento
+  validate-open.mjs             conjunto deliberado de modos e agentes, nomes aposentados, repositório canônico, versão única, protocolo, atribuição do harness
   kernel.mjs                    invariants · build-agents · check-agents
   devanity-rules-ci.mjs         job de CI de referência (o teto do guard); --self-check neste repositório
 tests/                          node:test de hooks, scripts e kernel; `npm test` roda todos
@@ -221,7 +221,7 @@ devanity.rules.json             as regras deste próprio repositório (dogfood)
 .github/workflows/
   validate.yml                  o CI deste repositório
   devanity-rules.example.yml    modelo de job para o repositório consumidor (inerte aqui)
-README.md  LICENCE  package.json  .gitignore
+README.md  CONTRIBUTING.md  LICENCE  package.json  .gitignore
 ```
 
 ## 5. O kernel
@@ -397,9 +397,9 @@ Job de exemplo (GitHub Actions) que o `init` oferece: valida `rules.json`, mant�
 
 - Diretório `<git-common-dir>/devanity/` (isto é, dentro de `.git/`, resolvido por `git rev-parse --git-common-dir`): nunca commitável por construção, compartilhado entre worktrees e subagentes do mesmo repositório. Sem git, o ledger é desativado e o kernel avisa uma vez.
 - Concorrência: escrita append-only em JSONL com `O_APPEND`; leitores toleram linha parcial no fim. Subagentes paralelos escrevem no mesmo arquivo; o `session_id` distingue.
-- Arquivos JSONL, um por tipo: `contracts.jsonl`, `decisions.jsonl`, `proofs.jsonl`, `deferrals.jsonl` (reservado; ainda sem escritor), `events.jsonl` (`blocked`, `would_block`, `false_ready`, `rules_invalid`, `guard_payload_missing`, `inject_truncated`). Todo registro carrega `ts` e `session_id`; onde há `id`, o último registro por id vence campo a campo.
+- Arquivos JSONL, um por tipo: `contracts.jsonl`, `decisions.jsonl`, `proofs.jsonl`, `deferrals.jsonl` (reservado; ainda sem escritor), `events.jsonl` (`blocked`, `would_block`, `false_ready`, `unmeasured`, `rules_invalid`, `guard_payload_missing`, `guard_error`, `oracle_error`, `inject_truncated`). Todo registro carrega `ts` e `session_id`; onde há `id`, o último registro por id vence campo a campo.
 - Registro de contrato: `{ id, phase: FRAME|INSPECT|PROVE|EXECUTE|VERIFY|ASSURE|DONE|ABANDONED, intent?, scope?, forbidden?, proof?, pending?, reason? }`; escrito pelo `Stop` a partir do bloco `devanity-contract:` e por `/devanity reset` (`ABANDONED`, `reason: reset`).
-- Registro de decisão: `{ id, path?, kind: reversible|irreversible|human, status: pending|decided, by: agent|agent-default|human, chosen? }`; `by: human` só via `/devanity decide`.
+- Registro de decisão: `{ id, path?, kind: reversible|irreversible|human, status: pending|decided|rejected, by: agent|agent-default|human, chosen? }`; `by: human` só via `/devanity decide`.
 - Registro de prova: `{ kind: proof, contract, check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason }`; `measured: null` quando o oráculo não reexecutou.
 - Retenção: 90 dias; `debt` (`stats`), `audit` e os hooks leem; `prune` só a pedido. A documentação operacional é `docs/hooks.md`.
 - Sem dados do prompt do usuário; só metadados. Sem envio a lugar nenhum.
