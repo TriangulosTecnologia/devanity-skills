@@ -24,7 +24,7 @@ const SAMPLE = {
   version: 1,
   defaults: { tier: 'normal', authority: 'commit' },
   paths: {
-    'billing/**': { tier: 'high-risk', authority: 'prepare', check: 'pytest tests/billing -q', delta: { files: 3 } },
+    'billing/**': { tier: 'high-risk', check: 'pytest tests/billing -q', delta: { files: 3 } },
     'billing/README.md': { tier: 'trivial' },
     'docs/**': { tier: 'trivial' },
     'migrations/**': { tier: 'high-risk' },
@@ -39,7 +39,7 @@ describe('rules: loading', () => {
     const r = rules.loadRules(fresh());
     assert.equal(r.present, false);
     assert.deepEqual(r.errors, []);
-    assert.deepEqual(rules.ruleFor(r.rules, 'anything/x.py'), { tier: 'normal', authority: 'commit', glob: null });
+    assert.deepEqual(rules.ruleFor(r.rules, 'anything/x.py'), { tier: 'normal', glob: null });
   });
 
   test('valid file loads; invalid file reports errors and falls back to defaults', () => {
@@ -74,6 +74,15 @@ describe('rules: the published schemas and the loader agree', () => {
     const max = r.properties.paths.additionalProperties.properties.purpose.maxLength;
     assert.deepEqual(rules.validate({ version: 1, paths: { 'a/**': { purpose: 'x'.repeat(max) } } }), []);
     assert.ok(rules.validate({ version: 1, paths: { 'a/**': { purpose: 'x'.repeat(max + 1) } } }).some((e) => e.includes('purpose')));
+  });
+});
+
+describe('rules: a path carries no authority', () => {
+  // No hook ever applied a per-path authority: accepting the field let a map promise a restriction
+  // nothing enforced. Command authority is per session and per command.
+  test('authority on a path is an error that names where command authority is set', () => {
+    const errors = rules.validate({ version: 1, paths: { 'billing/**': { tier: 'high-risk', authority: 'prepare' } } });
+    assert.ok(errors.some((e) => e.includes('paths["billing/**"]') && e.includes('authority') && e.includes('defaults.authority') && e.includes('commands')), errors.join('; '));
   });
 });
 

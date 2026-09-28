@@ -315,16 +315,16 @@ Fonte única, compilada para três superfícies: contexto por caminho injetado n
   "version": 1,
   "defaults": { "tier": "normal", "authority": "commit" },
   "paths": {
-    "billing/**":     { "tier": "high-risk", "authority": "prepare", "check": "pytest tests/billing -q", "delta": { "files": 3 },
+    "billing/**":     { "tier": "high-risk", "check": "pytest tests/billing -q", "delta": { "files": 3 },
                         "purpose": "cobranças e reembolsos", "invariants": ["valores em centavos inteiros"] },
-    "migrations/**":  { "tier": "high-risk", "authority": "prepare" },
-    "docs/**":        { "tier": "trivial",   "authority": "commit" }
+    "migrations/**":  { "tier": "high-risk" },
+    "docs/**":        { "tier": "trivial" }
   }
 }
 ```
 
 - `tier`: `trivial | normal | high-risk`. Define o degrau mínimo da escada para o caminho.
-- `authority`: teto da escada `observe < recommend < prepare < execute < commit < merge < deploy`.
+- `authority` (só em `defaults` e `autonomy`, e o valor de cada padrão em `commands`): teto da escada `observe < recommend < prepare < execute < commit < merge < deploy`. Um caminho não carrega autoridade: nenhum hook a aplicava, e o loader recusa o campo desde 2026-09-28.
 - `check`: comando que o `Stop` executa para o oráculo, lido do arquivo **como commitado em HEAD** (§0.5). É o único check que o oráculo executa; sem ele, a prova fica registrada como não medida.
 - `purpose` (≤160 caracteres) e `invariants` (lista): o mapa do repositório (§0.4), injetado em toda sessão. O dono vem do CODEOWNERS.
 - `core` (booleano): o centro estável que sobrevive aos pivots (§0.4), ortogonal ao `tier`; injetado logo depois das entradas high-risk.
