@@ -10,7 +10,7 @@
     {
       "name": "devanity",
       "description": "Rigor proportional to what is at stake: stop at the first rung that holds, write the minimum that works, leave a check that fails before the fix, never spend authority you were not given.",
-      "source": "./",
+      "source": "./plugin",
       "category": "productivity"
     }
   ]

@@ -175,7 +175,7 @@ def _selftest_control_arm():
         nonlocal fails
         print(f"{'ok ' if ok else 'XX '} control_arm  {label}")
         fails += 0 if ok else 1
-    cand = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["SessionStart"]
+    cand = json.loads((ROOT / "plugin" / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["SessionStart"]
     with tempfile.TemporaryDirectory() as d:
         out = build_plugins.build_control(Path(d) / "devanity-v0")
         try: hooks = json.loads((out / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]

@@ -1,6 +1,6 @@
 # Kernel sentences and the metric each one moves (PLAN F1.3)
 
-One row per sentence of `skills/devanity/SKILL.md` (1.0.0-candidate). The metric column names the harness measurement (`evals/harness/tasks.py`, `run.py`) and the task that carries it; the SPEC §13 column names the success criterion the sentence serves. The `ablation` column is filled by the F1.13 round: each sentence is removed in turn from the `devanity` arm and the delta on its metric is written here. A sentence whose ablation moves nothing across `n ≥ 4` is removed from the kernel in the same PR that publishes the round; a sentence with no metric at all is listed in the last section and must earn one or go.
+One row per sentence of `plugin/skills/devanity/SKILL.md` (1.0.0-candidate). The metric column names the harness measurement (`evals/harness/tasks.py`, `run.py`) and the task that carries it; the SPEC §13 column names the success criterion the sentence serves. The `ablation` column is filled by the F1.13 round: each sentence is removed in turn from the `devanity` arm and the delta on its metric is written here. A sentence whose ablation moves nothing across `n ≥ 4` is removed from the kernel in the same PR that publishes the round; a sentence with no metric at all is listed in the last section and must earn one or go.
 
 Metric key (task names as of the C2 registry, `evals/README.md`): `safe` (deterministic scorer per task) · `LOC` (`total_loc` of the delivered diff) · `tokens` (session cost) · `rung2` (`total_tokens_mean`, `final_chars_mean` and files touched on `rung2-rename`, `rung2-typo`, `rung2-constant`) · `false_ready` (certificate vs oracle, `judge-falsetest`) · `usurped` (`decisions_usurped`, `judge-humanowned`, `vibe-autonomous-billing`) · `grant` (no push or deploy beyond the written grant, `authority-ship`) · `avoidable` (`questions_avoidable`, `judge-askable`; diagnostic, the §13 gate is its `correct`) · `root_cause` (`trace-transfer`) · `nochange` (`judge-nochange`) · `reuse` (`reuse-slug`, `reuse-money`, `conv-exporter`) · `complete` (`vibe-app-cli`, `vibe-app-web`) · `drift` (`long-3-tickets`, `long-compact`) · `modes` (`mode-review`, `mode-review-clean`, `mode-audit`, `mode-plan`, `mode-architect`) · `hiddenbug` (`judge-hiddenbug`, pending with F3.3) · `loosened` (`judge-loosen`) · `propagated` (`twin-debt`, `twin-clean` the control) · `entropy_delta` (`long-entropy`).
 
@@ -45,7 +45,7 @@ Metric key (task names as of the C2 registry, `evals/README.md`): `safe` (determ
 
 ## Context and verifier (SPEC §0.3, written by PLAN V1)
 
-The rows carry the two sentences verbatim from `skills/devanity/SKILL.md`.
+The rows carry the two sentences verbatim from `plugin/skills/devanity/SKILL.md`.
 
 | # | sentence | metric · task | SPEC §13 | ablation |
 |---|---|---|---|---|

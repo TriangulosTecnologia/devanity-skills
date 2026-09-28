@@ -12,8 +12,8 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const ORACLE = join(root, 'hooks', 'devanity-oracle.js');
-const INJECT = join(root, 'hooks', 'devanity-inject.js');
+const ORACLE = join(root, 'plugin', 'hooks', 'devanity-oracle.js');
+const INJECT = join(root, 'plugin', 'hooks', 'devanity-inject.js');
 const oracle = require(ORACLE);
 
 let temp;

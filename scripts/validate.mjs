@@ -6,6 +6,7 @@
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 // Drop fenced code blocks so illustrative example paths (e.g. src/foo.ts) aren't treated as references.
 const stripFences = (text) => {
@@ -244,15 +245,15 @@ export function checkRepository(root) {
   const read = (path) => readFileSync(join(root, path), 'utf8');
 
   const requiredFiles = [
-    'skills/devanity/SKILL.md',
-    'skills/devanity/README.md',
-    'skills/devanity/reference/vocabulary.md',
-    'skills/devanity/reference/quality.md',
-    'skills/devanity/reference/baseline.md',
-    'skills/devanity/reference/change.schema.json',
-    'skills/devanity/reference/rules.schema.json',
-    'agents/worker.md',
-    'agents/verifier.md',
+    'plugin/skills/devanity/SKILL.md',
+    'plugin/skills/devanity/README.md',
+    'plugin/skills/devanity/reference/vocabulary.md',
+    'plugin/skills/devanity/reference/quality.md',
+    'plugin/skills/devanity/reference/baseline.md',
+    'plugin/skills/devanity/reference/change.schema.json',
+    'plugin/skills/devanity/reference/rules.schema.json',
+    'plugin/agents/worker.md',
+    'plugin/agents/verifier.md',
     'CONTRIBUTING.md',
     'evals/README.md',
     'evals/harness/tasks.py'
@@ -262,38 +263,42 @@ export function checkRepository(root) {
   // One capability with modes (docs/evolution/PLAN.md, decision 2026-09-23): a new top-level
   // capability or a new mode is an architectural decision, not a free directory.
   const expectedSkills = ['devanity'];
-  const skillDirs = readdirSync(join(root, 'skills')).filter((name) => statSync(join(root, 'skills', name)).isDirectory()).sort();
+  const skillDirs = readdirSync(join(root, 'plugin', 'skills')).filter((name) => statSync(join(root, 'plugin', 'skills', name)).isDirectory()).sort();
   if (skillDirs.join(',') !== expectedSkills.join(',')) {
-    fail(`skills/ must be the deliberate capability set (${expectedSkills.join(', ')}); found: ${skillDirs.join(', ')}`);
+    fail(`plugin/skills/ must be the deliberate capability set (${expectedSkills.join(', ')}); found: ${skillDirs.join(', ')}`);
   }
   // One flat file per verb, the set the kernel's routing table and argument-hint promise.
   const expectedModes = ['architect.md', 'audit.md', 'debt.md', 'improve.md', 'init.md', 'plan.md', 'review.md'];
-  const modeEntries = existsSync(join(root, 'skills/devanity/modes')) ? readdirSync(join(root, 'skills/devanity/modes')).sort() : [];
+  const modeEntries = existsSync(join(root, 'plugin/skills/devanity/modes')) ? readdirSync(join(root, 'plugin/skills/devanity/modes')).sort() : [];
   if (modeEntries.join(',') !== expectedModes.join(',')) {
-    fail(`skills/devanity/modes must be the deliberate mode set (${expectedModes.join(', ')}); found: ${modeEntries.join(', ')}`);
+    fail(`plugin/skills/devanity/modes must be the deliberate mode set (${expectedModes.join(', ')}); found: ${modeEntries.join(', ')}`);
   }
 
   const expectedAgents = ['verifier.md', 'worker.md'];
-  const agents = readdirSync(join(root, 'agents')).filter((name) => name.endsWith('.md')).sort();
+  const agents = readdirSync(join(root, 'plugin', 'agents')).filter((name) => name.endsWith('.md')).sort();
   if (agents.join(',') !== expectedAgents.join(',')) {
-    fail(`agents/ must be the deliberate role set (${expectedAgents.join(', ')}); found: ${agents.join(', ')}`);
+    fail(`plugin/agents/ must be the deliberate role set (${expectedAgents.join(', ')}); found: ${agents.join(', ')}`);
   }
 
   // Repository migration is complete only when published install/source references use the canonical repo.
   // Derive the legacy tokens so this validator does not contain the literals it is searching for.
   const CANONICAL_REPO = 'usedevanity/skills';
   const legacyRepos = [['ttoss', 'skills'].join('/'), ['TriangulosTecnologia', 'devanity-skills'].join('/')];
+  // The tracked files: build output the harness generates (gitignored) is not the repository.
+  // Outside a checkout, every file on disk but .git/.
   const textFiles = [];
+  const listed = spawnSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' });
   const walk = (dir) => {
     for (const name of readdirSync(dir)) {
       const path = join(dir, name);
-      const rel = path.slice(root.length + 1);
-      if (rel.startsWith('.git/')) continue;
+      if (path.slice(root.length + 1).startsWith('.git/')) continue;
       if (statSync(path).isDirectory()) walk(path);
-      else if (/\.(md|mjs|json|yml|yaml)$/.test(name)) textFiles.push(path);
+      else textFiles.push(path);
     }
   };
-  walk(root);
+  if (listed.status === 0 && listed.stdout.trim()) textFiles.push(...listed.stdout.trim().split('\n').map((f) => join(root, f)).filter((f) => existsSync(f)));
+  else walk(root);
+  textFiles.splice(0, textFiles.length, ...textFiles.filter((f) => /\.(md|mjs|json|yml|yaml)$/.test(f)));
   for (const file of textFiles) {
     const text = readFileSync(file, 'utf8');
     for (const legacy of legacyRepos) if (text.includes(legacy)) fail(`${file.slice(root.length + 1)} still references ${legacy}; the repository is ${CANONICAL_REPO}`);
@@ -309,10 +314,10 @@ export function checkRepository(root) {
   const spacedTokens = /\b(?:NOT VERIFIED|INVALID TARGET|NOT RUN|NOT ADJUDICATED|NOT FALSIFIED)\b/;
   // The harness keeps them too: it runs the released version, whose commands still carry them.
   const history = ['docs/evolution/PLAN.md', 'docs/evolution/SPEC.md', 'evals/results/', 'evals/harness/'];
-  const read_by_people = (rel) => rel.startsWith('docs/') || rel.startsWith('evals/') || rel.startsWith('scripts/') || !rel.includes('/');
+  const read_by_people = (rel) => rel.startsWith('docs/') || rel.startsWith('evals/') || rel.startsWith('scripts/') || rel.startsWith('plugin/') || !rel.includes('/');
   for (const file of textFiles) {
     const rel = file.slice(root.length + 1);
-    const loaded = rel.startsWith('skills/') || rel.startsWith('agents/');
+    const loaded = rel.startsWith('plugin/skills/') || rel.startsWith('plugin/agents/');
     if (rel === 'scripts/validate.mjs') continue;   // it names them to find them
     if (!loaded && (!read_by_people(rel) || history.some((h) => rel.startsWith(h)))) continue;
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
@@ -342,19 +347,19 @@ export function checkRepository(root) {
   };
 
   // One release version: the manifest's, restated wherever a person or the model reads it.
-  const version = parseJson('.claude-plugin/plugin.json')?.version;
-  const kernelVersion = read('skills/devanity/SKILL.md').match(/^\s*version:\s*(\S+)/m)?.[1];
-  if (!version) fail('.claude-plugin/plugin.json has no version');
+  const version = parseJson('plugin/.claude-plugin/plugin.json')?.version;
+  const kernelVersion = read('plugin/skills/devanity/SKILL.md').match(/^\s*version:\s*(\S+)/m)?.[1];
+  if (!version) fail('plugin/.claude-plugin/plugin.json has no version');
   else {
-    if (kernelVersion !== version) fail(`skills/devanity/SKILL.md metadata version ${kernelVersion} != plugin.json ${version}`);
-    for (const path of ['README.md', 'skills/devanity/README.md', 'evals/kernel-sentences.md']) {
+    if (kernelVersion !== version) fail(`plugin/skills/devanity/SKILL.md metadata version ${kernelVersion} != plugin.json ${version}`);
+    for (const path of ['README.md', 'plugin/skills/devanity/README.md', 'evals/kernel-sentences.md']) {
       const named = [...read(path).matchAll(/\b\d+\.\d+\.\d+(?:-[a-z0-9.]+)?\b/g)].map((m) => m[0]).filter((v) => v !== version);
       if (!read(path).includes(version)) fail(`${path} does not state the release version ${version}`);
       if (named.length) fail(`${path} names version(s) ${[...new Set(named)].join(', ')}; the release is ${version}`);
     }
   }
 
-  const schema = parseJson('skills/devanity/reference/change.schema.json');
+  const schema = parseJson('plugin/skills/devanity/reference/change.schema.json');
   if (schema) {
     if (schema.title !== 'Devanity Open Change') fail('change.schema.json has unexpected title');
     const required = new Set(schema.required ?? []);
@@ -368,19 +373,31 @@ export function checkRepository(root) {
     }
   }
 
+  // The installable unit: the marketplace installs plugin/ and nothing else, so it holds only what a
+  // session runs or the init mode copies, carries the licence, and reaches nothing outside itself.
+  const market = parseJson('.claude-plugin/marketplace.json');
+  if (market && (market.plugins ?? []).map((p) => p.source).join(',') !== './plugin') fail('.claude-plugin/marketplace.json must install ./plugin, the one installable unit');
+  const unit = ['.claude-plugin', 'LICENCE', 'agents', 'hooks', 'skills', 'templates'];
+  const shipped = existsSync(join(root, 'plugin')) ? readdirSync(join(root, 'plugin')).sort() : [];
+  if (shipped.join(',') !== unit.join(',')) fail(`plugin/ must hold exactly ${unit.join(', ')} (what installs is what runs); found: ${shipped.join(', ')}`);
+  if (existsSync(join(root, 'plugin/LICENCE')) && read('plugin/LICENCE') !== read('LICENCE')) fail('plugin/LICENCE must be a copy of LICENCE: the licence travels with what installs');
+  for (const name of existsSync(join(root, 'plugin/hooks')) ? readdirSync(join(root, 'plugin/hooks')) : []) {
+    if (/\.\.[\\/]\.\.|'\.\.', '\.\.'/.test(read(`plugin/hooks/${name}`))) fail(`plugin/hooks/${name} reaches outside the plugin; an installed copy has nothing there`);
+  }
+
   // Every public skill should install from the canonical repository; agents remain optional companions.
   for (const skill of expectedSkills) {
-    const path = `skills/${skill}/README.md`;
+    const path = `plugin/skills/${skill}/README.md`;
     if (!existsSync(join(root, path))) fail(`${skill} missing README.md`);
     else if (!read(path).includes(CANONICAL_REPO)) fail(`${path} does not name the canonical install source`);
   }
   return errors;
 }
 
-// CLI: run against this repo's skills/ plus the root README, and exit non-zero on any error.
+// CLI: run against this repo's plugin/skills/ plus the root README, and exit non-zero on any error.
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-  const skillsRoot = join(repoRoot, 'skills');
+  const skillsRoot = join(repoRoot, 'plugin', 'skills');
   const errors = [
     ...validate(skillsRoot),
     ...checkRelativeLinks(join(repoRoot, 'README.md')).map((e) => `repo: README.md ${e}`),

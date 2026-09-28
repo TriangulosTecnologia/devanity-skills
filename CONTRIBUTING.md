@@ -4,7 +4,7 @@ For people changing this repository. Using devanity in yours is the [README](REA
 
 ## How changes are made here
 
-This repository runs devanity on itself: [`devanity.rules.json`](devanity.rules.json) is its map, and `hooks/**`, `scripts/**` and `.claude-plugin/**` are high-risk because they run in every user's session, gate CI or publish the plugin. A change to them is proposed and approved by the maintainer before it lands.
+This repository runs devanity on itself: [`devanity.rules.json`](devanity.rules.json) is its map, and `plugin/hooks/**`, `plugin/templates/**`, `scripts/**` and both `.claude-plugin/` directories are high-risk because they run in every user's session, gate CI or publish the plugin. A change to them is proposed and approved by the maintainer before it lands.
 
 The thesis is **specification before material coding**: resolve every uncertainty that is economically discoverable before implementation, then falsify the candidate and keep recurring lessons as enforcement. The target is zero avoidable rework, not zero iteration. The model every change is held to is [below](#the-model); its source of truth is SPEC §0.
 
@@ -30,22 +30,25 @@ Kernel text changes only with a number from the harness: compare observable beha
 
 ## Shared Change protocol
 
-Every mode reads and writes the same objects: [`vocabulary.md`](skills/devanity/reference/vocabulary.md) defines the Change, target identity, Evidence, authority, Decision, Finding and verdicts, and [`change.schema.json`](skills/devanity/reference/change.schema.json) serializes the Change.
+Every mode reads and writes the same objects: [`vocabulary.md`](plugin/skills/devanity/reference/vocabulary.md) defines the Change, target identity, Evidence, authority, Decision, Finding and verdicts, and [`change.schema.json`](plugin/skills/devanity/reference/change.schema.json) serializes the Change.
 
 ## Repository layout
 
 ```text
-skills/devanity/     the skill: SKILL.md (kernel), modes/ (one file per verb), reference/
-agents/              worker (evidence) and verifier (independent proof)
-hooks/               kernel injection, commands, guard, proof oracle, ledger (plugin install only)
-scripts/             validators, AGENTS.md generator, reference CI job
+plugin/              the installable unit, and all the marketplace ships:
+  skills/devanity/   the skill: SKILL.md (kernel), modes/ (one file per verb), reference/
+  agents/            worker (evidence) and verifier (independent proof)
+  hooks/             kernel injection, commands, guard, proof oracle, ledger
+  templates/         the reference CI job a consumer copies (init proposes it)
+  .claude-plugin/    the plugin manifest; LICENCE, a copy of the root one
+scripts/             the validator, AGENTS.md generator, reference CI job
 tests/               node:test suites (npm test)
 docs/                hooks reference, evolution spec and plan
 evals/               the measured axes, the runbook, the harness, dated results
 AGENTS.md            the kernel for hosts that run no hooks (generated)
 devanity.rules.json  this repository's own map
-.claude-plugin/      plugin manifest and marketplace
-.github/             CI, and the CI job template for consumer repositories
+.claude-plugin/      the marketplace: installs plugin/
+.github/             this repository's CI
 ```
 
 The specification and the plan, [`docs/evolution/SPEC.md`](docs/evolution/SPEC.md) and [`docs/evolution/PLAN.md`](docs/evolution/PLAN.md), are the maintainer's working documents and are written in Portuguese. The PLAN is where task status lives.
@@ -86,7 +89,7 @@ A successful run produces a **verified or explicitly unverified Change outcome**
 
 > Resolve every material uncertainty that is economically discoverable before implementation; do not use specification to pretend away uncertainty that only execution can resolve.
 
-The target is **zero avoidable material rework**, not zero iteration. One evolving Change is the lifecycle's source of truth (`skills/devanity/reference/vocabulary.md` defines it, `reference/change.schema.json` serializes it); plans, verification matrices and PR descriptions are views of it. Terminal outcomes: `CANDIDATE_READY`, `NO_CHANGE`, `BLOCKED`, `NOT_VERIFIED`, `INVALID_TARGET`.
+The target is **zero avoidable material rework**, not zero iteration. One evolving Change is the lifecycle's source of truth (`plugin/skills/devanity/reference/vocabulary.md` defines it, `reference/change.schema.json` serializes it); plans, verification matrices and PR descriptions are views of it. Terminal outcomes: `CANDIDATE_READY`, `NO_CHANGE`, `BLOCKED`, `NOT_VERIFIED`, `INVALID_TARGET`.
 
 The lifecycle is `FRAME → INSPECT → PROVE → EXECUTE → VERIFY → ASSURE`. No material implementation while the current slice has an unresolved outcome-defining ambiguity, blocking human-owned decision, material unknown impact, architecture decision owed to `architect`, unbounded expected or forbidden delta, circular proof, or insufficient target identity.
 
@@ -104,7 +107,7 @@ A ceiling comes from outside the session: the rules file, the autonomy envelope,
 
 ### The outer loop
 
-The durability ladder is the one in `skills/devanity/reference/quality.md`: a rule moves from the weakest rung toward the strongest that can hold it, and the prose becomes a pointer once the check exists.
+The durability ladder is the one in `plugin/skills/devanity/reference/quality.md`: a rule moves from the weakest rung toward the strongest that can hold it, and the prose becomes a pointer once the check exists.
 
 ```text
 prose → path-scoped context → procedure → enforcement (types, schemas, lint, tests, coverage gates, CI, hooks)

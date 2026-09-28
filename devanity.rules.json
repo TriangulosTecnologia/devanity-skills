@@ -9,7 +9,7 @@
     ".github/workflows/validate.yml"
   ],
   "paths": {
-    "skills/devanity/**": {
+    "plugin/skills/devanity/**": {
       "tier": "normal",
       "check": "node scripts/validate.mjs",
       "purpose": "the skill: SKILL.md kernel, modes/ by verb, reference/",
@@ -18,7 +18,7 @@
         "a mode loads only its Load: line"
       ]
     },
-    "skills/devanity/SKILL.md": {
+    "plugin/skills/devanity/SKILL.md": {
       "tier": "normal",
       "core": true,
       "check": "node scripts/kernel.mjs invariants && node scripts/kernel.mjs check-agents",
@@ -28,12 +28,12 @@
         "AGENTS.md is generated from it"
       ]
     },
-    "agents/**": {
+    "plugin/agents/**": {
       "tier": "normal",
       "check": "node scripts/kernel.mjs check-agents",
       "purpose": "worker (evidence, no judgment) and verifier (falsifies, never edits)"
     },
-    "hooks/**": {
+    "plugin/hooks/**": {
       "tier": "high-risk",
       "check": "node --test tests/*.test.mjs",
       "purpose": "plugin runtime in every user's session",
@@ -53,7 +53,18 @@
     },
     ".claude-plugin/**": {
       "tier": "high-risk",
-      "purpose": "plugin manifest and marketplace"
+      "check": "node scripts/validate.mjs",
+      "purpose": "the marketplace: it installs plugin/ and nothing else"
+    },
+    "plugin/.claude-plugin/**": {
+      "tier": "high-risk",
+      "check": "node scripts/validate.mjs",
+      "purpose": "the plugin manifest: name, version, hooks"
+    },
+    "plugin/templates/**": {
+      "tier": "high-risk",
+      "check": "node --test tests/rules-ci.test.mjs",
+      "purpose": "the consumers' reference CI job, copied by init"
     },
     "evals/harness/**": {
       "tier": "normal",

@@ -88,8 +88,11 @@ function validate(raw) {
     if (typeof raw.paths !== 'object' || Array.isArray(raw.paths)) bad('paths must be an object of glob → rule');
     else for (const [glob, rule] of Object.entries(raw.paths)) {
       if (!rule || typeof rule !== 'object') { bad(`paths["${glob}"] must be an object`); continue; }
-      known(rule, ['tier', 'authority', 'check', 'delta', 'purpose', 'invariants', 'core'], `paths["${glob}"]`);
-      checkTier(rule.tier, `paths["${glob}"]`); checkAuth(rule.authority, `paths["${glob}"]`);
+      // No hook ever applied a per-path authority; name where command authority is set instead.
+      const { authority, ...fields } = rule;
+      if (authority !== undefined) bad(`paths["${glob}"]: a path carries no authority; command authority is set per session (defaults.authority, autonomy.authority) and per command (commands)`);
+      known(fields, ['tier', 'check', 'delta', 'purpose', 'invariants', 'core'], `paths["${glob}"]`);
+      checkTier(rule.tier, `paths["${glob}"]`);
       if (rule.tier === 'trivial') {
         const re = globToRegExp(glob);
         const hit = INSTRUCTION_SAMPLES.find((f) => re.test(f));
@@ -172,7 +175,7 @@ function ruleFor(rules, rel) {
     if (!p.re.test(rel)) continue;
     if (!best || p.spec > best.spec || (p.spec === best.spec && p.order > best.order)) best = p;
   }
-  return { tier: rules.defaults.tier, authority: rules.defaults.authority, ...(best ? best.rule : {}), glob: best ? best.glob : null };
+  return { tier: rules.defaults.tier, ...(best ? best.rule : {}), glob: best ? best.glob : null };
 }
 
 function isTestPath(rules, rel) {

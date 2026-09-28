@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { INVARIANTS, checkInvariants, renderAgentsMd } from '../scripts/kernel.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const kernel = readFileSync(join(root, 'skills', 'devanity', 'SKILL.md'), 'utf8');
+const kernel = readFileSync(join(root, 'plugin', 'skills', 'devanity', 'SKILL.md'), 'utf8');
 
 test('the committed kernel carries every invariant', () => {
   assert.deepEqual(checkInvariants([['SKILL.md', kernel]]), []);
@@ -23,7 +23,7 @@ test('AGENTS.md rendering strips frontmatter and the two host-specific sections,
   const agents = renderAgentsMd(kernel);
   assert.ok(!agents.includes('argument-hint'), 'frontmatter must be stripped');
   assert.ok(!/^## Modes/m.test(agents) && !/^## Boundaries/m.test(agents), 'host sections must be stripped');
-  assert.ok(agents.startsWith('<!-- Generated from skills/devanity/SKILL.md'), 'generated marker first');
+  assert.ok(agents.startsWith('<!-- Generated from plugin/skills/devanity/SKILL.md'), 'generated marker first');
   assert.deepEqual(checkInvariants([['AGENTS.md', agents]]), [], 'every invariant survives the render');
   for (const phrase of INVARIANTS) assert.ok(agents.includes(phrase));
 });

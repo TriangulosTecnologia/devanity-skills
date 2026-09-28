@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Kernel checks for skills/devanity/SKILL.md (docs/evolution/SPEC.md §5.4 and §4.2):
+// Kernel checks for plugin/skills/devanity/SKILL.md (docs/evolution/SPEC.md §5.4 and §4.2):
 //   node scripts/kernel.mjs invariants        # the load-bearing phrases exist verbatim in SKILL.md and AGENTS.md
 //   node scripts/kernel.mjs build-agents      # regenerate AGENTS.md from SKILL.md (the instruction-only fallback)
 //   node scripts/kernel.mjs check-agents      # fail if AGENTS.md drifted from what build-agents would write
@@ -54,18 +54,18 @@ export function renderAgentsMd(skillMd) {
     if (!skipping) out.push(line);
   }
   const text = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  return `<!-- Generated from skills/devanity/SKILL.md by scripts/kernel.mjs build-agents. Edit the kernel, not this file. -->\n${text}\n\nThis file is the instruction-only form of devanity, for hosts that read AGENTS.md and run no hooks. With Claude Code, install the plugin instead: the kernel is then injected on every session, compaction and subagent, and the modes (\`/devanity plan|architect|review|audit|improve|debt|init\`) become available.\n`;
+  return `<!-- Generated from plugin/skills/devanity/SKILL.md by scripts/kernel.mjs build-agents. Edit the kernel, not this file. -->\n${text}\n\nThis file is the instruction-only form of devanity, for hosts that read AGENTS.md and run no hooks. With Claude Code, install the plugin instead: the kernel is then injected on every session, compaction and subagent, and the modes (\`/devanity plan|architect|review|audit|improve|debt|init\`) become available.\n`;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-  const skillPath = join(root, 'skills', 'devanity', 'SKILL.md');
+  const skillPath = join(root, 'plugin', 'skills', 'devanity', 'SKILL.md');
   const agentsPath = join(root, 'AGENTS.md');
   const skill = readFileSync(skillPath, 'utf8');
   const cmd = process.argv[2];
   const fail = (msgs) => { for (const m of msgs) console.error(`  - ${m}`); process.exit(1); };
   if (cmd === 'invariants') {
-    const files = [['skills/devanity/SKILL.md', skill]];
+    const files = [['plugin/skills/devanity/SKILL.md', skill]];
     if (existsSync(agentsPath)) files.push(['AGENTS.md', readFileSync(agentsPath, 'utf8')]);
     else fail(['AGENTS.md is missing: run `node scripts/kernel.mjs build-agents`']);
     const errors = checkInvariants(files);
@@ -77,7 +77,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   } else if (cmd === 'check-agents') {
     const want = renderAgentsMd(skill);
     const have = existsSync(agentsPath) ? readFileSync(agentsPath, 'utf8') : '';
-    if (have !== want) fail(['AGENTS.md drifted from skills/devanity/SKILL.md: run `node scripts/kernel.mjs build-agents` and commit the result (AGENTS.md is generated, never edited by hand)']);
+    if (have !== want) fail(['AGENTS.md drifted from plugin/skills/devanity/SKILL.md: run `node scripts/kernel.mjs build-agents` and commit the result (AGENTS.md is generated, never edited by hand)']);
     console.log('✓ AGENTS.md matches the kernel');
   } else {
     console.error('usage: node scripts/kernel.mjs invariants|build-agents|check-agents');

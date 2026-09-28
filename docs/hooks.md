@@ -1,6 +1,6 @@
 # Devanity hooks
 
-The hooks run only when devanity is installed as a Claude Code plugin (`hooks/hooks.json`); an `AGENTS.md`-only host gets the kernel and nothing below. Four entry points share three libraries: `devanity-runtime.js` (payload, kernel, fallbacks), `devanity-rules.js` (the `devanity.rules.json` loader and globs) and `devanity-ledger.js` (the state every hook reads). None of them asks the model anything, and every failure path allows and leaves a trace.
+The hooks run only when devanity is installed as a Claude Code plugin (`plugin/hooks/hooks.json`); an `AGENTS.md`-only host gets the kernel and nothing below. Four entry points share three libraries: `devanity-runtime.js` (payload, kernel, fallbacks), `devanity-rules.js` (the `devanity.rules.json` loader and globs) and `devanity-ledger.js` (the state every hook reads). None of them asks the model anything, and every failure path allows and leaves a trace.
 
 The hooks stop the agent that errs or races for a green check, and they measure; they run with the agent's own permissions, so they are not a boundary against one that sets out to get around them. That boundary is the [reference CI job](#reference-ci-job-scriptsdevanity-rules-cimjs) with branch protection and `CODEOWNERS`; what each hook does not stop is under the guard's [Limits](#limits) and the oracle's [What it cannot prove](#what-it-cannot-prove).
 
@@ -17,7 +17,7 @@ The hooks stop the agent that errs or races for a green check, and they measure;
 
 ## Guard (`devanity-guard.js`)
 
-`hooks/devanity-guard.js` runs before every `Edit`, `Write`, `MultiEdit`, `NotebookEdit` and `Bash` call. It reads `devanity.rules.json` at the repository root (SPEC §7.1) and the local ledger under `<git-common-dir>/devanity/`, and decides allow or block. It never asks the model anything, never hangs (1 s stdin fallback) and never crashes the session: every failure path allows and leaves a trace.
+`plugin/hooks/devanity-guard.js` runs before every `Edit`, `Write`, `MultiEdit`, `NotebookEdit` and `Bash` call. It reads `devanity.rules.json` at the repository root (SPEC §7.1) and the local ledger under `<git-common-dir>/devanity/`, and decides allow or block. It never asks the model anything, never hangs (1 s stdin fallback) and never crashes the session: every failure path allows and leaves a trace.
 
 ### What is enforced
 
@@ -30,7 +30,7 @@ The hooks stop the agent that errs or races for a green check, and they measure;
 
 Everything else is allowed. Paths outside the repository are ignored. A high-risk path is only unblocked by a decision record with `status: decided`, `by: human`, a `path` (glob or prefix) that covers it, and still in scope (given for a change: while that change is open; given with no open change: for 24 hours); `by: agent`, `by: agent-default`, rejected and pending records authorize nothing.
 
-Command authority (`hooks/devanity-rules.js` `BUILTIN_COMMANDS`, plus `rules.json#commands`): `git commit` and `git push` need `commit`; `git merge`, `gh pr merge` and a forced push (`--force`, `--force-with-lease`, `-f`, `-fu`, `+ref`) need `merge`; `terraform apply`, `kubectl apply|delete`, `npm publish` and `deploy` as a command (`./deploy.sh`, `bash deploy.sh`, `npm run deploy`, `make deploy`) need `deploy`. The git patterns also match git's global options before the subcommand (`git -C dir push`, `git -C "my dir" push`, `git -c k=v push`, `git --git-dir .git push`, `git -P push`). A word inside an argument never counts: `cat docs/deploy.md`, `npm install --force`, `rm --force build/x` and a quoted `grep -rn "git push" docs` need nothing; a quoted string that a shell or `eval` will run (`bash -c "git push"`) still counts.
+Command authority (`plugin/hooks/devanity-rules.js` `BUILTIN_COMMANDS`, plus `rules.json#commands`): `git commit` and `git push` need `commit`; `git merge`, `gh pr merge` and a forced push (`--force`, `--force-with-lease`, `-f`, `-fu`, `+ref`) need `merge`; `terraform apply`, `kubectl apply|delete`, `npm publish` and `deploy` as a command (`./deploy.sh`, `bash deploy.sh`, `npm run deploy`, `make deploy`) need `deploy`. The git patterns also match git's global options before the subcommand (`git -C dir push`, `git -C "my dir" push`, `git -c k=v push`, `git --git-dir .git push`, `git -P push`). A word inside an argument never counts: `cat docs/deploy.md`, `npm install --force`, `rm --force build/x` and a quoted `grep -rn "git push" docs` need nothing; a quoted string that a shell or `eval` will run (`bash -c "git push"`) still counts.
 
 The session's authority is, in order: `DEVANITY_AUTHORITY` when it names a valid rung; otherwise `rules.json#autonomy.authority` in an autonomous session (see SPEC §7.3) or `rules.json#defaults.authority` (default `commit`). An autonomous session is capped at `commit`: `merge` and `deploy` are never reachable unattended, whatever the env says.
 
@@ -113,7 +113,7 @@ Two mechanical floors under the kernel's "verified exists only inside the `devan
 
 Only when the last assistant message contains a `devanity-proof:` block. The host delivers that message in the `Stop` payload (`last_assistant_message`, confirmed live on Claude Code 2.1.281, see `evals/results/2026-09-24-premise-checks.md`); the transcript at `transcript_path` is read only when the field is absent. No block means exit 0, silently: the kernel forbids "verified" outside the block, and policing prose is not the oracle's job.
 
-The block is the kernel's form (`skills/devanity/SKILL.md`, Output). The parser tolerates any indentation and spacing, CRLF, a surrounding code fence, and the SPEC §7.4 extra keys (`contract`, `baseline`, `probes`, `pending_decisions`).
+The block is the kernel's form (`plugin/skills/devanity/SKILL.md`, Output). The parser tolerates any indentation and spacing, CRLF, a surrounding code fence, and the SPEC §7.4 extra keys (`contract`, `baseline`, `probes`, `pending_decisions`).
 
 ```
 devanity-proof:
@@ -195,7 +195,7 @@ On `SessionStart`, and on `SubagentStart` for agents other than the verifier and
 Autonomy envelope: authority commit; high-risk queue; irreversible queue
 Guards: enforcing
 Map (high-risk: rung 4, propose and stop; core: rung 5, its invariants survive pivots):
-- `hooks/**` high-risk: plugin runtime in every user's session; invariants: failure paths allow and leave a trace; check: node --test tests/*.test.mjs
+- `plugin/hooks/**` high-risk: plugin runtime in every user's session; invariants: failure paths allow and leave a trace; check: node --test tests/*.test.mjs
 - `core/events.py` normal core: the event envelope every module reads; invariants: fields are never renamed or removed
 - `src/ui/**` normal: React views; no data access here
 ```
@@ -210,7 +210,7 @@ The ceiling of what the `PreToolUse` guard can only estimate from a Bash command
 node scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-proof-required] [--root <dir>] [--plugin-dir <dir>] [--self-check]
 ```
 
-1. Validates `<root>/devanity.rules.json` with the plugin's loader (`hooks/devanity-rules.js`, found beside the script or under `--plugin-dir` / `DEVANITY_PLUGIN_DIR`).
+1. Validates `<root>/devanity.rules.json` with the plugin's loader (`plugin/hooks/devanity-rules.js`: `plugin/` beside `scripts/`, or `--plugin-dir` / `DEVANITY_PLUGIN_DIR`).
 2. Changed files: `git diff --numstat` from the merge base of `--base` (default `origin/main`, then `main`) to `HEAD`.
 3. The map stays alive: every `paths` glob must match a tracked file (`git ls-files`), or the job fails naming the dead entry.
 4. Per touched path: `delta` budgets (files and added lines per glob); the distinct `check` of every touched high-risk path is run in the repository root, and when the diff changes `devanity.rules.json` every check it declares is run too, so a check that does not pass cannot enter the map; a `devanity-proof:` block with a `status:` line is required in the PR body (`--pr-body-file`, else `GITHUB_EVENT_PATH` `pull_request.body`) when any touched path is tier normal or high-risk, unless `--no-proof-required`. Without any PR context (a push), the requirement is reported, not failed.
@@ -221,13 +221,13 @@ node scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-
 
 ### Wiring it in a consumer repository
 
-Copy `.github/workflows/devanity-rules.example.yml` into `.github/workflows/`, remove the `if:` that keeps it inert in the plugin repository, and pin `DEVANITY_REF` to a full commit sha (no release tag exists yet). The job checks out with `fetch-depth: 0` (the merge base must exist), sets up Node 22, clones the plugin into `$RUNNER_TEMP/devanity`, and runs the script with `--base origin/<base branch>`; the PR body comes from the event payload.
+Copy `plugin/templates/devanity-rules.yml` (what `/devanity init` proposes) into your `.github/workflows/`, and pin `DEVANITY_REF` to a full commit sha (no release tag exists yet). The job checks out with `fetch-depth: 0` (the merge base must exist), sets up Node 22, clones the plugin into `$RUNNER_TEMP/devanity`, and runs the script with `--base origin/<base branch>`; the PR body comes from the event payload.
 
-This repository's own rules (`devanity.rules.json`) are its map: `hooks/**`, `scripts/**` and `.claude-plugin/**` high-risk (they run in every user's session, gate CI, or publish the plugin); the skill, the kernel, the agents and the harness normal, each with the check that validates it; `docs/**`, `evals/results/**` and `README.md` trivial. No instruction file is trivial: the loader rejects a `trivial` glob that covers one (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, skills, agents).
+This repository's own rules (`devanity.rules.json`) are its map: `plugin/hooks/**`, `plugin/templates/**`, `scripts/**` and both `.claude-plugin/` directories high-risk (they run in every user's session, gate CI, or publish the plugin); the skill, the kernel, the agents and the harness normal, each with the check that validates it; `docs/**`, `evals/results/**` and `README.md` trivial. No instruction file is trivial: the loader rejects a `trivial` glob that covers one (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, skills, agents).
 
 ## Ledger (`devanity-ledger.js`)
 
-`hooks/devanity-ledger.js` owns one directory, `<git-common-dir>/devanity/` (inside `.git/`, so shared by every worktree and subagent of the repository and never committable), holding one append-only JSONL file per kind. Outside git the ledger is off: every write reports `false`, every read is empty, and the guards and the oracle then record nothing and block nothing. Records carry `ts` and `session_id`; concurrent writers append whole lines; readers skip a torn last line. Retention is 90 days.
+`plugin/hooks/devanity-ledger.js` owns one directory, `<git-common-dir>/devanity/` (inside `.git/`, so shared by every worktree and subagent of the repository and never committable), holding one append-only JSONL file per kind. Outside git the ledger is off: every write reports `false`, every read is empty, and the guards and the oracle then record nothing and block nothing. Records carry `ts` and `session_id`; concurrent writers append whole lines; readers skip a torn last line. Retention is 90 days.
 
 | file | written by | record |
 |---|---|---|
@@ -238,7 +238,7 @@ This repository's own rules (`devanity.rules.json`) are its map: `hooks/**`, `sc
 
 ### The open change (`devanity-contract:`)
 
-The `plan` mode ends a message that enters or leaves a lifecycle phase with the block below (`skills/devanity/modes/plan.md`, "The phase record"). The `Stop` hook parses the first such block in the last assistant message, with the same tolerance as the proof block (indentation, `key : value`, CRLF, a code fence), and appends it. A block without an `id`, or whose `phase` is not one of the eight, is not a contract and is ignored. It is recorded, never measured: the oracle's blocking decision depends only on the `devanity-proof:` block, and a message that carries only a contract ends the turn normally. A proof block without a `contract` field in the same message is linked to the contract's id.
+The `plan` mode ends a message that enters or leaves a lifecycle phase with the block below (`plugin/skills/devanity/modes/plan.md`, "The phase record"). The `Stop` hook parses the first such block in the last assistant message, with the same tolerance as the proof block (indentation, `key : value`, CRLF, a code fence), and appends it. A block without an `id`, or whose `phase` is not one of the eight, is not a contract and is ignored. It is recorded, never measured: the oracle's blocking decision depends only on the `devanity-proof:` block, and a message that carries only a contract ends the turn normally. A proof block without a `contract` field in the same message is linked to the contract's id.
 
 ```
 devanity-contract:
@@ -260,7 +260,7 @@ node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-ledger.js" stats [--cwd <path>] [--js
 node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-ledger.js" prune [--cwd <path>] [--json]
 ```
 
-`stats` is read-only and counts, over the retention window: decisions (pending, decided by human, decided by agent-default), proofs (`VERIFIED`, `NOT_VERIFIED`, `false_ready` events), contracts (open, done, abandoned, expired), and guard events (`blocked`, `would_block`). The `debt` mode renders it verbatim for `debt --stats` (`skills/devanity/modes/debt.md`, "Stats"). `--json` returns the raw object, `null` outside git.
+`stats` is read-only and counts, over the retention window: decisions (pending, decided by human, decided by agent-default), proofs (`VERIFIED`, `NOT_VERIFIED`, `false_ready` events), contracts (open, done, abandoned, expired), and guard events (`blocked`, `would_block`). The `debt` mode renders it verbatim for `debt --stats` (`plugin/skills/devanity/modes/debt.md`, "Stats"). `--json` returns the raw object, `null` outside git.
 
 ```
 devanity stats (/repo/.git/devanity, last 90 days)
