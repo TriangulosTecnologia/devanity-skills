@@ -158,7 +158,7 @@ test('the repository copy passes; each way of pointing outside the installed plu
     for (const ok of ['// the plan mode, then /devanity plan', '// an F1 score, press F5', '// https://github.com/usedevanity/skills/tree/main/evals/harness', '// Deterministic Guardrails',
       '// Keep your own evals/ directory next to the code.', '// see docs/adr/0001-queue.md', '// press [F5] to reload, (F1) is help', '// Guardrails 2026 edition',
       '// node ${CLAUDE_PLUGIN_ROOT:-/opt/x}/hooks/devanity-mode.js', '// node ${CLAUDE_PLUGIN_ROOT:-$HOME/.x}/hooks/devanity-mode.js',
-      "// const env = {ROOT:'${CLAUDE_PLUGIN_ROOT}',BIN:'/usr/bin'}", '// Write the decision record under your own docs/.', '// Keep the cases in your evals/...']) {
+      "// const env = {ROOT:'${CLAUDE_PLUGIN_ROOT}',BIN:'/usr/bin'}", '// ${CLAUDE_PLUGIN_ROOT_DIR}/elsewhere/x.mjs', '// Write the decision record under your own docs/.', '// Keep the cases in your evals/...']) {
       writeFileSync(hook, original); appendFileSync(hook, `\n${ok}\n`);
       assert.deepEqual(checkRepository(dir), [], `false positive: ${ok}`);
     }

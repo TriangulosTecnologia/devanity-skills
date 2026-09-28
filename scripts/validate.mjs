@@ -400,7 +400,7 @@ export function checkRepository(root) {
     // operator it carries (`:-`, `-`, `:?`, `%`, one nested `${…}`), then an optional closing quote,
     // bare or escaped inside hooks.json's JSON, then the path. Each character has one way to match,
     // so the scan is linear. A doubled slash is the same path to the shell: `//..` still climbs out.
-    const EXPANSION = /\$(?:\{CLAUDE_PLUGIN_ROOT(?:[^{}$]|\$(?!\{)|\$\{[^{}]*\})*\}|CLAUDE_PLUGIN_ROOT\b)\\?["']?\/([A-Za-z0-9_./-]+)/g;
+    const EXPANSION = /\$(?:\{CLAUDE_PLUGIN_ROOT(?!\w)(?:[^{}$]|\$(?!\{)|\$\{[^{}]*\})*\}|CLAUDE_PLUGIN_ROOT\b)\\?["']?\/([A-Za-z0-9_./-]+)/g;
     for (const m of readFileSync(file, 'utf8').matchAll(EXPANSION)) {
       const target = posix.normalize(m[1].replace(/^\/+/, ''));
       if (target.startsWith('..') || !existsSync(join(root, 'plugin', target))) fail(`${rel} runs \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which is not in plugin/: an installed copy has no such file`);
