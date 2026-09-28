@@ -55,8 +55,8 @@
     },
     "plugin/scripts/**": {
       "tier": "high-risk",
-      "check": "node --test tests/rules-ci.test.mjs",
-      "purpose": "the consumers' reference CI job; the modes run its --self-check",
+      "check": "node --test tests/rules-ci.test.mjs tests/scripts.test.mjs",
+      "purpose": "the reference CI job and the computations the modes run (hotspots, calibrate)",
       "invariants": [
         "dependency-free",
         "observation never changes the verdict"
