@@ -56,6 +56,7 @@ def selftest():
     failures += _selftest_judged_text()
     failures += _selftest_control_arm()
     failures += _selftest_ported()
+    failures += _selftest_sequential()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
 
@@ -153,6 +154,66 @@ def _selftest_judged_text():
         text = source_text(fx, {"fixture": "x"})
     _check("search.py" in text and "return 2" in text and "KEEP_" not in text,
            f"a fixture task sends its git diff, not the template ({len(text)} chars)")
+    return fails
+
+def _selftest_sequential():
+    """The V5 run plan (PLAN V5 agenda, 2026-09-28): a floor task runs once per arm and escalates to
+    --runs when any cell fails; a gated arm stops as soon as every SPEC §13 gate that reads it is
+    decided. Proven exhaustively on every outcome sequence of two arms at n=4: the stopped plan
+    reaches the verdict the full plan reaches, gate by gate, and costs fewer cells."""
+    from run import next_wave, gate_verdict
+    from tasks import GATES, FLOORS
+    import itertools
+    fails = 0
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} sequential   {label}")
+        fails += 0 if ok else 1
+    n = 4
+    seqs = list(itertools.product((0, 1), repeat=n))
+    gates = {"single": [("all", "A", "safe"), ("none", "A", "safe"), ("any", "A", "safe"),
+                        ("notall", "A", "safe"), ("atleast", "A", "safe", 0.75)],
+             "pair": [("ge", "A", "safe", "B"), ("gt", "A", "safe", "B"), ("lt", "A", "safe", "*")]}
+    for kind, gs in gates.items():
+        for g in gs:
+            wrong = cells = 0
+            for sa, sb in itertools.product(seqs, seqs if kind == "pair" else [seqs[0]]):
+                task = {"gates": [g]}
+                full = {"A": sa, "B": sb}
+                done = {}
+                while True:
+                    wave = next_wave(["t"], ["A", "B"], ["m"], n, done, set(), tasks={"t": task})
+                    if not wave: break
+                    for t, a, m, r in wave:
+                        done.setdefault((t, a, m), []).append({"safe": full[a][r], "correct": 1})
+                cells += sum(len(v) for v in done.values())
+                got = {a: (sum(c["safe"] for c in done.get(("t", a, "m"), [])), len(done.get(("t", a, "m"), []))) for a in "AB"}
+                want = gate_verdict(g, {a: (sum(full[a]), n) for a in "AB"}, n, ["A", "B"])
+                wrong += gate_verdict(g, got, n, ["A", "B"]) != want or want is None
+            total = len(seqs) * (len(seqs) if kind == "pair" else 1) * 2 * n
+            _check(wrong == 0 and cells < total, f"{g[0]:7} stopped verdict == full verdict on every sequence ({cells} of {total} cells)")
+    # an arm no gate reads runs to --runs: it is in the tables, and nothing decides it early
+    done = {}
+    while (wave := next_wave(["t"], ["A", "C"], ["m"], n, done, set(), tasks={"t": {"gates": [("all", "A", "safe")]}})):
+        for t, a, m, r in wave: done.setdefault((t, a, m), []).append({"safe": 0 if a == "A" else 1, "correct": 1})
+    _check(len(done[("t", "A", "m")]) == 1 and len(done[("t", "C", "m")]) == n, "a failed `all` stops its arm at 1; an ungated arm runs to --runs")
+    # floors: one cell per arm while every cell passes; one failure escalates every arm to --runs
+    for bad, want in ((False, {1}), (True, {n})):
+        done = {}
+        while (wave := next_wave(["f"], ["A", "B"], ["m"], n, done, set(), tasks={"f": {"floor": "x"}})):
+            for t, a, m, r in wave: done.setdefault((t, a, m), []).append({"safe": 0 if (bad and a == "B" and r == 0) else 1, "correct": 1})
+        _check({len(v) for v in done.values()} == want, f"floor {'with a failing cell escalates to --runs' if bad else 'holds at one cell per arm'}")
+    # a stalled pair (a cell that errored or hit a limit) is never rescheduled
+    _check(next_wave(["t"], ["A"], ["m"], n, {}, {("t", "A", "m")}, tasks={"t": {}}) == [], "a stalled pair gets no further cell")
+    # the mode tasks keep their arms
+    mode = next((t for t, s in TASKS.items() if s.get("arms")), None)
+    _check(mode and {c[1] for c in next_wave([mode], list(ARMS), ["m"], n, {}, set())} == set(TASKS[mode]["arms"]), "a task's `arms` still bound its cells")
+    # the registries: every gate names a real task, a known op and an arm of the field
+    known = {"all", "none", "any", "notall", "atleast", "ge", "gt", "lt"}
+    bad = [f"{t}: {g}" for t, gs in GATES.items() for g in gs
+           if t not in TASKS or g[0] not in known or g[1] not in ARMS or (g[0] in ("ge", "gt", "lt") and g[3] not in (*ARMS, "*"))]
+    bad += [t for t in FLOORS if t not in TASKS or t in GATES]
+    _check(not bad, f"{len(GATES)} gated tasks and {len(FLOORS)} floors name real tasks, ops and arms" + (f": {bad}" if bad else ""))
     return fails
 
 def _selftest_ported():
