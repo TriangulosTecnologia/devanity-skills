@@ -38,7 +38,7 @@ A new mode or agent is justified only by an irreducible responsibility with a st
 
 ## Threat model
 
-- **It protects against the agent that errs, and the agent that races for green** (proxy collapse: without malice, the gradient points at the check, not the intent). **It does not protect against an adversarial agent**; that needs operating-system or platform isolation, outside what a plugin can give.
+- **It protects against the agent that errs, and the agent that races for green** (without malice, an agent optimizing for a green check aims at the check, not the intent). **It does not protect against an adversarial agent**; that needs operating-system or platform isolation, outside what a plugin can give.
 - **The pipeline is binding; the hooks are sensors.** The reference CI job, branch protection and native `CODEOWNERS` run outside the agent and decide what merges. The session hooks give millisecond feedback, stop the honest mistake and measure; they promise no boundary. The words are "the guard blocks" and "CI refuses", never "the agent cannot".
 - **Verifier sovereignty.** The agent never authors the check that judges it, and never weakens a verifier (test, threshold, check, rule) to turn green. The oracle runs only the `check` a human declared in the map; a diff that changes both the code and its verifier is flagged.
 

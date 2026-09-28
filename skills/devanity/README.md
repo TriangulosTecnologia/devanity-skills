@@ -21,4 +21,4 @@ for agent in worker verifier; do
 done
 ```
 
-Status: candidate (`1.0.0-candidate`), measured by the [harness](https://github.com/usedevanity/skills/tree/main/evals/harness) against the field in the [plan](https://github.com/usedevanity/skills/blob/main/docs/evolution/PLAN.md) before release.
+Status: candidate (`1.0.0-candidate`), measured by the [harness](https://github.com/usedevanity/skills/tree/main/evals/harness) against the field before release.
