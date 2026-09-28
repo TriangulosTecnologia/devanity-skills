@@ -29,7 +29,6 @@
 // and the ledger itself are protected built-ins (see PROTECTED) so a tool call cannot rewrite them.
 
 const path = require('path');
-const { spawnSync } = require('child_process');
 const fs = require('fs');
 const rt = require('./devanity-runtime');
 const rules = require('./devanity-rules');
@@ -42,14 +41,6 @@ const PROTECTED = [
   { glob: '.git/devanity/**', re: rules.globToRegExp('.git/devanity/**') },
 ];
 const DECIDE_HINT = '/devanity decide';
-
-function gitToplevel(cwd) {
-  try {
-    const r = spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8', timeout: 3000 });
-    if (r.status !== 0 || !r.stdout.trim()) return null;
-    return path.resolve(r.stdout.trim());
-  } catch (e) { return null; }
-}
 
 // The authority this session holds. An autonomous session never exceeds `commit`, whatever the
 // env says (SPEC §7.3: merge/deploy are never grantable unattended).
@@ -144,10 +135,16 @@ function pathMessage(tool, rel, rule, via) {
 }
 
 function authorityMessage(command, need, auth) {
+  // Name the field that can raise this session's authority; an unattended session never reaches
+  // merge or deploy, so there it names none.
+  const unreachable = auth.autonomous && !rules.AUTONOMY_AUTHORITIES.includes(need);
+  const field = auth.autonomous ? 'devanity.rules.json#autonomy.authority' : 'devanity.rules.json#defaults.authority';
   return [
     `devanity: blocked Bash command: ${command}`,
     `  needs authority: ${need}; this session has: ${auth.have} (${auth.source})`,
-    `  Next step: raise DEVANITY_AUTHORITY / edit devanity.rules.json#autonomy${auth.autonomous ? ' — merge and deploy are never available to an autonomous session' : ''}`,
+    unreachable
+      ? '  Next step: none in this session — merge and deploy are never available to an autonomous session; a human runs it'
+      : `  Next step: raise DEVANITY_AUTHORITY or ${field}`,
     '  (a human does this outside the session; the agent does not raise its own authority)',
   ].join('\n');
 }
@@ -159,7 +156,7 @@ function evaluate(payload, env) {
   const tool = String(payload.tool_name || '');
   const input = payload.tool_input && typeof payload.tool_input === 'object' ? payload.tool_input : {};
   const cwd = payload.cwd && String(payload.cwd).trim() ? String(payload.cwd) : process.cwd();
-  const root = gitToplevel(cwd);
+  const root = rt.gitToplevel(cwd);
   if (!root) return { allow: true, reason: 'no git' };            // no ledger: record nothing, block nothing
   const loaded = rules.loadRules(root);
   const sid = payload.session_id || null;
@@ -234,7 +231,11 @@ function main() {
       return;
     }
     let verdict;
-    try { verdict = evaluate(payload, process.env); } catch (e) { verdict = { allow: true, reason: 'guard error' }; }
+    try { verdict = evaluate(payload, process.env); } catch (e) {
+      // Fail open, as with an unreadable payload, and leave the same kind of trace.
+      ledger.append(payload.cwd || process.cwd(), 'events', { kind: 'guard_error', ...rt.errorTrace(e) }, payload.session_id || null);
+      verdict = { allow: true, reason: 'guard error' };
+    }
     if (verdict.allow) rt.exitSoon(0);
     else block(verdict.message);
   });
@@ -244,4 +245,3 @@ if (require.main === module) {
   try { main(); } catch (e) { rt.exitSoon(0); }
 }
 
-module.exports = { evaluate, sessionAuthority, suggestId, writtenPaths };

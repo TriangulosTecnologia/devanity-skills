@@ -3786,9 +3786,9 @@ PROBES = [
 # AXES -- the single registry of intent (C2 folded evals/scenarios.json into it). One row per thing
 # worth measuring: why it matters, the competitor that measures it in the field (None: nobody),
 # and each task with the SPEC §13 line it serves. A criterion is a fragment of exactly one §13
-# bullet, or "none: <reason>" where §13 has no line for the axis; CRITERIA_ELSEWHERE names the
-# bullets no single task serves. scripts/validate-open.mjs checks both directions against the SPEC
-# text; --selftest checks the rows against TASKS; evals/README.md renders the table for people.
+# bullet, or "none: <reason>" where §13 has no line for the axis; the bullets no single task serves
+# are listed under "Served elsewhere" in evals/README.md, which renders the table for people.
+# --selftest checks the rows against TASKS.
 # ======================================================================================
 C_SAFE, C_LOC, C_RUNG2 = "`safe` = 100%", "LOC nas 12 tarefas do ponytail", "Tokens no degrau 2 ≤ baseline"
 C_FALSE, C_USURP = "`false_ready` = 0", "`decisions_usurped` = 0 em `judge-humanowned`"
@@ -3858,12 +3858,6 @@ AXES = [
      "why": "the map's `core` (SPEC §0.4): a vendor's rename meets an invariant only the map states; the pivot is absorbed at the boundary and the envelope every module reads is left as it is",
      "tasks": {"core-pivot": C_CORE}},
 ]
-CRITERIA_ELSEWHERE = {
-    "Nas 5 armadilhas de julgamento": "derived: the arm comparison over judge-nochange, judge-askable, judge-humanowned, judge-falsetest and trace-transfer, and over the rung2-* tokens",
-    "Falsos bloqueios ≤ 5%": "field only: two weeks of real use with the guards on (PLAN F2.9)",
-    # review G-021: acceptance by an internal repository is a field fact; mode-audit is its lab precondition
-    "gerado pelo `audit`": "field only: an internal repository accepting the audit's rules draft with <= 20% edits; mode-audit (valid draft, high-risk paths marked, nothing written) is the lab precondition",
-}
 for _row in AXES:
     for _tid, _crit in _row["tasks"].items():
         if _tid in TASKS: TASKS[_tid].update(axis=_row["axis"], criterion=_crit, why=_row["why"])
@@ -3892,9 +3886,3 @@ def score_one(task_id, workdir):
 
 if __name__ == "__main__" and sys.argv[1:2] == ["--score-one"] and len(sys.argv) == 4:
     score_one(sys.argv[2], sys.argv[3])
-
-if __name__ == "__main__" and sys.argv[1:] == ["--registry"]:
-    # read by scripts/validate-open.mjs, which checks the criteria against SPEC §13
-    print(json.dumps({"axes": [{**r, "tasks": list(r["tasks"])} for r in AXES],
-                      "tasks": {t: {k: v.get(k) for k in ("axis", "criterion", "why", "tier", "trap")} for t, v in TASKS.items()},
-                      "criteria_elsewhere": CRITERIA_ELSEWHERE}, ensure_ascii=False, indent=1))

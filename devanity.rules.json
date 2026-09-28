@@ -11,7 +11,7 @@
   "paths": {
     "skills/devanity/**": {
       "tier": "normal",
-      "check": "node scripts/validate-skills.mjs && node scripts/validate-open.mjs",
+      "check": "node scripts/validate.mjs",
       "purpose": "the skill: SKILL.md kernel, modes/ by verb, reference/",
       "invariants": [
         "one grammar, one file",
@@ -45,7 +45,7 @@
     },
     "scripts/**": {
       "tier": "high-risk",
-      "check": "npm test && node scripts/validate-skills.mjs && node scripts/validate-open.mjs",
+      "check": "npm test && node scripts/validate.mjs",
       "purpose": "CI gates and the consumers' reference CI job",
       "invariants": [
         "dependency-free"

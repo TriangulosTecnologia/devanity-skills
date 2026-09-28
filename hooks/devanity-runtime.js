@@ -204,6 +204,23 @@ function readStdinJson(onDone, timeoutMs = STDIN_FALLBACK_MS) {
   setTimeout(finish, timeoutMs).unref();
 }
 
+// The repository root for cwd, or null outside git. Every hook that needs it calls this one: a hook
+// never hangs the session, so git gets a deadline.
+function gitToplevel(cwd) {
+  try {
+    const r = require('child_process').spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8', timeout: 3000 });
+    return r.status === 0 && r.stdout.trim() ? path.resolve(r.stdout.trim()) : null;
+  } catch (e) { return null; }
+}
+
+// What a hook records when it fails open: the Error's class and its first frame inside the plugin's
+// hooks/, never the message, which can echo the text being parsed (the ledger holds metadata only).
+// Any other thrown value is recorded as its type alone.
+function errorTrace(e) {
+  const frame = String((e && e.stack) || '').split('\n').map((l) => /[\\/]hooks[\\/](devanity-[a-z-]+\.js):(\d+)/.exec(l)).find(Boolean);
+  return { error: e instanceof Error ? e.name : typeof e, at: e instanceof Error && frame ? `${frame[1]}:${frame[2]}` : null };
+}
+
 function exitSoon(code) {
   // Let a pending stdout write flush first; the pipe callback fires either way.
   setImmediate(() => process.exit(code));
@@ -229,22 +246,19 @@ function emit(event, context) {
 module.exports = {
   AUTONOMOUS_LINE,
   FALLBACK_KERNEL,
-  STATE_FILE,
   VERIFIER_NOTE,
   agentRole,
   configDir,
   emit,
+  errorTrace,
   exitSoon,
+  gitToplevel,
   guardsEnforcing,
-  guardsOverride,
   isAutonomous,
-  kernelPath,
   pluginRoot,
-  readDevanityConfig,
   readKernel,
   readState,
   readStdinJson,
-  statePath,
   stripBom,
   stripFrontmatter,
   writeState,

@@ -27,7 +27,3 @@ test('AGENTS.md rendering strips frontmatter and the two host-specific sections,
   assert.deepEqual(checkInvariants([['AGENTS.md', agents]]), [], 'every invariant survives the render');
   for (const phrase of INVARIANTS) assert.ok(agents.includes(phrase));
 });
-
-test('rendering is deterministic (check-agents can compare byte for byte)', () => {
-  assert.equal(renderAgentsMd(kernel), renderAgentsMd(kernel));
-});

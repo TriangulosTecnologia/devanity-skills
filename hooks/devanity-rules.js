@@ -196,6 +196,6 @@ function commandAuthority(rules, command) {
 }
 
 module.exports = {
-  AUTHORITIES, AUTONOMY_AUTHORITIES, BUILTIN_COMMANDS, DEFAULT_TESTS, FILE, TIERS,
+  AUTHORITIES, AUTONOMY_AUTHORITIES, FILE, TIERS,
   authorityRank, commandAuthority, globToRegExp, isTestPath, loadRules, parseRules, relPath, ruleFor, validate,
 };

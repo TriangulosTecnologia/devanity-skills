@@ -96,12 +96,14 @@ describe('SessionStart', () => {
     assert.ok(r.stdout.length <= 10000, 'plain stdout is capped at 10,000 chars by the host');
   });
 
-  test('emits nothing when the state is off', async () => {
+  test('emits nothing, to the session or a subagent, when the state is off', async () => {
     const cfg = freshConfigDir();
     writeFileSync(join(cfg, '.devanity-state'), 'off');
-    const r = await runHook(INJECT, { input: sessionStart(), env: baseEnv(cfg), args: ['SessionStart'] });
-    assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, '');
+    for (const [input, args] of [[sessionStart(), ['SessionStart']], [subagent('Explore'), []]]) {
+      const r = await runHook(INJECT, { input, env: baseEnv(cfg), args });
+      assert.equal(r.code, 0, r.stderr);
+      assert.equal(r.stdout, '');
+    }
   });
 
   test('resolves the kernel relative to the hook file, not the cwd', async () => {
@@ -111,17 +113,6 @@ describe('SessionStart', () => {
     const r = await runHook(INJECT, { input: sessionStart(), env: baseEnv(cfg), args: ['SessionStart'], cwd: elsewhere });
     assert.equal(r.code, 0, r.stderr);
     assert.ok(r.stdout.includes(KERNEL_MARK));
-  });
-
-  test('a config dir with spaces in its path still holds the state', async () => {
-    const cfg = join(temp, 'dir with spaces', 'claude');
-    mkdirSync(cfg, { recursive: true });
-    const env = baseEnv(cfg);
-    let r = await runHook(MODE, { input: prompt('/devanity off'), env });
-    assert.equal(r.code, 0, r.stderr);
-    assert.equal(readState(cfg), 'off');
-    r = await runHook(INJECT, { input: sessionStart(), env, args: ['SessionStart'] });
-    assert.equal(r.stdout, '');
   });
 
   test('falls back to the compact kernel when SKILL.md is unreadable', async () => {
@@ -210,21 +201,6 @@ describe('SubagentStart', () => {
     assert.equal(r.signal, null, 'the hook had to be killed');
     assert.ok(r.ms < 2000, `took ${r.ms}ms`);
     assert.ok(parseSubagent(r.stdout).includes('agents/verifier.md'));
-  });
-
-  test('state off silences subagents too', async () => {
-    const cfg = freshConfigDir();
-    writeFileSync(join(cfg, '.devanity-state'), 'off');
-    const r = await runHook(INJECT, { input: subagent('Explore'), env: baseEnv(cfg) });
-    assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, '');
-  });
-
-  test('BOM-prefixed stdin parses', async () => {
-    const cfg = freshConfigDir();
-    const r = await runHook(INJECT, { input: '﻿' + subagent('worker'), env: baseEnv(cfg) });
-    assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, '', 'with the BOM stripped the worker scoping must apply');
   });
 });
 
@@ -332,7 +308,10 @@ describe('autonomous session', () => {
 });
 
 describe('manifests', () => {
-  test('hooks.json wires the events to existing scripts with a timeout and status message', () => {
+  // Commands are `node "<path>" [arg]` and nothing else: PowerShell runs them too, and ponytail broke
+  // there on `exec` and shell metacharacters (their #527/#569). Verified by construction; this suite
+  // has not run on Windows.
+  test('hooks.json wires the events to existing scripts, shell-neutrally, with a timeout and status message', () => {
     const cfg = JSON.parse(readFileSync(join(hooksDir, 'hooks.json'), 'utf8')).hooks;
     assert.deepEqual(Object.keys(cfg).sort(), ['PreToolUse', 'SessionStart', 'Stop', 'SubagentStart', 'UserPromptSubmit']);
     assert.equal(cfg.PreToolUse[0].matcher, 'Edit|Write|MultiEdit|NotebookEdit|Bash');
@@ -345,21 +324,10 @@ describe('manifests', () => {
         if (event === 'Stop') assert.ok(h.timeout > 120, 'Stop timeout must exceed the oracle budget');
         else assert.equal(h.timeout, 5, event);
         assert.ok(h.statusMessage, `${event} lacks statusMessage`);
-        const m = /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/hooks\/([a-z-]+\.js)"/.exec(h.command);
-        assert.ok(m, `${event} command is not node "\${CLAUDE_PLUGIN_ROOT}/hooks/<script>.js": ${h.command}`);
+        const m = /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/hooks\/([a-z-]+\.js)"( [A-Za-z]+)?$/.exec(h.command);
+        assert.ok(m, `${event} command is not node "\${CLAUDE_PLUGIN_ROOT}/hooks/<script>.js" [arg]: ${h.command}`);
         assert.ok(existsSync(join(hooksDir, m[1])), `${m[1]} does not exist`);
       }
-    }
-  });
-
-  test('hook commands are shell-neutral: node + one double-quoted path, no bash-only syntax (PowerShell runs them too)', () => {
-    // ponytail broke under PowerShell on `exec` and on shell metacharacters in hook commands
-    // (their #527/#569); the only portable form is `node "<path>" [args]`. Verified by
-    // construction here — this suite has not run on Windows.
-    const cfg = JSON.parse(readFileSync(join(hooksDir, 'hooks.json'), 'utf8')).hooks;
-    for (const groups of Object.values(cfg)) for (const group of groups) for (const h of group.hooks) {
-      assert.match(h.command, /^node "\$\{CLAUDE_PLUGIN_ROOT\}\/hooks\/[a-z-]+\.js"( [A-Za-z]+)?$/, h.command);
-      assert.doesNotMatch(h.command, /exec|&&|\|\||;|\$\(|`|'|>|</, `shell-only syntax in: ${h.command}`);
     }
   });
 

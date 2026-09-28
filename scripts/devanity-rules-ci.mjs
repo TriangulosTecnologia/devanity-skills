@@ -26,7 +26,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 
 const args = process.argv.slice(2);
@@ -163,13 +163,20 @@ if (base && rulesMod && !loaded.errors.length) {
   // verifier sovereignty (SPEC §0.2): a diff that removes or rewrites lines of existing tests
   // together with code is reviewed as a verifier change, declared in the PR body
   const verifierEdits = touched.filter((t) => t.deleted > 0 && rulesMod.isTestPath(rules, t.path)).map((t) => t.path);
-  // The rules file is a verifier too: a changed `check`, `tier` or `tests` is a change to what judges.
+  // The rules file is a verifier too: a changed `check`, `tier`, `delta` or `tests` is a change to what
+  // judges, and so is a changed `commands` or `autonomy`, which decide what the session may do unasked.
+  // Both sides are compared as the loader reads them (defaults filled, keys sorted), so a reordered or
+  // spelled-out-default file is not a change; an invalid one always is.
   if (rulesChanged) {
     const mb = git('merge-base', base, 'HEAD');
     const before = git('show', `${mb.ok && mb.out ? mb.out : base}:${rulesMod.FILE}`);
+    const sorted = (_, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) : v);
     const judges = (text) => {
-      const raw = (() => { try { return JSON.parse(text); } catch (e) { return {}; } })();
-      return JSON.stringify([Object.entries(raw.paths || {}).map(([g, r]) => [g, r && r.check, r && r.tier]).sort(), raw.tests || null, raw.defaults || null, raw.verifiers || null]);
+      const parsed = rulesMod.parseRules(text);
+      if (parsed.errors.length) return `invalid:${text}`;
+      const r = parsed.rules;
+      const raw = JSON.parse(text);
+      return JSON.stringify([r.paths.map((p) => [p.glob, p.rule.tier, p.rule.check || null, p.rule.delta || null]).sort(), r.tests.map((t) => t.glob).sort(), r.defaults, r.commands, r.autonomy, raw.verifiers || null], sorted);
     };
     if (!before.ok || judges(before.out) !== judges(readFileSync(join(root, rulesMod.FILE), 'utf8'))) verifierEdits.push(rulesMod.FILE);
   }

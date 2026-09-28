@@ -15,9 +15,9 @@ jobs:
   rules:
     runs-on: ubuntu-latest
     # This job lives in the plugin repository as an example; remove the `if` in your copy.
-    if: github.repository != 'TriangulosTecnologia/devanity-skills'
+    if: github.repository != 'usedevanity/skills'
     env:
-      # Pin to a release tag or a full 40-character commit sha of the plugin before relying on this job.
+      # Pin to a full 40-character commit sha of the plugin (or a release tag, once one exists) before relying on this job.
       DEVANITY_REF: main
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +33,7 @@ jobs:
         run: |
           dir="$RUNNER_TEMP/devanity"
           git init -q "$dir"
-          git -C "$dir" fetch -q --depth 1 https://github.com/TriangulosTecnologia/devanity-skills "$DEVANITY_REF"
+          git -C "$dir" fetch -q --depth 1 https://github.com/usedevanity/skills "$DEVANITY_REF"
           git -C "$dir" checkout -q FETCH_HEAD
       - name: devanity rules
         # The PR body is read from the event payload (GITHUB_EVENT_PATH); no extra input needed.

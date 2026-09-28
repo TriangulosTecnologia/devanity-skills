@@ -2,133 +2,18 @@
 
 The hooks run only when devanity is installed as a Claude Code plugin (`hooks/hooks.json`); an `AGENTS.md`-only host gets the kernel and nothing below. Four entry points share three libraries: `devanity-runtime.js` (payload, kernel, fallbacks), `devanity-rules.js` (the `devanity.rules.json` loader and globs) and `devanity-ledger.js` (the state every hook reads). None of them asks the model anything, and every failure path allows and leaves a trace.
 
-**What they are, and what they are not** (SPEC §0.2). The hooks are sensors of the per-change loop: they stop the agent that errs or races for a green check, and they measure. They run on the agent's machine with the agent's permissions, so they are not a boundary against an agent that sets out to get around them; the binding boundary is the pipeline, outside the agent (the [reference CI job](#reference-ci-job-scriptsdevanity-rules-cimjs), branch protection, `CODEOWNERS`). What each hook does not stop is listed under [Limits](#limits).
+The hooks stop the agent that errs or races for a green check, and they measure; they run with the agent's own permissions, so they are not a boundary against one that sets out to get around them. That boundary is the [reference CI job](#reference-ci-job-scriptsdevanity-rules-cimjs) with branch protection and `CODEOWNERS`; what each hook does not stop is under the guard's [Limits](#limits) and the oracle's [What it cannot prove](#what-it-cannot-prove).
+
+**Blocked?** Read the `Next step` line of the message ([examples](#the-messages-a-developer-sees)): a high-risk path needs a human to type `/devanity decide <id> <option> --path <glob>`; a command above the session's authority needs a human to raise `DEVANITY_AUTHORITY` or `devanity.rules.json#defaults.authority` (an unattended session is capped at `commit` by `#autonomy.authority`; merge and deploy are never its to run). To stop blocking, set `DEVANITY_GUARDS=off` ([defaults](#defaults-by-install-origin-spec-76)); `/devanity off` stops the injection and the oracle, not the guard.
 
 | event | hook | job |
 |---|---|---|
-| `SessionStart`, `SubagentStart` | `devanity-inject.js` | kernel, repository rules and the open change into context ([Injection](#injection-devanity-injectjs)) |
-| `UserPromptSubmit` | `devanity-mode.js` | the whole-message commands a human types: `on`, `off`, `status`, `reset`, `pending`, `decide` ([Commands](#commands-devanity-modejs)) |
 | `PreToolUse` | `devanity-guard.js` | block writes to high-risk paths and commands above the session's authority ([Guard](#guard-devanity-guardjs)) |
+| `UserPromptSubmit` | `devanity-mode.js` | the whole-message commands a human types: `on`, `off`, `status`, `reset`, `pending`, `decide` ([Commands](#commands-devanity-modejs)) |
 | `Stop` | `devanity-oracle.js` | measure the `devanity-proof` block the agent wrote ([Oracle](#oracle-devanity-oraclejs)) |
+| `SessionStart`, `SubagentStart` | `devanity-inject.js` | kernel, repository rules and the open change into context ([Injection](#injection-devanity-injectjs)) |
 | CI | `scripts/devanity-rules-ci.mjs` | the ceiling of the guard: the whole diff of a pull request ([Reference CI job](#reference-ci-job-scriptsdevanity-rules-cimjs)) |
-
-## Ledger (`devanity-ledger.js`)
-
-`hooks/devanity-ledger.js` owns one directory, `<git-common-dir>/devanity/` (inside `.git/`, so shared by every worktree and subagent of the repository and never committable), holding one append-only JSONL file per kind. Outside git the ledger is off: every write reports `false`, every read is empty, and the guards and the oracle then record nothing and block nothing. Records carry `ts` and `session_id`; concurrent writers append whole lines; readers skip a torn last line. Retention is 90 days.
-
-| file | written by | record |
-|---|---|---|
-| `contracts.jsonl` | `Stop` (a `devanity-contract:` block); `/devanity reset` | `{id, phase, intent?, scope?, forbidden?, proof?, pending?, reason?}`; the latest record per id wins field by field |
-| `decisions.jsonl` | `PreToolUse` guard (`by: agent`, `status: pending`); `/devanity decide` (the only hook that writes `by: human`) | `{id, path?, kind, status: pending\|decided\|rejected, by, chosen?, contract?}`; latest per id wins |
-| `proofs.jsonl` | `Stop` oracle | `{kind: 'proof', contract, check, agent_check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason}` |
-| `deferrals.jsonl` | nothing yet (`debt` reads the `deferred:` markers in the code instead) | reserved |
-| `events.jsonl` | guard, oracle, inject | `{kind: blocked \| would_block \| false_ready \| unmeasured \| rules_invalid \| guard_payload_missing \| inject_truncated, …}` |
-
-### The open change (`devanity-contract:`)
-
-The `plan` mode ends a message that enters or leaves a lifecycle phase with the block below (`skills/devanity/modes/plan.md`, "The phase record"). The `Stop` hook parses the first such block in the last assistant message, with the same tolerance as the proof block (indentation, `key : value`, CRLF, a code fence), and appends it. A block without an `id`, or whose `phase` is not one of the eight, is not a contract and is ignored. It is recorded, never measured: the oracle's blocking decision depends only on the `devanity-proof:` block, and a message that carries only a contract ends the turn normally. A proof block without a `contract` field in the same message is linked to the contract's id.
-
-```
-devanity-contract:
-  id: C-2026-09-24-1
-  phase: FRAME | INSPECT | PROVE | EXECUTE | VERIFY | ASSURE | DONE | ABANDONED
-  intent: add retries to the uploader
-  scope: src/upload/**
-  forbidden: billing/**
-  proof: node --test tests/upload.test.js
-  pending: 0
-```
-
-A change is **open** while its latest phase is neither `DONE` nor `ABANDONED` and that phase was declared within the last 24 hours. Older unclosed changes are **expired**: no longer injected anywhere, counted by `stats`, and still closable by a later `DONE`. When several changes are open, the most recently declared one is the one the next session continues from.
-
-### `stats` and `prune` (the CLI)
-
-```
-node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-ledger.js" stats [--cwd <path>] [--json]
-node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-ledger.js" prune [--cwd <path>] [--json]
-```
-
-`stats` is read-only and counts, over the retention window: decisions (pending, decided by human, decided by agent-default), proofs (`VERIFIED`, `NOT_VERIFIED`, `false_ready` events), contracts (open, done, abandoned, expired), deferrals, and guard events (`blocked`, `would_block`). The `debt` mode renders it verbatim for `debt --stats` (`skills/devanity/modes/debt.md`, "Stats"). `--json` returns the raw object, `null` outside git.
-
-```
-devanity stats (/repo/.git/devanity, last 90 days)
-decisions: 1 pending · 1 decided by human · 1 decided by agent-default
-proofs: 1 VERIFIED · 2 NOT_VERIFIED · 1 false_ready
-contracts: 1 open · 1 done · 1 abandoned · 1 expired
-deferrals: 1
-guards: 1 blocked · 2 would_block
-```
-
-`prune` drops the records older than 90 days from every kind and keeps the files. Nothing runs it automatically; the `debt` mode runs it only when asked. Unknown arguments exit 1 with the usage line.
-
-### What the ledger is not
-
-No prompt text, no diffs, no file contents: metadata only, and nothing is sent anywhere. It is not an authority: the guard reads it for one thing, a `decided` decision `by: human` whose `path` covers the edit, and an agent has no command that writes that record. It is not a history of the repository either: 90 days, then gone.
-
-## Injection (`devanity-inject.js`)
-
-On `SessionStart` (startup, resume, clear, compact) and on `SubagentStart` for agents other than the verifier and the worker, the kernel is followed by the queue of pending human decisions an unattended session left (`Pending human decisions (n): <id> (<path>), …`, at most five named; the last section ever dropped for size), then by the repository rules (when `devanity.rules.json` at the repository root is present and valid, see below; a session started in a subdirectory still finds it), and, when a change is open, by its summary:
-
-```
-## Open change C-2026-09-24-1
-phase: EXECUTE · pending: 0
-intent: add retries to the uploader
-scope: src/upload/**
-forbidden: billing/**
-proof: node --test tests/upload.test.js
-EXECUTE: implement inside scope; the proof is node --test tests/upload.test.js; forbidden: billing/**.
-```
-
-The last line depends on the phase: `EXECUTE` names scope, proof and forbidden delta; `VERIFY` says "you are verifying, not writing: falsify the claims of <id>"; any other phase says "continue from <phase>". Each field is clipped to 60 characters and the section to 480 (about 120 tokens); a hand-edited ledger cannot break the shape.
-
-The **verifier** never receives the kernel, the rules or this section. Its one-line note gains only the change id and its proof: "… Open change C-…: falsify its claims; its proof is …". The **worker** receives nothing, as before.
-
-The host caps `SessionStart` stdout at 10,000 characters. The hook assembles autonomous line, kernel, rules and change, and when the total would exceed 9,500 characters it drops the change section first, then the rules, then the queue, never the kernel, and records `{kind: 'inject_truncated', dropped: [...]}` in `events.jsonl`.
-
-### Repository rules in context
-
-On `SessionStart`, and on `SubagentStart` for agents other than the verifier and the worker, the kernel is followed by a section derived from a present and valid `devanity.rules.json`:
-
-```
-## Repository rules (devanity.rules.json)
-Autonomy envelope: authority commit; high-risk queue; irreversible queue
-Guards: enforcing
-Map (high-risk: rung 4, propose and stop; core: rung 5, its invariants survive pivots):
-- `hooks/**` high-risk: plugin runtime in every user's session; invariants: failure paths allow and leave a trace; check: node --test tests/*.test.mjs
-- `core/events.py` normal core: the event envelope every module reads; invariants: fields are never renamed or removed
-- `src/ui/**` normal: React views; no data access here
-```
-
-This is the **repository map** (SPEC §0.4): one line per path that declares a `purpose`, `invariants`, `core` or the high-risk tier, high-risk first, then core. Hard cap: 1,600 characters (about 400 tokens). The fixed lines always fit; entries are added whole while they fit, and the rest is named (`… N more path(s) in devanity.rules.json`), never cut mid-line. No rules file, or an invalid one, adds nothing.
-
-## Commands (`devanity-mode.js`)
-
-### Recording a decision
-
-Type, as a whole message in the Claude Code prompt:
-
-```
-/devanity decide <id> <option> [--path <glob>]
-/devanity pending
-```
-
-- `decide` appends `{id, status: decided, by: human, chosen, path, contract?}` to `decisions.jsonl`. For an id that is not yet in the ledger, `--path` is mandatory: a human decision must name what it authorizes. For a pending id (queued by an autonomous session) the path is inherited.
-- An answer whose first word is `no`, `n`, `nope`, `reject`, `deny`, `decline`, `refuse`, `não`, `rejeitar`, `negado` or `recuso` (trailing punctuation ignored; also `no way`, `not now`, `don't`) records `status: rejected`: it answers the pending question and authorizes nothing (`DEVANITY DECISION REJECTED: … stay blocked`).
-- A decision is scoped: it is tied to the change open when it was typed and authorizes while that change is open; with no open change it expires after 24 hours. It never authorizes every later session.
-- `pending` lists the queue.
-- Both are handled by the `UserPromptSubmit` hook only. That event is trusted because its payload is the text the human typed; the model does not author it and no tool reaches it. No devanity tool, command or env var writes `by: human` for the agent (guardrail 12; `tests/guard.test.mjs` asserts it against the source); a direct write into the ledger file is a limit, see [Limits](#limits).
-- In an autonomous session (`DEVANITY_AUTONOMOUS=1`, `claude -p`, `CI=true`) a blocked high-risk edit is also queued once as a pending decision (`by: agent`), so the end-of-session summary can list it; unrelated work continues.
-
-Editing `decisions.jsonl` by hand (it lives under `.git/`, never committed) is the other human path.
-
-### `/devanity status` and `/devanity reset`
-
-Both are whole-message commands on `UserPromptSubmit`, like `/devanity on|off|pending|decide`; a prompt that merely contains them does nothing. Case and trailing punctuation are ignored; `/devanity:devanity status` (the namespaced form) is accepted.
-
-- `status` is read-only: `DEVANITY STATUS: state on; open change: C-1 in EXECUTE (add retries); pending decisions: 1.`
-- `reset` appends `{id, phase: 'ABANDONED', reason: 'reset'}` for every open change and reports them: `DEVANITY RESET: 2 open change(s) marked abandoned: C-2 (VERIFY), C-1 (EXECUTE).` Expired and closed changes are untouched. It writes nothing else: never a decision, never `by: human` (that field is written by `/devanity decide` alone, and a source test in `tests/guard.test.mjs` keeps it so).
-
-Neither exists without git: the reply says `no ledger here`.
+| — | `devanity-ledger.js` | the local state all of them read and write ([Ledger](#ledger-devanity-ledgerjs)) |
 
 ## Guard (`devanity-guard.js`)
 
@@ -164,7 +49,7 @@ devanity: blocked Edit on billing/x.py
 ```
 devanity: blocked Bash command: git push --force origin main
   needs authority: merge; this session has: commit (devanity.rules.json#defaults.authority)
-  Next step: raise DEVANITY_AUTHORITY / edit devanity.rules.json#autonomy
+  Next step: raise DEVANITY_AUTHORITY or devanity.rules.json#defaults.authority
   (a human does this outside the session; the agent does not raise its own authority)
 ```
 
@@ -179,6 +64,7 @@ devanity: blocked Bash command: git push --force origin main
 | `DEVANITY_GUARDS=on` (or `{"guards": true}`) | block even without a rules file |
 | Not a git repository | no ledger: nothing recorded, nothing blocked |
 | Payload unreadable (host hiccup) | fail open, `guard_payload_missing` event; a guard that cannot read its payload cannot know the path, and failing closed would freeze every tool call |
+| The guard or the oracle throws | fail open; a `guard_error` / `oracle_error` event names the error class and its first frame in the plugin's hooks (`devanity-rules.js:92`), never the message, which can echo file content; a thrown non-Error is recorded as its type |
 
 Every real block records `{kind: blocked, path|command, rule|authority}`; every evaluated-but-not-enforced block records `would_block` with the same fields, which is how a team measures false blocks before turning enforcement on (guardrail 4: ≤ 5 %).
 
@@ -189,6 +75,35 @@ Every real block records `{kind: blocked, path|command, rule|authority}`; every 
 - Env vars are read from the host process. `DEVANITY_AUTHORITY` can lower or (attended only) raise command authority; it never substitutes for a human decision on a path.
 - The guard blocks the call, not the intent: a model told "propose and stop" should do that before the guard has to say it.
 - **Not a boundary against an agent that tries to get around it** (SPEC §0.2). The hooks run with the agent's own permissions, so these reach past them and are documented, not chased: a write into the ledger through a changed directory (`cd .git/devanity && echo … >> decisions.jsonl`, the redirect target is resolved against the payload's cwd); a write outside the repository (`$CLAUDE_CONFIG_DIR/devanity/config.json`, `.devanity-state`), which is ignored by design; a `devanity.rules.json` corrupted on purpose, which makes the guards record instead of block; in a linked worktree the ledger sits outside the worktree root. The reference CI job reads the whole diff on another machine and is the boundary for these.
+
+## Commands (`devanity-mode.js`)
+
+### Recording a decision
+
+Type, as a whole message in the Claude Code prompt:
+
+```
+/devanity decide <id> <option> [--path <glob>]
+/devanity pending
+```
+
+- `decide` appends `{id, status: decided, by: human, chosen, path, contract?}` to `decisions.jsonl`. For an id that is not yet in the ledger, `--path` is mandatory: a human decision must name what it authorizes. For a pending id (queued by an autonomous session) the path is inherited.
+- An answer whose first word is `no`, `n`, `nope`, `reject`, `deny`, `decline`, `refuse`, `não`, `rejeitar`, `negado` or `recuso` (trailing punctuation ignored; also `no way`, `not now`, `don't`) records `status: rejected`: it answers the pending question and authorizes nothing (`DEVANITY DECISION REJECTED: … stay blocked`).
+- A decision is scoped: it is tied to the change open when it was typed and authorizes while that change is open; with no open change it expires after 24 hours. It never authorizes every later session.
+- `pending` lists the queue.
+- Both are handled by the `UserPromptSubmit` hook only. That event is trusted because its payload is the text the human typed; the model does not author it and no tool reaches it. No devanity tool, command or env var writes `by: human` for the agent (guardrail 12; `tests/guard.test.mjs` asserts it against the source); a direct write into the ledger file is a limit, see [Limits](#limits).
+- In an autonomous session (`DEVANITY_AUTONOMOUS=1`, `claude -p`, `CI=true`) a blocked high-risk edit is also queued once as a pending decision (`by: agent`), so the end-of-session summary can list it; unrelated work continues.
+
+Editing `decisions.jsonl` by hand (it lives under `.git/`, never committed) is the other human path.
+
+### `/devanity status` and `/devanity reset`
+
+Both are whole-message commands on `UserPromptSubmit`, like `/devanity on|off|pending|decide`; a prompt that merely contains them does nothing. Case and trailing punctuation are ignored; `/devanity:devanity status` (the namespaced form) is accepted.
+
+- `status` is read-only: `DEVANITY STATUS: state on; open change: C-1 in EXECUTE (add retries); pending decisions: 1.`
+- `reset` appends `{id, phase: 'ABANDONED', reason: 'reset'}` for every open change and reports them: `DEVANITY RESET: 2 open change(s) marked abandoned: C-2 (VERIFY), C-1 (EXECUTE).` Expired and closed changes are untouched. It writes nothing else: never a decision, never `by: human` (that field is written by `/devanity decide` alone, and a source test in `tests/guard.test.mjs` keeps it so).
+
+Neither exists without git: the reply says `no ledger here`.
 
 ## Oracle (`devanity-oracle.js`)
 
@@ -251,6 +166,42 @@ The agent answers again; the host then calls the hook with `stop_hook_active: tr
 - **Only the declared check.** The whole suite is CI's job (SPEC §11); the oracle runs one command twice.
 - **No Windows execution yet.** The `cmd /c` path is written, not run.
 
+## Injection (`devanity-inject.js`)
+
+On `SessionStart` (startup, resume, clear, compact) and on `SubagentStart` for agents other than the verifier and the worker, the kernel is followed by the queue of pending human decisions an unattended session left (`Pending human decisions (n): <id> (<path>), …`, at most five named; the last section ever dropped for size), then by the repository rules (when `devanity.rules.json` at the repository root is present and valid, see below; a session started in a subdirectory still finds it), and, when a change is open, by its summary:
+
+```
+## Open change C-2026-09-24-1
+phase: EXECUTE · pending: 0
+intent: add retries to the uploader
+scope: src/upload/**
+forbidden: billing/**
+proof: node --test tests/upload.test.js
+EXECUTE: implement inside scope; the proof is node --test tests/upload.test.js; forbidden: billing/**.
+```
+
+The last line depends on the phase: `EXECUTE` names scope, proof and forbidden delta; `VERIFY` says "you are verifying, not writing: falsify the claims of <id>"; any other phase says "continue from <phase>". Each field is clipped to 60 characters and the section to 480 (about 120 tokens); a hand-edited ledger cannot break the shape.
+
+The **verifier** never receives the kernel, the rules or this section. Its one-line note gains only the change id and its proof: "… Open change C-…: falsify its claims; its proof is …". The **worker** receives nothing, as before.
+
+The host caps `SessionStart` stdout at 10,000 characters. The hook assembles autonomous line, kernel, rules and change, and when the total would exceed 9,500 characters it drops the change section first, then the rules, then the queue, never the kernel, and records `{kind: 'inject_truncated', dropped: [...]}` in `events.jsonl`.
+
+### Repository rules in context
+
+On `SessionStart`, and on `SubagentStart` for agents other than the verifier and the worker, the kernel is followed by a section derived from a present and valid `devanity.rules.json`:
+
+```
+## Repository rules (devanity.rules.json)
+Autonomy envelope: authority commit; high-risk queue; irreversible queue
+Guards: enforcing
+Map (high-risk: rung 4, propose and stop; core: rung 5, its invariants survive pivots):
+- `hooks/**` high-risk: plugin runtime in every user's session; invariants: failure paths allow and leave a trace; check: node --test tests/*.test.mjs
+- `core/events.py` normal core: the event envelope every module reads; invariants: fields are never renamed or removed
+- `src/ui/**` normal: React views; no data access here
+```
+
+This is the **repository map** (SPEC §0.4): one line per path that declares a `purpose`, `invariants`, `core` or the high-risk tier, high-risk first, then core. Hard cap: 1,600 characters (about 400 tokens). The fixed lines always fit; entries are added whole while they fit, and the rest is named (`… N more path(s) in devanity.rules.json`), never cut mid-line. No rules file, or an invalid one, adds nothing.
+
 ## Reference CI job (`scripts/devanity-rules-ci.mjs`)
 
 The ceiling of what the `PreToolUse` guard can only estimate from a Bash command: in CI the whole diff is known.
@@ -263,13 +214,64 @@ node scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-
 2. Changed files: `git diff --numstat` from the merge base of `--base` (default `origin/main`, then `main`) to `HEAD`.
 3. The map stays alive: every `paths` glob must match a tracked file (`git ls-files`), or the job fails naming the dead entry.
 4. Per touched path: `delta` budgets (files and added lines per glob); the distinct `check` of every touched high-risk path is run in the repository root, and when the diff changes `devanity.rules.json` every check it declares is run too, so a check that does not pass cannot enter the map; a `devanity-proof:` block with a `status:` line is required in the PR body (`--pr-body-file`, else `GITHUB_EVENT_PATH` `pull_request.body`) when any touched path is tier normal or high-risk, unless `--no-proof-required`. Without any PR context (a push), the requirement is reported, not failed.
-5. Verifier sovereignty (SPEC §0.2): when the diff, together with code, removes or rewrites lines of existing test files (the `tests` globs), edits a file the map declares under `verifiers` (package scripts, test-runner config), or changes what the rules file makes a judge (a path's `check` or `tier`, `tests`, `defaults`, `verifiers`), the PR body must carry a `verifier-change: <why>` line, so review treats the change to the checks separately from the change they judge. Adding tests next to a fix is not a verifier change.
+5. Verifier sovereignty (SPEC §0.2): when the diff, together with code, removes or rewrites lines of existing test files (the `tests` globs), edits a file the map declares under `verifiers` (package scripts, test-runner config), or changes what the rules file makes a judge (a path's `check` or `tier`, `tests`, `defaults`, `verifiers`, `commands`, `autonomy`), the PR body must carry a `verifier-change: <why>` line, so review treats the change to the checks separately from the change they judge. Adding tests next to a fix is not a verifier change.
 6. Exit 1 with the list of failures, 0 otherwise.
 
 `--self-check` is the dogfood mode: this repository's own `devanity.rules.json` is validated and steps 2–5 run on `HEAD~1..HEAD` (the checks execute) without a PR body (`.github/workflows/validate.yml` runs it; a shallow clone with no parent validates the rules and reports an empty change set).
 
 ### Wiring it in a consumer repository
 
-Copy `.github/workflows/devanity-rules.example.yml` into `.github/workflows/`, remove the `if:` that keeps it inert in the plugin repository, and pin `DEVANITY_REF` to a release tag or commit. The job checks out with `fetch-depth: 0` (the merge base must exist), sets up Node 22, clones the plugin into `$RUNNER_TEMP/devanity`, and runs the script with `--base origin/<base branch>`; the PR body comes from the event payload.
+Copy `.github/workflows/devanity-rules.example.yml` into `.github/workflows/`, remove the `if:` that keeps it inert in the plugin repository, and pin `DEVANITY_REF` to a full commit sha (no release tag exists yet). The job checks out with `fetch-depth: 0` (the merge base must exist), sets up Node 22, clones the plugin into `$RUNNER_TEMP/devanity`, and runs the script with `--base origin/<base branch>`; the PR body comes from the event payload.
 
 This repository's own rules (`devanity.rules.json`) are its map: `hooks/**`, `scripts/**` and `.claude-plugin/**` high-risk (they run in every user's session, gate CI, or publish the plugin); the skill, the kernel, the agents and the harness normal, each with the check that validates it; `docs/**`, `evals/results/**` and `README.md` trivial. No instruction file is trivial: the loader rejects a `trivial` glob that covers one (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, skills, agents).
+
+## Ledger (`devanity-ledger.js`)
+
+`hooks/devanity-ledger.js` owns one directory, `<git-common-dir>/devanity/` (inside `.git/`, so shared by every worktree and subagent of the repository and never committable), holding one append-only JSONL file per kind. Outside git the ledger is off: every write reports `false`, every read is empty, and the guards and the oracle then record nothing and block nothing. Records carry `ts` and `session_id`; concurrent writers append whole lines; readers skip a torn last line. Retention is 90 days.
+
+| file | written by | record |
+|---|---|---|
+| `contracts.jsonl` | `Stop` (a `devanity-contract:` block); `/devanity reset` | `{id, phase, intent?, scope?, forbidden?, proof?, pending?, reason?}`; the latest record per id wins field by field |
+| `decisions.jsonl` | `PreToolUse` guard (`by: agent`, `status: pending`); `/devanity decide` (the only hook that writes `by: human`) | `{id, path?, kind, status: pending\|decided\|rejected, by, chosen?, contract?}`; latest per id wins |
+| `proofs.jsonl` | `Stop` oracle | `{kind: 'proof', contract, check, agent_check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason}` |
+| `events.jsonl` | guard, oracle, inject | `{kind: blocked \| would_block \| false_ready \| unmeasured \| rules_invalid \| guard_payload_missing \| guard_error \| oracle_error \| inject_truncated, …}` |
+
+### The open change (`devanity-contract:`)
+
+The `plan` mode ends a message that enters or leaves a lifecycle phase with the block below (`skills/devanity/modes/plan.md`, "The phase record"). The `Stop` hook parses the first such block in the last assistant message, with the same tolerance as the proof block (indentation, `key : value`, CRLF, a code fence), and appends it. A block without an `id`, or whose `phase` is not one of the eight, is not a contract and is ignored. It is recorded, never measured: the oracle's blocking decision depends only on the `devanity-proof:` block, and a message that carries only a contract ends the turn normally. A proof block without a `contract` field in the same message is linked to the contract's id.
+
+```
+devanity-contract:
+  id: C-2026-09-24-1
+  phase: FRAME | INSPECT | PROVE | EXECUTE | VERIFY | ASSURE | DONE | ABANDONED
+  intent: add retries to the uploader
+  scope: src/upload/**
+  forbidden: billing/**
+  proof: node --test tests/upload.test.js
+  pending: 0
+```
+
+A change is **open** while its latest phase is neither `DONE` nor `ABANDONED` and that phase was declared within the last 24 hours. Older unclosed changes are **expired**: no longer injected anywhere, counted by `stats`, and still closable by a later `DONE`. When several changes are open, the most recently declared one is the one the next session continues from.
+
+### `stats` and `prune` (the CLI)
+
+```
+node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-ledger.js" stats [--cwd <path>] [--json]
+node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-ledger.js" prune [--cwd <path>] [--json]
+```
+
+`stats` is read-only and counts, over the retention window: decisions (pending, decided by human, decided by agent-default), proofs (`VERIFIED`, `NOT_VERIFIED`, `false_ready` events), contracts (open, done, abandoned, expired), and guard events (`blocked`, `would_block`). The `debt` mode renders it verbatim for `debt --stats` (`skills/devanity/modes/debt.md`, "Stats"). `--json` returns the raw object, `null` outside git.
+
+```
+devanity stats (/repo/.git/devanity, last 90 days)
+decisions: 1 pending · 1 decided by human · 1 decided by agent-default
+proofs: 1 VERIFIED · 2 NOT_VERIFIED · 1 false_ready
+contracts: 1 open · 1 done · 1 abandoned · 1 expired
+guards: 1 blocked · 2 would_block
+```
+
+`prune` drops the records older than 90 days from every kind and keeps the files. Nothing runs it automatically; the `debt` mode runs it only when asked. Unknown arguments exit 1 with the usage line.
+
+### What the ledger is not
+
+No prompt text, no diffs, no file contents: metadata only, and nothing is sent anywhere. It is not an authority: the guard reads it for one thing, a `decided` decision `by: human` whose `path` covers the edit, and an agent has no command that writes that record. It is not a history of the repository either: 90 days, then gone.

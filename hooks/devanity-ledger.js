@@ -5,7 +5,7 @@
 // Without git the ledger is disabled (every write is a no-op that reports false) and the guards
 // then record nothing and block nothing.
 //
-// Kinds: contracts · decisions · proofs · deferrals · events. Records carry ts and session_id; a
+// Kinds: contracts · decisions · proofs · events. Records carry ts and session_id; a
 // concurrent writer (parallel subagents) appends whole lines with O_APPEND; readers tolerate a torn
 // last line. Also a read-only CLI: `node hooks/devanity-ledger.js stats|prune [--cwd <p>] [--json]`.
 
@@ -13,7 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-const KINDS = ['contracts', 'decisions', 'proofs', 'deferrals', 'events'];
+const KINDS = ['contracts', 'decisions', 'proofs', 'events'];
 const RETENTION_DAYS = 90;
 
 // Contract lifecycle (PLAN F3.1): the phases a `devanity-contract:` block may declare, the two that
@@ -148,15 +148,23 @@ function prune(cwd, now = Date.now()) {
   const dir = ledgerDir(cwd);
   if (!dir) return false;
   const cutoff = now - RETENTION_DAYS * 86400000;
+  let tmp = null;
   try {
     for (const kind of KINDS) {
       const file = fileFor(dir, kind);
       if (!fs.existsSync(file)) continue;
       const kept = read(cwd, kind).filter((r) => !r.ts || Date.parse(r.ts) >= cutoff);
-      fs.writeFileSync(file, kept.map((r) => JSON.stringify(r)).join('\n') + (kept.length ? '\n' : ''));
+      // Rewrite through a temp file and a rename, so a prune that dies mid-write loses nothing.
+      // deferred: a hook that appends between the read and the rename loses its line (no lock);
+      // revisit if prune ever runs automatically rather than by hand.
+      tmp = `${file}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, kept.map((r) => JSON.stringify(r)).join('\n') + (kept.length ? '\n' : ''));
+      fs.renameSync(tmp, file);
+      tmp = null;
     }
     return true;
   } catch (e) {
+    if (tmp) try { fs.unlinkSync(tmp); } catch (_) { /* already gone */ }
     return false;
   }
 }
@@ -196,7 +204,6 @@ function stats(cwd, now = Date.now()) {
       abandoned: count(all, (c) => phase(c) === 'ABANDONED'),
       expired: expired.length,
     },
-    deferrals: read(cwd, 'deferrals').filter(inWindow).length,
     events: {
       blocked: count(events, (e) => e.kind === 'blocked'),
       would_block: count(events, (e) => e.kind === 'would_block'),
@@ -211,7 +218,6 @@ function renderStats(s) {
     `decisions: ${s.decisions.pending} pending · ${s.decisions.decided_human} decided by human · ${s.decisions.decided_agent_default} decided by agent-default`,
     `proofs: ${s.proofs.verified} VERIFIED · ${s.proofs.not_verified} NOT_VERIFIED · ${s.proofs.false_ready} false_ready`,
     `contracts: ${s.contracts.open} open · ${s.contracts.done} done · ${s.contracts.abandoned} abandoned · ${s.contracts.expired} expired`,
-    `deferrals: ${s.deferrals}`,
     `guards: ${s.events.blocked} blocked · ${s.events.would_block} would_block`,
   ].join('\n');
 }
@@ -241,8 +247,8 @@ function cli(argv) {
 }
 
 module.exports = {
-  CONTRACT_PHASES, KINDS, RETENTION_DAYS,
-  DECISION_TTL_MS, append, contracts, decisions, expiredContracts, gitCommonDir, humanDecisionFor, ledgerDir,
+  CONTRACT_PHASES, KINDS,
+  DECISION_TTL_MS, append, contracts, decisions, expiredContracts, humanDecisionFor, ledgerDir,
   openContract, openContracts, pendingDecisions, prune, read, stats,
 };
 
