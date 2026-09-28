@@ -203,7 +203,7 @@ if (base && rulesMod && !loaded.errors.length) {
   // releases nothing and never changes this job's verdict, so its rate can be measured first.
   // The map's text is repository content: one line each, with markdown and HTML neutralized, so an
   // invariant can neither forge a line of this summary nor open a code fence around the rest.
-  const md = (text) => String(text == null ? '' : text).replace(/\s+/g, ' ').trim().slice(0, 300)
+  const md = (text) => Array.from(String(text == null ? '' : text).replace(/[\s\u0000-\u001F\u007F-\u009F]+/g, ' ').trim()).slice(0, 300).join('')   // code points: never half a character
     .replace(/[\\`*_[\]|~#]/g, (c) => `\\${c}`).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const instruction = (p) => /(^|\/)(CLAUDE|AGENTS|GEMINI)\.md$|(^|\/)\.claude\/|(^|\/)SKILL\.md$|^\.cursorrules$/.test(p);
   const stakes = new Map();

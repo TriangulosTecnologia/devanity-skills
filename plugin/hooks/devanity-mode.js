@@ -86,13 +86,17 @@ function pendingList(cwd) {
   // the path guards (from the map) when the guard queued it.
   const root = rt.gitToplevel(cwd) || cwd;
   const loaded = rulesMod.loadRules(root);
+  // A record is data someone else wrote: a field of the wrong type reads as absent, never as a throw
+  // that blanks the whole listing.
+  const str = (v) => (typeof v === 'string' ? v : '');
   const lines = pending.map((d) => {
-    const head = `- ${rt.clip(d.id, 40)}${d.question ? `: ${rt.clip(d.question, 300)}` : ''}  path: ${rt.clip(d.path || '(none)', 120)}  queued by: ${rt.clip(d.by || '?', 20)}  at: ${rt.clip(d.ts || '?', 30)}`;
-    const rule = d.path && !loaded.errors.length ? rulesMod.ruleFor(loaded.rules, d.path) : null;
+    const path = str(d.path);
+    const head = `- ${rt.clip(d.id, 40)}${str(d.question) ? `: ${rt.clip(d.question, 300)}` : ''}  path: ${rt.clip(path || '(none)', 120)}  queued by: ${rt.clip(str(d.by) || '?', 20)}  at: ${rt.clip(str(d.ts) || '?', 30)}`;
+    const rule = path && !loaded.errors.length ? rulesMod.ruleFor(loaded.rules, path) : null;
     const detail = [
-      d.options && `    options: ${rt.clip(d.options, 400)}`,
-      d.recommendation && `    recommendation: ${rt.clip(d.recommendation, 400)}`,
-      d.if_undecided && `    if undecided: ${rt.clip(d.if_undecided, 400)}`,
+      str(d.options) && `    options: ${rt.clip(d.options, 400)}`,
+      str(d.recommendation) && `    recommendation: ${rt.clip(d.recommendation, 400)}`,
+      str(d.if_undecided) && `    if undecided: ${rt.clip(d.if_undecided, 400)}`,
       rule && Array.isArray(rule.invariants) && rule.invariants.length && `    never changes: ${rule.invariants.slice(0, 3).map((v) => rt.clip(v, 160)).join('; ')}${rule.invariants.length > 3 ? '; …' : ''}`,
     ].filter(Boolean);
     return [head, ...detail].join('\n');
@@ -114,8 +118,8 @@ function decide(args, cwd, sessionId) {
   if (!ledger.ledgerDir(cwd)) return 'DEVANITY DECIDE: no ledger here (not a git repository); nothing recorded.';
   const known = ledger.decisions(cwd).find((d) => d.id === id);
   if (!known && !pathGlob) {
-    const ids = ledger.pendingDecisions(cwd).map((d) => `${d.id} (${d.path || 'no path'})`);
-    return `DEVANITY DECIDE: "${id}" is not a known decision; a human decision must name what it authorizes. Re-run with \`--path <glob>\`, or pick a pending id: ${ids.length ? ids.join(', ') : 'none pending'}.`;
+    const ids = ledger.pendingDecisions(cwd).map((d) => `${rt.clip(d.id, 40)} (${typeof d.path === 'string' && d.path ? rt.clip(d.path, 120) : 'no path'})`);
+    return `DEVANITY DECIDE: "${rt.clip(id, 40)}" is not a known decision; a human decision must name what it authorizes. Re-run with \`--path <glob>\`, or pick a pending id: ${ids.length ? ids.join(', ') : 'none pending'}.`;
   }
   // A "no" answers the question and authorizes nothing: recorded as rejected, never as decided.
   const rejected = REJECT.test(chosen.trim().toLowerCase().replace(/[.!?,;:]+$/, '').split(/[\s,;:!?.]+/)[0] || '') || REJECT_PHRASE.test(chosen.trim());

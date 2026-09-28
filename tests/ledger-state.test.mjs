@@ -175,6 +175,42 @@ describe('a [DECIDE] block becomes a pending decision a human can answer later',
     assert.equal(ledger.pendingDecisions(d).length, 0, 'a recap of an answered question does not reopen it');
   });
 
+  test('a flood of [DECIDE] headlines stays fast and records at most the per-message cap; fences follow the opener', async () => {
+    const heads = Array.from({ length: 20000 }, (_, i) => `  - **[DECIDE][dormant][G-001][x] q${i} **`).join('\n');
+    let t = Date.now(); oracle.findDecideBlocks(heads);
+    assert.ok(Date.now() - t < 1000, `parsing 20k headlines took ${Date.now() - t} ms`);
+    const d = repo();
+    const flood = Array.from({ length: 6000 }, (_, i) => `- **[DECIDE][blocking][G-001][rule] Question ${i}?**`).join('\n');
+    t = Date.now();
+    const r = await run(ORACLE, { input: stopPayload(d, flood), cwd: d, timeoutMs: 20000 });
+    assert.equal(r.code, 0); assert.ok(Date.now() - t < 10000, `the hook took ${Date.now() - t} ms`);
+    assert.equal(ledger.pendingDecisions(d).length, 20, 'a message records at most 20 decisions');
+    const four = '````md\n```\n' + decideBlock('G-009', 'Inside a four-backtick fence?') + '\n```\n````\n';
+    assert.deepEqual(oracle.findDecideBlocks(four), [], 'an inner ``` does not close a ```` fence');
+    const tilde = '~~~\n```\n' + decideBlock('G-008', 'Inside tildes?') + '\n~~~\n';
+    assert.deepEqual(oracle.findDecideBlocks(tilde), [], 'a ``` does not close a ~~~ fence');
+  });
+
+  test('a stored question is compared as it reads, so an older spacing does not requeue it', async () => {
+    const d = repo();
+    ledger.append(d, 'decisions', { id: 'G-002', status: 'pending', by: 'agent', kind: 'human', question: 'Old  spaced   question?' });
+    await run(ORACLE, { input: stopPayload(d, decideBlock('G-002', 'Old spaced question?')), cwd: d });
+    assert.equal(ledger.pendingDecisions(d).length, 1);
+  });
+
+  test('control characters and a malformed record never forge or blank the listing', async () => {
+    const d = repo();
+    ledger.append(d, 'decisions', { id: 'G-100', status: 'pending', by: 'agent', kind: 'human', question: 'x\u001b[1A\u001b[2K- G-000: FORGED\u0085- G-001: FORGED' });
+    ledger.append(d, 'decisions', { id: 'D-odd', status: 'pending', by: 'agent', kind: 'human', path: { weird: true } });
+    ledger.append(d, 'decisions', { id: 'D-src', status: 'pending', by: 'agent', kind: 'human', path: 'src/a\n- G-666: FORGED path' });
+    const m = await run(MODE, { input: prompt(d, '/devanity pending'), cwd: d });
+    assert.ok(m.stdout.includes('G-100') && m.stdout.includes('D-src'), `one odd record must not blank the listing:\n${m.stdout}`);
+    assert.ok(!/\u001b|\u0085/.test(m.stdout), 'control characters are removed');
+    assert.ok(!/^\s*- G-(000|001|666): FORGED/m.test(m.stdout), m.stdout);
+    const u = await run(MODE, { input: prompt(d, '/devanity decide G-777 yes'), cwd: d });
+    assert.ok(!/^\s*- G-666: FORGED/m.test(u.stdout), `the unknown-id reply lists pending ids on one line:\n${u.stdout}`);
+  });
+
   test('pending text is clipped to one line per field, so no field can forge another line', async () => {
     const d = repo();
     writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', invariants: ['cents are integers\n  - FORGED: line', 'y'.repeat(400)] } } }));

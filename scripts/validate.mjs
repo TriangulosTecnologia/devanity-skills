@@ -381,12 +381,22 @@ export function checkRepository(root) {
   const shipped = existsSync(join(root, 'plugin')) ? readdirSync(join(root, 'plugin')).sort() : [];
   if (shipped.join(',') !== unit.join(',')) fail(`plugin/ must hold exactly ${unit.join(', ')} (what installs is what runs); found: ${shipped.join(', ')}`);
   if (existsSync(join(root, 'plugin/LICENCE')) && read('plugin/LICENCE') !== read('LICENCE')) fail('plugin/LICENCE must be a copy of LICENCE: the licence travels with what installs');
+  // Every file under plugin/, whatever its extension (a local install copies the directory as it is
+  // on disk); binary files are not text and cite nothing.
+  const pluginFiles = [];
+  const walkPlugin = (dir) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walkPlugin(path);
+      else if (!readFileSync(path).includes(0)) pluginFiles.push(path);
+    }
+  };
+  if (existsSync(join(root, 'plugin'))) walkPlugin(join(root, 'plugin'));
   // Every ${CLAUDE_PLUGIN_ROOT}/<path> the plugin names resolves inside it: that variable is the
   // installed copy's root, so a path outside plugin/ is a command that fails on the user's machine.
-  for (const file of textFiles.concat(existsSync(join(root, 'plugin/hooks')) ? readdirSync(join(root, 'plugin/hooks')).map((n) => join(root, 'plugin/hooks', n)) : [])) {
+  for (const file of pluginFiles) {
     const rel = file.slice(root.length + 1);
-    if (!rel.startsWith('plugin/')) continue;
-    for (const m of readFileSync(file, 'utf8').matchAll(/\$\{?CLAUDE_PLUGIN_ROOT\}?\/([A-Za-z0-9_./-]+)/g)) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/\$\{?CLAUDE_PLUGIN_ROOT\}?["']?\/([A-Za-z0-9_./-]+)/g)) {
       const target = posix.normalize(m[1]);
       if (target.startsWith('..') || !existsSync(join(root, 'plugin', target))) fail(`${rel} runs \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which is not in plugin/: an installed copy has no such file`);
     }
@@ -394,15 +404,15 @@ export function checkRepository(root) {
 
   // What installs cites nothing that does not install with it: the maintainer's SPEC and PLAN stay in
   // the repository, so a pointer to them from plugin/ is a pointer an installed copy cannot follow.
-  // SPEC and PLAN in capitals only: `plan` is a mode. URLs are skipped: they resolve anywhere.
+  // SPEC and PLAN in capitals only: `plan` is a mode. A feature id is dotted (F2.2b) or in
+  // parentheses (F12), so an F1 score or the F5 key is not one. URLs are skipped: they resolve anywhere.
   const cited = (line) => {
     const bare = line.replace(/https?:\/\/\S+/g, '');
-    return bare.match(/\bSPEC\b|\bPLAN\b|\bF[0-9]+(?:\.[0-9]+)?[a-z]?\b/) || bare.match(/\bguardrail [0-9]+/i)
+    return bare.match(/\bSPEC\b|\bPLAN\b|\bF[0-9]+\.[0-9]+[a-z]?\b|\(F[0-9]+(?:\.[0-9]+)?[a-z]?\)/) || bare.match(/\bguardrails?\s*[-#]?\s*[0-9]+/i)
       || bare.match(/\bdocs\/(?:hooks|evolution)\b|\bCONTRIBUTING\.md\b|\bevals\/(?:harness|results|README)\b/);
   };
-  for (const file of textFiles.concat(existsSync(join(root, 'plugin/hooks')) ? readdirSync(join(root, 'plugin/hooks')).map((n) => join(root, 'plugin/hooks', n)) : [])) {
+  for (const file of pluginFiles) {
     const rel = file.slice(root.length + 1);
-    if (!rel.startsWith('plugin/')) continue;
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
       const hit = cited(line);
       if (hit) fail(`${rel}:${i + 1} cites "${hit[0].trim()}", which does not install with the plugin; state the reason in place`);

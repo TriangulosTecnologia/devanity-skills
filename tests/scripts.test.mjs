@@ -89,3 +89,17 @@ test('calibrate: only decimal numbers are values', () => {
   }
   assert.equal(JSON.parse(run(CALIBRATE, ['--json'], { input: '-2.5 a\n1e2 b\n' }).out).max, 100);
 });
+
+test('hotspots: absolute and magic scopes from a subdirectory, names git would quote, and non-decimal numbers', () => {
+  const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
+  commit(d, { 'src/q"uo\\te.js': '1\n2\n', 'src/t\tab.js': '1\n', 'lib/x.js': '1\n' }, 'one');
+  const sub = join(d, 'lib');
+  const abs = JSON.parse(run(HOTSPOTS, ['--json', '--', join(d, 'src')], { cwd: sub }).out);
+  assert.deepEqual(abs.files.map((f) => [f.path, f.lines]).sort(), [['src/q"uo\\te.js', 2], ['src/t\tab.js', 1]]);
+  // Magic pathspecs are git's to resolve, from where the command runs: `top` anchors at the root.
+  const top = JSON.parse(run(HOTSPOTS, ['--json', '--', ':(top,glob)src/*.js'], { cwd: sub }).out);
+  assert.equal(top.files.length, 2);
+  const here = JSON.parse(run(HOTSPOTS, ['--json', '--', ':(glob)*.js'], { cwd: sub }).out);
+  assert.deepEqual(here.files.map((f) => f.path), ['lib/x.js']);
+  assert.equal(run(HOTSPOTS, ['--window', '0x10'], { cwd: d }).code, 1);
+});

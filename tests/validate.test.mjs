@@ -146,9 +146,19 @@ test('the repository copy passes; each way of pointing outside the installed plu
     const hook = join(dir, 'plugin/hooks/devanity-mode.js');
     const original = readText(hook, 'utf8');
     for (const line of ['// GUARDRAIL 13', '// Guardrail 13 applies', '// see PLAN.', '// (F2.2b)', '// the grammar is in docs/hooks.md', '// see CONTRIBUTING.md',
-      '// node "${CLAUDE_PLUGIN_ROOT}/../scripts/validate.mjs"', '// node "$CLAUDE_PLUGIN_ROOT/scripts/nope.mjs"', '// ${CLAUDE_PLUGIN_ROOT}/scripts/../../scripts/kernel.mjs']) {
+      '// node "${CLAUDE_PLUGIN_ROOT}/../scripts/validate.mjs"', '// node "$CLAUDE_PLUGIN_ROOT/scripts/nope.mjs"', '// ${CLAUDE_PLUGIN_ROOT}/scripts/../../scripts/kernel.mjs',
+      '// guardrail  12', '// guardrail-12', '// Guardrails #12', '// node "${CLAUDE_PLUGIN_ROOT}"/scripts/nope.mjs']) {
       writeFileSync(hook, original); appendFileSync(hook, `\n${line}\n`);
       assert.ok(checkRepository(dir).some((e) => e.includes('plugin/hooks/devanity-mode.js')), `not caught: ${line}`);
     }
+    writeFileSync(hook, original);
+    for (const ok of ['// the plan mode, then /devanity plan', '// an F1 score, press F5', '// https://github.com/usedevanity/skills/tree/main/evals/harness', '// Deterministic Guardrails']) {
+      writeFileSync(hook, original); appendFileSync(hook, `\n${ok}\n`);
+      assert.deepEqual(checkRepository(dir), [], `false positive: ${ok}`);
+    }
+    writeFileSync(hook, original);
+    // Every file that installs is read, whatever its extension.
+    writeFileSync(join(dir, 'plugin/scripts/probe.js'), '// GUARDRAIL 12, see docs/hooks.md\n');
+    assert.ok(checkRepository(dir).some((e) => e.includes('plugin/scripts/probe.js')), 'a .js file under plugin/ is read');
   });
 });

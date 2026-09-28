@@ -89,28 +89,41 @@ function findContractBlock(text) {
 // `/devanity pending` or a new session, decides from the block and not from an id. Dormant ones
 // may sleep and are not queued. Recorded by the agent, as pending: it authorizes nothing.
 // Line-anchored and backtracking-free: the headline's prefix is matched, and its closing `**` is
-// checked by string, so no line can make the Stop hook spin. Lines inside a code fence are examples.
+// checked by string, so no line can make the Stop hook spin. Lines inside a code fence are examples;
+// a fence closes only on its opener's character, at least as long, alone on the line (CommonMark).
+// A block's fields are the indented lines right under it, up to the next headline: linear in the
+// message, however many headlines it holds.
 const DECIDE_HEAD = /^\s*-\s+\*\*\[DECIDE\]\[(blocking|dormant)\]\[(G-\d{3,})\]\[([a-z]+)\]/;
 const DECIDE_FIELD = /^\s+-\s+(decision|context|options|recommendation|if undecided):/;
 const DECIDE_LINE_MAX = 2000;
+const DECIDE_FIELDS_MAX = 10;
+const DECIDE_PER_MESSAGE = 20;   // pending records one message may add; the rest are a flood, not questions
+const FENCE_OPEN = /^\s*(`{3,}|~{3,})/;
+const FENCE_CLOSE = /^\s*(`{3,}|~{3,})\s*$/;
 function findDecideBlocks(text) {
   const lines = String(text || '').replace(/\r/g, '').split('\n');
   const out = [];
-  let fenced = false;
+  let fence = null;
   for (let i = 0; i < lines.length; i++) {
-    if (/^\s*(```|~~~)/.test(lines[i])) { fenced = !fenced; continue; }
-    if (fenced || lines[i].length > DECIDE_LINE_MAX) continue;
+    if (lines[i].length > DECIDE_LINE_MAX) continue;
+    if (fence) {
+      const c = FENCE_CLOSE.exec(lines[i]);
+      if (c && c[1][0] === fence[0] && c[1].length >= fence.length) fence = null;
+      continue;
+    }
+    const o = FENCE_OPEN.exec(lines[i]);
+    if (o) { fence = o[1]; continue; }
     const h = DECIDE_HEAD.exec(lines[i]);
     if (!h) continue;
     const rest = lines[i].slice(h[0].length).trim();
     if (!rest.endsWith('**')) continue;
-    const b = { status: h[1], id: h[2], kind: h[3], question: rest.slice(0, -2).trim() };
-    for (let j = i + 1; j < lines.length && /^\s+\S/.test(lines[j]); j++) {
+    const b = { status: h[1], id: h[2], kind: h[3], question: rt.clip(rest.slice(0, -2), 300) };
+    for (let j = i + 1; j < lines.length && j <= i + DECIDE_FIELDS_MAX && /^\s+\S/.test(lines[j]); j++) {
       if (lines[j].length > DECIDE_LINE_MAX) continue;
+      if (DECIDE_HEAD.test(lines[j])) break;
       const f = DECIDE_FIELD.exec(lines[j]);
       if (f) b[f[1].replace(' ', '_')] = rt.clip(lines[j].slice(f[0].length), 400);
     }
-    b.question = rt.clip(b.question, 300);
     out.push(b);
   }
   return out;
@@ -118,16 +131,22 @@ function findDecideBlocks(text) {
 
 function persistDecisions(root, blocks, sid) {
   const all = ledger.decisions(root);   // read once: many blocks must not re-read the ledger each time
-  for (const b of blocks.filter((x) => x.status === 'blocking' && x.question)) {
+  const ids = new Set(all.map((d) => d.id));
+  // Compared as they read: a question stored before clipping, or with other spacing, is the same one.
+  const asked = new Set(all.filter((d) => d.question).map((d) => rt.clip(d.question, 300)));
+  let added = 0;
+  for (const b of blocks) {
+    if (added >= DECIDE_PER_MESSAGE) break;
     // Asked before, pending or answered: a recap never reopens a question a human already answered.
-    if (all.some((d) => d.question === b.question)) continue;
+    if (b.status !== 'blocking' || !b.question || asked.has(b.question)) continue;
     // Never append over an id that holds another question or an answer: the latest record per id
     // wins, so reusing it would rewrite a decision a human already made.
     let id = b.id;
-    for (let k = 2; all.some((d) => d.id === id); k++) id = `${b.id}-${k}`;
+    for (let k = 2; ids.has(id); k++) id = `${b.id}-${k}`;
     const rec = { id, status: 'pending', by: 'agent', kind: 'human', decide_kind: b.kind, question: b.question };
     for (const k of ['decision', 'context', 'options', 'recommendation', 'if_undecided']) if (b[k]) rec[k] = b[k];
-    if (ledger.append(root, 'decisions', rec, sid)) all.push(rec);
+    if (!ledger.append(root, 'decisions', rec, sid)) break;   // an unwritable ledger fails the same way for the next one
+    ids.add(id); asked.add(b.question); added++;
   }
 }
 

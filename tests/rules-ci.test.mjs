@@ -257,6 +257,17 @@ describe('rules CI', () => {
     assert.match(md, /dominance certificate: does not hold/);
   });
 
+  test('the summary never splits a character when it shortens a long invariant', () => {
+    const long = 'x'.repeat(299) + '😀' + 'tail';
+    const d = seed({ rules: { version: 1, paths: { 'billing/**': { tier: 'high-risk', invariants: [long, 'a\u001b[2Kb'] } } }, changes: { 'billing/charge.js': 'module.exports = 3;\n' } });
+    const summary = join(temp, `esum${n}.md`);
+    runCi(d, ['--base', 'main', '--no-proof-required'], { GITHUB_STEP_SUMMARY: summary });
+    const text = readFileSync(summary, 'utf8');
+    assert.ok(text.includes('x'.repeat(299)), 'the invariant is in the summary');
+    assert.ok(!text.includes('\uFFFD'), 'a lone surrogate is written as U+FFFD: the cut split a character');
+    assert.ok(!text.includes('\u001b'), 'a terminal escape in the map does not reach the summary');
+  });
+
   test('the old script path still runs, for a workflow copied before the script moved into the plugin', () => {
     const d = seed({ rules: { version: 1, paths: { 'docs/**': { tier: 'trivial' } } }, changes: { 'docs/a.md': 'b\n' } });
     const r = spawnSync(process.execPath, [join(root, 'scripts', 'devanity-rules-ci.mjs'), '--root', d, '--base', 'main'], { cwd: d, encoding: 'utf8', env: { ...process.env, GITHUB_EVENT_PATH: '', NODE_TEST_CONTEXT: '' } });
