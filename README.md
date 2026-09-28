@@ -123,5 +123,7 @@ How the repository is built, measured and laid out: [`CONTRIBUTING.md`](CONTRIBU
 
 This repository contains instructions and routines licensed under the **Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)**. The benchmark instruments under `evals/harness/` ported from ponytail keep their MIT notice (`evals/harness/LICENSE-ponytail`).
 
-* **Allowed:** Use the instructions in your personal or professional workflow, study, adapt, and apply them in your projects.
-* **Prohibited:** Sell, repackage, or monetize this set of instructions (or derivative works) in paid products, e-books, or courses without authorization.
+* **Allowed, with attribution:** copy, adapt and share the instructions for non-commercial purposes, such as study, research and personal projects.
+* **Needs the licensor's written permission:** any commercial use, including use inside a company's work or products, and selling, repackaging or monetizing the instructions or derivative works (paid products, e-books, courses). Ask through the repository's issues.
+
+The license text in [`LICENCE`](LICENCE) governs; this summary does not change it.
