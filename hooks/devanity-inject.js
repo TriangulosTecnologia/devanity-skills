@@ -32,8 +32,7 @@ const OUTPUT_BUDGET_CHARS = 9500;
 
 // The repository root for cwd (a session may start in a subdirectory), else cwd itself.
 function repoRoot(cwd) {
-  const r = require('child_process').spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd, encoding: 'utf8' });
-  return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : cwd;
+  return rt.gitToplevel(cwd) || cwd;
 }
 
 function rulesContext(cwd) {

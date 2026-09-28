@@ -148,15 +148,23 @@ function prune(cwd, now = Date.now()) {
   const dir = ledgerDir(cwd);
   if (!dir) return false;
   const cutoff = now - RETENTION_DAYS * 86400000;
+  let tmp = null;
   try {
     for (const kind of KINDS) {
       const file = fileFor(dir, kind);
       if (!fs.existsSync(file)) continue;
       const kept = read(cwd, kind).filter((r) => !r.ts || Date.parse(r.ts) >= cutoff);
-      fs.writeFileSync(file, kept.map((r) => JSON.stringify(r)).join('\n') + (kept.length ? '\n' : ''));
+      // Rewrite through a temp file and a rename, so a prune that dies mid-write loses nothing.
+      // deferred: a hook that appends between the read and the rename loses its line (no lock);
+      // revisit if prune ever runs automatically rather than by hand.
+      tmp = `${file}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, kept.map((r) => JSON.stringify(r)).join('\n') + (kept.length ? '\n' : ''));
+      fs.renameSync(tmp, file);
+      tmp = null;
     }
     return true;
   } catch (e) {
+    if (tmp) try { fs.unlinkSync(tmp); } catch (_) { /* already gone */ }
     return false;
   }
 }
@@ -241,8 +249,8 @@ function cli(argv) {
 }
 
 module.exports = {
-  CONTRACT_PHASES, KINDS, RETENTION_DAYS,
-  DECISION_TTL_MS, append, contracts, decisions, expiredContracts, gitCommonDir, humanDecisionFor, ledgerDir,
+  CONTRACT_PHASES, KINDS,
+  DECISION_TTL_MS, append, contracts, decisions, expiredContracts, humanDecisionFor, ledgerDir,
   openContract, openContracts, pendingDecisions, prune, read, stats,
 };
 

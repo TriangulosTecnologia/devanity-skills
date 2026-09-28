@@ -2,9 +2,9 @@
 
 The hooks run only when devanity is installed as a Claude Code plugin (`hooks/hooks.json`); an `AGENTS.md`-only host gets the kernel and nothing below. Four entry points share three libraries: `devanity-runtime.js` (payload, kernel, fallbacks), `devanity-rules.js` (the `devanity.rules.json` loader and globs) and `devanity-ledger.js` (the state every hook reads). None of them asks the model anything, and every failure path allows and leaves a trace.
 
-The hooks stop the agent that errs or races for a green check, and they measure; they run with the agent's own permissions, so they are not a boundary against one that sets out to get around them. That boundary is the [reference CI job](#reference-ci-job-scriptsdevanity-rules-cimjs) with branch protection and `CODEOWNERS`; what each hook does not stop is under [Limits](#limits).
+The hooks stop the agent that errs or races for a green check, and they measure; they run with the agent's own permissions, so they are not a boundary against one that sets out to get around them. That boundary is the [reference CI job](#reference-ci-job-scriptsdevanity-rules-cimjs) with branch protection and `CODEOWNERS`; what each hook does not stop is under the guard's [Limits](#limits) and the oracle's [What it cannot prove](#what-it-cannot-prove).
 
-**Blocked?** Read the `Next step` line of the message ([examples](#the-messages-a-developer-sees)): a high-risk path needs a human to type `/devanity decide <id> <option> --path <glob>`; a command above the session's authority needs a human to raise `DEVANITY_AUTHORITY` or `devanity.rules.json#autonomy`. To stop blocking, set `DEVANITY_GUARDS=off` ([defaults](#defaults-by-install-origin-spec-76)); `/devanity off` stops the injection and the oracle, not the guard.
+**Blocked?** Read the `Next step` line of the message ([examples](#the-messages-a-developer-sees)): a high-risk path needs a human to type `/devanity decide <id> <option> --path <glob>`; a command above the session's authority needs a human to raise `DEVANITY_AUTHORITY` or `devanity.rules.json#defaults.authority` (an unattended session is capped at `commit` by `#autonomy.authority`; merge and deploy are never its to run). To stop blocking, set `DEVANITY_GUARDS=off` ([defaults](#defaults-by-install-origin-spec-76)); `/devanity off` stops the injection and the oracle, not the guard.
 
 | event | hook | job |
 |---|---|---|
@@ -49,7 +49,7 @@ devanity: blocked Edit on billing/x.py
 ```
 devanity: blocked Bash command: git push --force origin main
   needs authority: merge; this session has: commit (devanity.rules.json#defaults.authority)
-  Next step: raise DEVANITY_AUTHORITY / edit devanity.rules.json#autonomy
+  Next step: raise DEVANITY_AUTHORITY or devanity.rules.json#defaults.authority
   (a human does this outside the session; the agent does not raise its own authority)
 ```
 
@@ -64,7 +64,7 @@ devanity: blocked Bash command: git push --force origin main
 | `DEVANITY_GUARDS=on` (or `{"guards": true}`) | block even without a rules file |
 | Not a git repository | no ledger: nothing recorded, nothing blocked |
 | Payload unreadable (host hiccup) | fail open, `guard_payload_missing` event; a guard that cannot read its payload cannot know the path, and failing closed would freeze every tool call |
-| The guard or the oracle throws | fail open; a `guard_error` / `oracle_error` event names the error class and the hook line (`devanity-guard.js:170`), never the message, which can echo file content |
+| The guard or the oracle throws | fail open; a `guard_error` / `oracle_error` event names the error class and its first frame in the plugin's hooks (`devanity-rules.js:92`), never the message, which can echo file content; a thrown non-Error is recorded as its type |
 
 Every real block records `{kind: blocked, path|command, rule|authority}`; every evaluated-but-not-enforced block records `would_block` with the same fields, which is how a team measures false blocks before turning enforcement on (guardrail 4: ≤ 5 %).
 

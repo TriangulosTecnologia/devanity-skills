@@ -159,6 +159,21 @@ describe('guard: Bash (d) (e)', () => {
   });
 });
 
+describe('guard: the next step names what can actually raise the authority', () => {
+  const nextStep = (r) => r.stderr.split('\n').find((l) => l.includes('Next step')) || '';
+  test('attended: defaults.authority; autonomous: autonomy.authority up to commit, nothing for merge or deploy', async () => {
+    const d = repo();
+    const attended = nextStep(await run(GUARD, { input: bash(d, 'git push --force origin main'), cwd: d }));
+    assert.ok(attended.includes('DEVANITY_AUTHORITY') && attended.includes('defaults.authority') && !attended.includes('autonomy'), attended);
+    const prepare = baseEnv({ DEVANITY_AUTONOMOUS: '1', DEVANITY_AUTHORITY: 'prepare' });
+    const raisable = nextStep(await run(GUARD, { input: bash(d, 'git push origin main'), cwd: d, env: prepare }));
+    assert.ok(raisable.includes('autonomy.authority') && !raisable.includes('defaults.authority'), raisable);
+    const never = nextStep(await run(GUARD, { input: bash(d, 'gh pr merge 12'), cwd: d, env: baseEnv({ DEVANITY_AUTONOMOUS: '1' }) }));
+    assert.ok(never.includes('never available to an autonomous session'), never);
+    assert.ok(!never.includes('DEVANITY_AUTHORITY') && !never.includes('autonomy.authority'), `no field raises merge unattended: ${never}`);
+  });
+});
+
 describe('guard: honest-error holes closed (SPEC §0.5)', () => {
   test('a human "no" in any common spelling is recorded as a rejection and authorizes nothing', async () => {
     for (const answer of ['no', 'reject', 'não', 'deny', 'nope', 'rejeitar', 'Rejeito.', 'negado', 'No!', 'no way', 'decline', 'nope!!']) {
@@ -319,6 +334,15 @@ describe('guard: enforcement by install origin (f) (g) (h)', () => {
 });
 
 describe('failure paths leave a trace (map invariant for hooks/**)', () => {
+  test('errorTrace keeps only an Error class and a hook frame; any other thrown value is its type', () => {
+    const rt = require(join(hooksDir, 'devanity-runtime.js'));
+    assert.deepEqual(rt.errorTrace({ name: 'sk-live-secret' }), { error: 'object', at: null });
+    assert.deepEqual(rt.errorTrace('sk-live-secret'), { error: 'string', at: null });
+    assert.deepEqual(rt.errorTrace(null), { error: 'object', at: null });
+    const e = new RangeError('sk-live-secret'); e.stack = 'RangeError: sk-live-secret\n    at x (C:\\p\\hooks\\devanity-rules.js:10:3)\n    at y (/p/hooks/devanity-guard.js:170:5)';
+    assert.deepEqual(rt.errorTrace(e), { error: 'RangeError', at: 'devanity-rules.js:10' });
+  });
+
   // The error's message can echo what was being parsed (Node prints the start of invalid JSON), and
   // the ledger holds metadata only: the event names the error class and where in the hook, never the text.
   test('a guard or oracle that throws still allows, and records where it failed, never the message', async () => {

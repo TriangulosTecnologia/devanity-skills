@@ -356,7 +356,7 @@ function main() {
   });
 }
 
-module.exports = { DEFAULT_TIMEOUT_MS, REASONS, decide, findContractBlock, findProofBlock, lastAssistantFromTranscript, renderProofBlock, ruleCheckFor };
+module.exports = { REASONS, decide, findContractBlock, findProofBlock, lastAssistantFromTranscript, renderProofBlock };
 
 if (require.main === module) {
   try { main(); } catch (e) { rt.exitSoon(0); }

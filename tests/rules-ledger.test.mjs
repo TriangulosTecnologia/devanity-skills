@@ -179,6 +179,18 @@ describe('ledger', () => {
     assert.deepEqual(ledger.read(d, 'events'), []);
   });
 
+  test('prune that dies mid-write leaves the ledger as it was (the rewrite is atomic)', () => {
+    const d = fresh(); git(d, 'init', '-q');
+    ledger.append(d, 'events', { kind: 'kept-1' }); ledger.append(d, 'events', { kind: 'kept-2' });
+    const file = join(ledger.ledgerDir(d), 'events.jsonl');
+    const before = readFileSync(file, 'utf8');
+    const fs = require('fs'); const write = fs.writeFileSync;
+    fs.writeFileSync = (f, data, ...rest) => { write(f, String(data).slice(0, 7), ...rest); throw new Error('disk full'); };
+    try { assert.equal(ledger.prune(d), false); } finally { fs.writeFileSync = write; }
+    assert.equal(readFileSync(file, 'utf8'), before, 'a failed prune must not truncate the ledger');
+    assert.deepEqual(require('fs').readdirSync(ledger.ledgerDir(d)).filter((f) => f.includes('.tmp')), [], 'no temp file left behind');
+  });
+
   test('inside git: lives under the common dir, shared by a worktree, append-only, torn line tolerated', () => {
     const d = fresh();
     git(d, 'init', '-q'); writeFileSync(join(d, 'f'), '1'); git(d, 'add', '-A'); git(d, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-qm', 'base');

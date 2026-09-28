@@ -54,9 +54,9 @@ You normally **do not invoke Worker or Verifier yourself**: Worker collects evid
 
 ## Adopt it in your repository
 
-**What it costs.** The kernel is about 1.7k tokens, injected at session start, after compaction and into each subagent; the repository map adds at most about 400 tokens. Once a rules file declares a `check`, each `VERIFIED` claim makes the Stop hook run that check twice (before and after the change, within 120 s) before the turn ends. The ledger stays local and holds metadata only.
+**What it costs.** The kernel is about 1.5k tokens, injected at session start, after compaction and into each subagent except the worker and the verifier; the repository map adds at most about 400 tokens, and an open change about 120. Once a rules file declares a `check`, each `VERIFIED` claim makes the Stop hook run that check twice (before and after the change, within 120 s) before the turn ends. The ledger stays local and holds metadata only.
 
-**What changes without configuration.** On a personal install with no `devanity.rules.json`, the guard blocks nothing and the oracle measures nothing: they only record, in a local ledger under `.git/`, what they would have done. The kernel and the verbs work the same.
+**What changes without configuration.** On a personal install with no `devanity.rules.json`, the guard blocks nothing and the oracle measures nothing: they only record, in a local ledger under `.git/`, what they would have done (`DEVANITY_GUARDS=on` makes them enforce anyway). The kernel and the verbs work the same.
 
 **Declare what is at stake.** Add `devanity.rules.json` at the repository root (or let `/devanity init` draft it from your repository and show it before writing). A minimal one:
 
@@ -71,9 +71,9 @@ You normally **do not invoke Worker or Verifier yourself**: Worker collects evid
 }
 ```
 
-With it, the guard blocks edits to high-risk paths until a human decides, and the oracle measures `VERIFIED` against the `check` you declared, never one the agent wrote. The fields (`authority`, `delta`, `invariants`, `core`, `tests`, `commands`, `autonomy`) are in [`rules.schema.json`](skills/devanity/reference/rules.schema.json).
+With it, the guard blocks edits to high-risk paths until a human decides, and the oracle measures `VERIFIED` against the `check` you declared, never one the agent wrote. The fields (`delta`, `invariants`, `core`, `tests`, `commands`, `autonomy`) are in [`rules.schema.json`](skills/devanity/reference/rules.schema.json).
 
-**When the guard blocks.** The message ends with the next step. For a high-risk path, the human types `/devanity decide <id> <option> --path <glob>` as a whole message; for a command above the session's authority (`git push --force`, `gh pr merge`, `terraform apply`), the human raises `DEVANITY_AUTHORITY` or `autonomy` in the rules. The guard blocks the agent's own edits to the rules and the ledger.
+**When the guard blocks.** The message ends with the next step. For a high-risk path, the human types `/devanity decide <id> <option> --path <glob>` as a whole message; for a command above the session's authority (`git push --force`, `gh pr merge`, `terraform apply`), the human raises `DEVANITY_AUTHORITY` or `defaults.authority` in the rules; an unattended session is capped at `commit` (`autonomy.authority`), so merge and deploy are never its to run. The guard blocks the agent's own edits to the rules and the ledger.
 
 **Turning it down or off.** `DEVANITY_GUARDS=off` makes the guard and the oracle record without blocking. `/devanity off` stops the kernel injection and the oracle, and `/devanity on` brings them back; the guard follows `DEVANITY_GUARDS` only.
 
