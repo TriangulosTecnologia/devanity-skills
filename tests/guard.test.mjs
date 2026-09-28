@@ -159,6 +159,18 @@ describe('guard: Bash (d) (e)', () => {
   });
 });
 
+describe('guard: a block shows why the path is guarded', () => {
+  test('the path\'s purpose and invariants ride the block; a path with nothing to say adds no line', async () => {
+    const d = repo({ rules: { version: 1, paths: { 'billing/**': { tier: 'high-risk', purpose: 'charges and refunds', invariants: ['amounts are integer cents', 'a refund never exceeds its charge'] }, 'ops/**': { tier: 'high-risk' } } } });
+    const r = await run(GUARD, { input: edit(d, 'billing/x.py'), cwd: d });
+    assertBlocked(r, 'charges and refunds', 'amounts are integer cents', 'a refund never exceeds its charge');
+    mkdirSync(join(d, 'ops'), { recursive: true }); writeFileSync(join(d, 'ops', 'x.sh'), 'a\n');
+    const bare = await run(GUARD, { input: edit(d, 'ops/x.sh'), cwd: d });
+    assert.equal(bare.code, 2);
+    assert.ok(!/invariant|purpose/i.test(bare.stderr), `a path that declares nothing gets no empty reason line:\n${bare.stderr}`);
+  });
+});
+
 describe('guard: the next step names what can actually raise the authority', () => {
   const nextStep = (r) => r.stderr.split('\n').find((l) => l.includes('Next step')) || '';
   test('attended: defaults.authority; autonomous: autonomy.authority up to commit, nothing for merge or deploy', async () => {

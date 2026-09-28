@@ -36,11 +36,13 @@ The session's authority is, in order: `DEVANITY_AUTHORITY` when it names a valid
 
 ### The messages a developer sees
 
-A blocked call exits 2 and prints the reason to stderr (shown to the model) and as JSON `permissionDecision: "deny"` on stdout (the structured form the host prefers). A block is never silent.
+The `what it is` and `never changes` lines come from the path's `purpose` and `invariants` in the map (up to three, 160 characters each); a path that declares neither shows neither. A blocked call exits 2 and prints the reason to stderr (shown to the model) and as JSON `permissionDecision: "deny"` on stdout (the structured form the host prefers). A block is never silent.
 
 ```
 devanity: blocked Edit on billing/x.py
   rule: billing/** → tier high-risk (devanity.rules.json)
+  what it is: charges and refunds
+  never changes: amounts are integer cents; a refund never exceeds its charge
   A high-risk path needs a human decision recorded in the ledger before any tool may write to it.
   Next step: Record the human decision with: /devanity decide D-billing <option> --path billing/**
   (typed by the human as a whole message; the agent does not record it — propose the change and stop)
