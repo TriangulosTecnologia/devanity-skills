@@ -114,4 +114,11 @@ test('hotspots: a name that starts with a newline keeps it, and an absolute scop
   const link = join(temp, `link${n}`); symlinkSync(d, link);
   const r = run(HOTSPOTS, ['--json', '--', join(link, 'foo')], { cwd: link });
   assert.equal(r.code, 0, r.err); assert.deepEqual(JSON.parse(r.out).files.map((f) => f.path), ['foo']);
+  // A scope means what it means to git: a tracked symlink is the link, absolute or relative alike,
+  // and a deleted path through the symlinked root is still history, not an error.
+  symlinkSync('sub', join(d, 'link')); commit(d, { 'sub/s.txt': 's\n' }, 'link');
+  const rel = JSON.parse(run(HOTSPOTS, ['--json', '--', 'link'], { cwd: d }).out);
+  const abs = JSON.parse(run(HOTSPOTS, ['--json', '--', join(link, 'link')], { cwd: link }).out);
+  assert.deepEqual(abs.files, rel.files); assert.deepEqual(rel.files.map((f) => f.path), ['link']);
+  assert.equal(run(HOTSPOTS, ['--json', '--', join(link, 'gone', 'x.js')], { cwd: link }).code, 0);
 });

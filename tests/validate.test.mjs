@@ -149,12 +149,13 @@ test('the repository copy passes; each way of pointing outside the installed plu
       '// node "${CLAUDE_PLUGIN_ROOT}/../scripts/validate.mjs"', '// node "$CLAUDE_PLUGIN_ROOT/scripts/nope.mjs"', '// ${CLAUDE_PLUGIN_ROOT}/scripts/../../scripts/kernel.mjs',
       '// guardrail  12', '// guardrail-12', '// Guardrails #12', '// node "${CLAUDE_PLUGIN_ROOT}"/scripts/nope.mjs',
       '// "command": "node \\"${CLAUDE_PLUGIN_ROOT}\\"/../scripts/validate.mjs"', '// ${CLAUDE_PLUGIN_ROOT}//../hooks/devanity-mode.js', '// ${CLAUDE_PLUGIN_ROOT:-.}/../x.mjs',
-      '// (F12, F14)', '// [F12]', '// guard-rail 12', '// see evals/RUNBOOK.md', '// evals/kernel-sentences.md']) {
+      '// ${CLAUDE_PLUGIN_ROOT:-${HOME}}/../x.mjs', '// guard-rail 12', '// see evals/RUNBOOK.md', '// evals/kernel-sentences.md']) {
       writeFileSync(hook, original); appendFileSync(hook, `\n${line}\n`);
       assert.ok(checkRepository(dir).some((e) => e.includes('plugin/hooks/devanity-mode.js')), `not caught: ${line}`);
     }
     writeFileSync(hook, original);
-    for (const ok of ['// the plan mode, then /devanity plan', '// an F1 score, press F5', '// https://github.com/usedevanity/skills/tree/main/evals/harness', '// Deterministic Guardrails']) {
+    for (const ok of ['// the plan mode, then /devanity plan', '// an F1 score, press F5', '// https://github.com/usedevanity/skills/tree/main/evals/harness', '// Deterministic Guardrails',
+      '// Keep your own evals/ directory next to the code.', '// see docs/adr/0001-queue.md', '// press [F5] to reload, (F1) is help', '// Guardrails 2026 edition']) {
       writeFileSync(hook, original); appendFileSync(hook, `\n${ok}\n`);
       assert.deepEqual(checkRepository(dir), [], `false positive: ${ok}`);
     }

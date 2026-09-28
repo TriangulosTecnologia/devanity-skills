@@ -398,7 +398,7 @@ export function checkRepository(root) {
     const rel = file.slice(root.length + 1);
     // Braced or bare, with a `:-` default, quoted, or quoted inside JSON (hooks.json's commands); a
     // doubled slash is the same path to the shell, so `//..` still climbs out.
-    for (const m of readFileSync(file, 'utf8').matchAll(/\$\{?CLAUDE_PLUGIN_ROOT(?::-[^}]*)?\}?\\?["']?\/([A-Za-z0-9_./-]+)/g)) {
+    for (const m of readFileSync(file, 'utf8').matchAll(/\$\{?CLAUDE_PLUGIN_ROOT(?::-(?:\$\{[^}]*\}|[^}])*)?\}?\\?["']?\/([A-Za-z0-9_./-]+)/g)) {
       const target = posix.normalize(m[1].replace(/^\/+/, ''));
       if (target.startsWith('..') || !existsSync(join(root, 'plugin', target))) fail(`${rel} runs \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which is not in plugin/: an installed copy has no such file`);
     }
@@ -406,12 +406,14 @@ export function checkRepository(root) {
 
   // What installs cites nothing that does not install with it: the maintainer's SPEC and PLAN stay in
   // the repository, so a pointer to them from plugin/ is a pointer an installed copy cannot follow.
-  // SPEC and PLAN in capitals only: `plan` is a mode. A feature id is dotted (F2.2b) or in
-  // bracketed ((F12), [F12], (F12, F14)), so an F1 score or the F5 key is not one. URLs are skipped: they resolve anywhere.
+  // SPEC and PLAN in capitals only: `plan` is a mode. A feature id is dotted (F2.2b): bare F1 is a
+  // phase, a key or a score. A guardrail number has one or two digits. A docs/ or evals/ path is a
+  // citation when it names a file of this repository, so a consumer's own evals/ is not one. URLs
+  // are skipped: they resolve anywhere.
   const cited = (line) => {
     const bare = line.replace(/https?:\/\/\S+/g, '');
-    return bare.match(/\bSPEC\b|\bPLAN\b|\bF[0-9]+\.[0-9]+[a-z]?\b|[(\[]F[0-9]+(?:\.[0-9]+)?[a-z]?\b/) || bare.match(/\bguard-?rails?\s*[-#]?\s*[0-9]+/i)
-      || bare.match(/\bdocs\/(?:hooks|evolution)\b|\bCONTRIBUTING\.md\b|\bevals\//);
+    const repoPath = [...bare.matchAll(/(?<![\w./-])(?:docs|evals)\/[\w.-][\w./-]*/g)].find((m) => existsSync(join(root, m[0].replace(/[.]+$/, ''))));
+    return bare.match(/\bSPEC\b|\bPLAN\b|\bF[0-9]+\.[0-9]+[a-z]?\b|\bCONTRIBUTING\.md\b/) || bare.match(/\bguard-?rails?\s*[-#]?\s*[0-9]{1,2}\b/i) || repoPath;
   };
   for (const file of pluginFiles) {
     const rel = file.slice(root.length + 1);
