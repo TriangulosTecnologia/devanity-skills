@@ -12,7 +12,6 @@
     "plugin/skills/devanity/**": {
       "tier": "normal",
       "check": "node scripts/validate.mjs",
-      "purpose": "the skill: SKILL.md kernel, modes/ by verb, reference/",
       "invariants": [
         "one grammar, one file",
         "a mode loads only its Load: line"
@@ -31,7 +30,10 @@
     "plugin/agents/**": {
       "tier": "normal",
       "check": "node scripts/kernel.mjs check-agents",
-      "purpose": "worker (evidence, no judgment) and verifier (falsifies, never edits)"
+      "invariants": [
+        "the worker collects evidence and never judges",
+        "the verifier falsifies and never edits"
+      ]
     },
     "plugin/hooks/**": {
       "tier": "high-risk",
@@ -46,7 +48,7 @@
     "scripts/**": {
       "tier": "high-risk",
       "check": "npm test && node scripts/validate.mjs",
-      "purpose": "CI gates and the consumers' reference CI job",
+      "purpose": "the repository validator, the AGENTS.md generator and the consumers' reference CI job",
       "invariants": [
         "dependency-free"
       ]
@@ -58,8 +60,7 @@
     },
     "plugin/.claude-plugin/**": {
       "tier": "high-risk",
-      "check": "node scripts/validate.mjs",
-      "purpose": "the plugin manifest: name, version, hooks"
+      "check": "node scripts/validate.mjs"
     },
     "plugin/templates/**": {
       "tier": "high-risk",
@@ -81,7 +82,7 @@
     },
     "docs/**": {
       "tier": "trivial",
-      "purpose": "development model, hooks reference, SPEC and PLAN"
+      "purpose": "the hooks reference, and the maintainer's SPEC and PLAN (Portuguese)"
     },
     "README.md": {
       "tier": "trivial"

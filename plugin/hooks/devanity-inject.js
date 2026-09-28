@@ -4,13 +4,13 @@
 //
 // SessionStart context never reaches subagents, so the same script serves both
 // events and reads `hook_event_name` from the payload to pick the output shape.
-// Scoping (SPEC §7.2): agent_type verifier -> one-line note (its contract is
+// Scoping: agent_type verifier -> one-line note (its contract is
 // agents/verifier.md); worker -> nothing; anything else, or an unknown/missing
 // agent_type -> the kernel. State `off` -> nothing. Any read error -> the
 // compact fallback kernel, never silence.
 //
-// After the kernel: the repository rules (F2.5) and, when the ledger holds an
-// open change, its phase summary (F3.2); the verifier's note then names the
+// After the kernel: the repository rules and, when the ledger holds an
+// open change, its phase summary; the verifier's note then names the
 // change to falsify. Everything stays under the host's 10,000-char stdout cap.
 //
 // Fail-open scoping and the never-block stdin path follow ponytail's
@@ -21,10 +21,10 @@ const rt = require('./devanity-runtime');
 const rulesMod = require('./devanity-rules');
 const ledger = require('./devanity-ledger');
 
-// F2.5: the repository's own rules, compacted for the model (SPEC §7.1 "context per path").
+// The repository's own rules, compacted for the model.
 // Only when devanity.rules.json is present and valid; hard cap of ~200 tokens.
-const RULES_CONTEXT_MAX_CHARS = 1600;   // the map (SPEC §0.4), ~400 tokens
-// F3.2: the open change (ledger contract not DONE/ABANDONED, declared within 24 h), ~120 tokens.
+const RULES_CONTEXT_MAX_CHARS = 1600;   // the map, ~400 tokens
+// The open change (ledger contract not DONE/ABANDONED, declared within 24 h), ~120 tokens.
 const CHANGE_CONTEXT_MAX_CHARS = 480;
 const CHANGE_FIELD_MAX_CHARS = 60;
 // The host caps plain SessionStart stdout at 10,000 chars; below this budget every section fits.
@@ -39,7 +39,7 @@ function rulesContext(cwd) {
   const loaded = rulesMod.loadRules(repoRoot(cwd));
   if (!loaded.present || loaded.errors.length) return '';
   const r = loaded.rules;
-  // The map (SPEC §0.4): one line per path that has something to say (a purpose, invariants, the
+  // The map: one line per path that has something to say (a purpose, invariants, the
   // high-risk tier, or core), so the agent knows where it is before it opens a file. The fixed lines
   // come first; entries are added whole while they fit, and the rest is named, never cut mid-line.
   const entry = (p) => {
@@ -90,7 +90,7 @@ function changeContext(cwd) {
   return text.length > CHANGE_CONTEXT_MAX_CHARS ? text.slice(0, CHANGE_CONTEXT_MAX_CHARS - 1) + '…' : text;
 }
 
-// The queue an unattended session left (SPEC §7.3): its own section, placed before the rules and
+// The queue an unattended session left: its own section, placed before the rules and
 // the change, and the last one ever dropped for size.
 function queueContext(cwd) {
   const pending = ledger.pendingDecisions(cwd);

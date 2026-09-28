@@ -1,11 +1,11 @@
 'use strict';
-// devanity — repository rules (devanity.rules.json, SPEC §7.1). One declaration, three surfaces:
+// devanity — repository rules (devanity.rules.json). One declaration, three surfaces:
 // the per-path context the kernel receives, the PreToolUse/Stop guards, and the reference CI job.
 // Dependency-free; validated here against the same constraints as reference/rules.schema.json
 // (no JSON-schema library at runtime: the file is small and the rules are few).
 //
 // Contract: loading never throws. A missing file is {present:false} with defaults; an invalid
-// file is {present:true, errors:[...]} and the guards then RECORD instead of blocking (SPEC §7.2).
+// file is {present:true, errors:[...]} and the guards then RECORD instead of blocking.
 
 const fs = require('fs');
 const path = require('path');
@@ -16,10 +16,10 @@ const AUTHORITIES = ['observe', 'recommend', 'prepare', 'execute', 'commit', 'me
 const AUTONOMY_AUTHORITIES = AUTHORITIES.slice(0, 5);       // merge/deploy are never grantable unattended
 const PURPOSE_MAX = 160;
 // Instruction surfaces: what an agent reads as instructions. A glob that covers one is never tier
-// `trivial` (SPEC §0.3): editing an instruction file changes what every later session does.
+// `trivial`: editing an instruction file changes what every later session does.
 const INSTRUCTION_SAMPLES = ['CLAUDE.md', 'AGENTS.md', 'GEMINI.md', '.cursorrules', 'src/CLAUDE.md', 'src/AGENTS.md', 'packages/x/CLAUDE.md', 'packages/x/AGENTS.md', 'apps/x/CLAUDE.md', '.claude/settings.json', '.claude/skills/x/SKILL.md', '.github/copilot-instructions.md', 'skills/x/SKILL.md', 'skills/x/modes/y.md', 'agents/x.md'];
 const DEFAULT_TESTS = ['test_*', '*_test.*', '*.test.*', '*.spec.*', 'tests/**'];
-// Commands above the `execute` rung, whatever the repository declares (SPEC §7.2 (c)). `GIT` also
+// Commands above the `execute` rung, whatever the repository declares. `GIT` also
 // matches the global options git accepts before its subcommand (`git -C dir push`, `git -c k=v
 // push`), which a plain `git\s+push` let through.
 const ARG = '(?:"[^"]*"|\'[^\']*\'|\\S+)';
@@ -99,7 +99,7 @@ function validate(raw) {
         if (hit) bad(`paths["${glob}"]: tier trivial covers instruction files (${hit}); an instruction file is never trivial`);
       }
       if (rule.check !== undefined && (typeof rule.check !== 'string' || !rule.check.trim())) bad(`paths["${glob}"].check must be a non-empty string`);
-      // The map (SPEC §0.4): what the path is, and what never changes there.
+      // The map: what the path is, and what never changes there.
       if (rule.purpose !== undefined && !(typeof rule.purpose === 'string' && rule.purpose.trim() && rule.purpose.length <= PURPOSE_MAX)) bad(`paths["${glob}"].purpose must be a non-empty string of at most ${PURPOSE_MAX} characters`);
       if (rule.invariants !== undefined && !(Array.isArray(rule.invariants) && rule.invariants.every((v) => typeof v === 'string' && v.trim()))) bad(`paths["${glob}"].invariants must be an array of non-empty strings`);
       if (rule.core !== undefined && typeof rule.core !== 'boolean') bad(`paths["${glob}"].core must be true or false`);

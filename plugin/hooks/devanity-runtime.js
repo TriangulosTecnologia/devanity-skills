@@ -1,6 +1,6 @@
 'use strict';
 // devanity — shared helpers for the hook scripts (Node >= 18, no npm dependencies).
-// Hook contract (SPEC §7.2): never hang the session, never crash, BOM stripped
+// Hook contract: never hang the session, never crash, BOM stripped
 // before JSON.parse, every write wrapped. Host: Claude Code only in v1; nothing
 // here depends on a Claude-specific API beyond env vars and stdio, so another
 // host that speaks the same hook protocol would not break it.
@@ -141,7 +141,7 @@ function readDevanityConfig() {
   }
 }
 
-// Whether the guards BLOCK or only RECORD (SPEC §7.6), decided in one place for the PreToolUse
+// Whether the guards BLOCK or only RECORD, decided in one place for the PreToolUse
 // guard, the Stop oracle and the rules context alike: DEVANITY_GUARDS on/off wins, then
 // config.json {"guards": …}, else "rules present and valid". Returns 'on' | 'off' | null for the
 // override alone (guardsOverride) and the final boolean given the loaded rules (guardsEnforcing).

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// devanity — Stop hook: the proof oracle (SPEC §7.2 Stop row, §7.4; PLAN F2.4).
+// devanity — Stop hook: the proof oracle.
 //
 // Fires only when the last assistant message carries a `devanity-proof:` block. If that block
 // claims VERIFIED, the oracle measures the claim instead of trusting it: the declared check must
@@ -12,7 +12,7 @@
 // What it never does: run when there is no block, police prose, block a claim it cannot measure
 // (outside git, no check, guards recording), re-run an honest NOT_VERIFIED, or hang the session.
 //
-// F3.1: the same pass persists a `devanity-contract:` block (the change's lifecycle phase) to
+// The same pass persists a `devanity-contract:` block (the change's lifecycle phase) to
 // contracts.jsonl. It is recorded, never measured or blocked; docs/hooks.md (Ledger) has the grammar.
 //
 // Host contract confirmed against Claude Code 2.1.281: the payload carries last_assistant_message,
@@ -31,7 +31,7 @@ const ledger = require('./devanity-ledger');
 
 const DEFAULT_TIMEOUT_MS = 120000;
 const BLOCK_KEYS = ['contract', 'check', 'baseline', 'failed_before', 'passed_after', 'probes', 'status', 'pending', 'pending_decisions'];
-// F3.1: the lifecycle block, a compact projection of the Change Contract; persisted, never enforced.
+// The lifecycle block, a compact projection of the Change Contract; persisted, never enforced.
 const CONTRACT_KEYS = ['id', 'phase', 'intent', 'scope', 'forbidden', 'proof', 'pending'];
 const REASONS = {
   passedBefore: 'check passed before the fix (no oracle)',
@@ -166,7 +166,7 @@ function changedPaths(root, head) {
 
 // The rules that choose the check: devanity.rules.json as committed at HEAD, the version a human
 // reviewed; before the first commit, the working tree's. A working-tree edit never chooses the check
-// that judges the same change (verifier sovereignty, SPEC §0.2).
+// that judges the same change (verifier sovereignty).
 function declaredRules(root, head) {
   if (!head) return rulesMod.loadRules(root);
   const shown = git(root, ['show', `${head}:${rulesMod.FILE}`]);
@@ -309,7 +309,7 @@ function decide(payload, env = process.env) {
     return { action: 'exit' };
   }
 
-  // Only the check the repository declares is ever run (verifier sovereignty, SPEC §0.5): the one
+  // Only the check the repository declares is ever run (verifier sovereignty): the one
   // the agent wrote is kept as `agent_check` and never executed. A claim the oracle cannot measure
   // is recorded, never enforced: outside git there is no baseline and no ledger; with guards
   // recording there is no authority to block; with no declared check there is nothing the agent

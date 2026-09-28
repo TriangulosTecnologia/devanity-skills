@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/usedevanity/skills/blob/main/plugin/skills/devanity/reference/rules.schema.json",
   "title": "Devanity repository rules",
-  "description": "One declaration per repository, compiled into three surfaces: the context the kernel receives per path, the PreToolUse/Stop guards, and the reference CI job (SPEC §7.1). Absent file: every path is `normal`, guards record and never block.",
+  "description": "One declaration per repository, compiled into three surfaces: the context the kernel receives per path, the PreToolUse/Stop guards, and the reference CI job. Absent file: every path is `normal`, guards record and never block.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -57,7 +57,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 160,
-            "description": "One line: what this path is. Injected into every session with the path's invariants (the repository map, SPEC §0.4)."
+            "description": "One line: what this path is. Injected into every session with the path's invariants (the repository map)."
           },
           "invariants": {
             "type": "array",
@@ -90,7 +90,7 @@
       }
     },
     "autonomy": {
-      "description": "Envelope for unattended sessions (SPEC §7.3). `merge` and `deploy` are never grantable here.",
+      "description": "Envelope for unattended sessions. `merge` and `deploy` are never grantable here.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -122,7 +122,7 @@
         "type": "string",
         "minLength": 1
       },
-      "description": "Globs of the files the declared checks read (package scripts, test-runner config, root conftest). The reference CI job treats a diff that edits one together with code as a verifier change (SPEC §0.2)."
+      "description": "Globs of the files the declared checks read (package scripts, test-runner config, root conftest). The reference CI job treats a diff that edits one together with code as a verifier change."
     }
   },
   "$defs": {

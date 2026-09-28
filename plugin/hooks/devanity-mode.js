@@ -2,7 +2,7 @@
 'use strict';
 // devanity — UserPromptSubmit hook: tracks the on/off state.
 //
-// Only a whole message switches state (SPEC §7.2): `/devanity off`,
+// Only a whole message switches state: `/devanity off`,
 // `stop devanity`, `normal mode` -> off; `/devanity on` -> on (and the kernel is
 // re-injected, since a session that started while off never received it);
 // bare `/devanity` -> reports the state; `/devanity status` adds the open change
@@ -23,7 +23,7 @@ const COMMAND = /^\/(?:devanity:)?devanity(?:\s+(\S+))?$/;
 // `decide` keeps its arguments' case: matched on the raw prompt, still whole-message.
 const DECIDE = /^\/(?:devanity:)?devanity\s+decide(?:\s+(.*))?$/i;
 // Argument-less verbs handled here, not by the skill. `pending`, `status` only read the ledger;
-// `reset` (F3.6) writes only contract records with phase ABANDONED (never a decision, never
+// `reset` writes only contract records with phase ABANDONED (never a decision, never
 // by:'human' on a decision).
 const VERBS = new Set(['off', 'on', 'pending', 'reset', 'status']);
 const OFF_PHRASES = new Set(['stop devanity', 'normal mode']);
@@ -70,7 +70,7 @@ function respond(intent) {
   return '';
 }
 
-// ---- human decisions (SPEC §7.3, F2.2b) --------------------------------------------------------
+// ---- human decisions --------------------------------------------------------
 //
 // GUARDRAIL 12: this is the ONLY place in the plugin that writes a decision with by:'human'.
 // It is trusted because the UserPromptSubmit payload's `prompt` is the text the human typed;
@@ -107,7 +107,7 @@ function decide(args, cwd, sessionId) {
   const record = { id, status: rejected ? 'rejected' : 'decided', by: 'human', chosen, kind: (known && known.kind) || 'human' };
   if (pathGlob) record.path = pathGlob;
   // Scope: the decision serves the open change (and lives as long as it is open), else it expires
-  // after ledger.DECISION_TTL_MS; it never authorizes every later session (SPEC §0.5).
+  // after ledger.DECISION_TTL_MS; it never authorizes every later session.
   const change = ledger.openContract(cwd);
   record.contract = change ? change.id : null;   // null, not absent: the ledger merges field by field
   if (!ledger.append(cwd, 'decisions', record, sessionId)) return 'DEVANITY DECIDE: the ledger could not be written; nothing recorded.';
@@ -117,7 +117,7 @@ function decide(args, cwd, sessionId) {
   return `DEVANITY DECISION RECORDED: ${id} = ${chosen}, path ${scope}, by human. Guarded edits under that path are allowed ${lasts}.`;
 }
 
-// ---- open change (SPEC §7.2 risk table, F3.6) --------------------------------------------------
+// ---- open change --------------------------------------------------
 
 // `/devanity reset`: every open contract (unclosed, declared within 24 h) is marked ABANDONED with
 // reason `reset` (only this handler writes that reason, and only a typed whole message reaches it).

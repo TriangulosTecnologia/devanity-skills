@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// devanity — PreToolUse guard (SPEC §7.2 (a)(b)(c), §7.3, §7.6) for Edit, Write, MultiEdit,
+// devanity — PreToolUse guard for Edit, Write, MultiEdit,
 // NotebookEdit and Bash.
 //
 //   (a) a file tool on a `high-risk` path with no human decision covering it in the ledger → block
@@ -14,7 +14,7 @@
 // the same reason in structured form. Both are emitted: exit 2 blocks whether or not the JSON is
 // parsed, and the JSON reason is what the host prefers when it is. A block is never silent.
 //
-// Enforcement (SPEC §7.6): blocks only when the repository declares valid rules (or
+// Enforcement: blocks only when the repository declares valid rules (or
 // DEVANITY_GUARDS=on); otherwise the guard evaluates, records `would_block` and allows.
 // DEVANITY_GUARDS=off or <config dir>/devanity/config.json {"guards": false} turns blocking off.
 // Fail open by design: no payload, no git, invalid rules → allow and record what can be recorded.
@@ -43,7 +43,7 @@ const PROTECTED = [
 const DECIDE_HINT = '/devanity decide';
 
 // The authority this session holds. An autonomous session never exceeds `commit`, whatever the
-// env says (SPEC §7.3: merge/deploy are never grantable unattended).
+// env says.
 function sessionAuthority(loaded, env) {
   const autonomous = rt.isAutonomous(env);
   const fromEnv = String(env.DEVANITY_AUTHORITY || '').trim().toLowerCase();
@@ -66,7 +66,7 @@ function suggestId(rel) {
   return `D-${seg}`;
 }
 
-// ---- Bash write detection (heuristic; SPEC §7.2 calls it a floor) ----------------------------
+// ---- Bash write detection (heuristic; a floor) ----------------------------
 
 const WRITERS = new Set(['tee', 'mv', 'cp', 'rm', 'truncate', 'install', 'dd', 'sed', 'git']);
 
@@ -199,7 +199,7 @@ function evaluate(payload, env) {
 
   for (const f of findings) {
     ledger.append(root, 'events', { kind: enforce ? 'blocked' : 'would_block', ...f.event }, sid);
-    // Autonomy envelope (SPEC §7.3 `queue`): a blocked high-risk edit joins the pending queue so
+    // Autonomy envelope: a blocked high-risk edit joins the pending queue so
     // the end-of-session summary can list it. `by: agent` marks who queued it; it authorizes nothing.
     if (enforce && auth.autonomous && f.pending) {
       const all = ledger.decisions(root);

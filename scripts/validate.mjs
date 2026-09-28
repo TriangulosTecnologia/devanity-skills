@@ -381,6 +381,17 @@ export function checkRepository(root) {
   const shipped = existsSync(join(root, 'plugin')) ? readdirSync(join(root, 'plugin')).sort() : [];
   if (shipped.join(',') !== unit.join(',')) fail(`plugin/ must hold exactly ${unit.join(', ')} (what installs is what runs); found: ${shipped.join(', ')}`);
   if (existsSync(join(root, 'plugin/LICENCE')) && read('plugin/LICENCE') !== read('LICENCE')) fail('plugin/LICENCE must be a copy of LICENCE: the licence travels with what installs');
+  // What installs cites nothing that does not install with it: the maintainer's SPEC and PLAN stay in
+  // the repository, so a pointer to them from plugin/ is a pointer an installed copy cannot follow.
+  const outside = /\bSPEC\b|\bPLAN\b[ ,]|\bF[0-9]+\.[0-9]+\b|\bguardrail [0-9]+/;
+  for (const file of textFiles.concat(existsSync(join(root, 'plugin/hooks')) ? readdirSync(join(root, 'plugin/hooks')).map((n) => join(root, 'plugin/hooks', n)) : [])) {
+    const rel = file.slice(root.length + 1);
+    if (!rel.startsWith('plugin/')) continue;
+    readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+      const hit = line.match(outside);
+      if (hit) fail(`${rel}:${i + 1} cites "${hit[0].trim()}", which does not install with the plugin; state the reason in place`);
+    });
+  }
   for (const name of existsSync(join(root, 'plugin/hooks')) ? readdirSync(join(root, 'plugin/hooks')) : []) {
     if (/\.\.[\\/]\.\.|'\.\.', '\.\.'/.test(read(`plugin/hooks/${name}`))) fail(`plugin/hooks/${name} reaches outside the plugin; an installed copy has nothing there`);
   }
