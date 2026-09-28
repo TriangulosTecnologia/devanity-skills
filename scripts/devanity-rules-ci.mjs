@@ -23,7 +23,7 @@
 //
 // Exit 1 with a list of failures, 0 otherwise. Node >= 18, no dependencies.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -156,9 +156,11 @@ if (base && rulesMod && !loaded.errors.length) {
   const rulesChanged = touched.some((t) => t.path === rulesMod.FILE);
   const highRisk = touched.filter((t) => t.rule.tier === 'high-risk' && t.rule.check).map((t) => t.rule.check);
   const declared = rulesChanged ? rules.paths.map((p) => p.rule.check).filter(Boolean) : [];
+  const checkPassed = new Map();
   for (const c of [...new Set([...highRisk, ...declared])]) {
     console.log(`\n$ ${c}`);
-    if (!runCheck(c)) fail(highRisk.includes(c) ? `check failed: ${c}` : `declared check does not pass: ${c} (the rules file changed; every check it declares must run green)`);
+    checkPassed.set(c, runCheck(c));
+    if (!checkPassed.get(c)) fail(highRisk.includes(c) ? `check failed: ${c}` : `declared check does not pass: ${c} (the rules file changed; every check it declares must run green)`);
   }
 
   // verifier sovereignty (SPEC §0.2): a diff that removes or rewrites lines of existing tests
@@ -192,6 +194,41 @@ if (base && rulesMod && !loaded.errors.length) {
     if (declaredChange) note(`verifier-change declared for ${verifierEdits.join(', ')}`);
     else if (body === null) note(`the diff edits existing checks with code (${verifierEdits.join(', ')}); no PR body to hold the verifier-change line`);
     else fail(`the diff edits existing checks together with the code they judge (${verifierEdits.join(', ')}): add a \`verifier-change: <why>\` line to the PR body so review treats it as a verifier change`);
+  }
+
+  // What was at stake: the touched paths the map says something about, with the reason a human wrote
+  // (purpose, invariants), and for each high-risk one the dominance certificate. The certificate
+  // holds when the change satisfies what a human already declared: the path's check passes, no
+  // verifier or instruction file changed, and its delta budget holds. It is observed only: it
+  // releases nothing and never changes this job's verdict, so its rate can be measured first.
+  const instruction = (p) => /(^|\/)(CLAUDE|AGENTS|GEMINI)\.md$|(^|\/)\.claude\/|(^|\/)SKILL\.md$|^\.cursorrules$/.test(p);
+  const stakes = new Map();
+  for (const t of touched) {
+    const r = t.rule;
+    if (!r.glob || !(r.tier === 'high-risk' || r.purpose || (r.invariants && r.invariants.length))) continue;
+    const s = stakes.get(r.glob) || { rule: r, files: [] };
+    s.files.push(t.path);
+    stakes.set(r.glob, s);
+  }
+  if (stakes.size) {
+    const out = ['## What was at stake', ''];
+    for (const [glob, { rule: r, files: fs }] of stakes) {
+      out.push(`- \`${glob}\` (${r.tier}${r.core ? ', core' : ''}): ${fs.length} file(s)${r.purpose ? ` — ${r.purpose}` : ''}`);
+      for (const inv of r.invariants || []) out.push(`  - never changes: ${inv}`);
+      if (r.tier !== 'high-risk') continue;
+      const why = [];
+      if (!r.check) why.push('no declared check');
+      else if (checkPassed.get(r.check) === false) why.push('its check fails');
+      if (verifierEdits.length) why.push(`a verifier changed (${verifierEdits.join(', ')})`);
+      const g = byGlob.get(glob);
+      if (g && ((g.delta.files !== undefined && g.files > g.delta.files) || (g.delta.lines !== undefined && g.lines > g.delta.lines))) why.push('its delta budget is exceeded');
+      const instr = touched.filter((t) => instruction(t.path)).map((t) => t.path);
+      if (instr.length) why.push(`an instruction file changed (${instr.join(', ')})`);
+      out.push(`  - dominance certificate: ${why.length ? `does not hold — ${why.join('; ')}` : 'holds: the change satisfies what a human already declared'}`);
+    }
+    out.push('', '_The certificate is observation only: nothing is released on it._');
+    console.log(`\n${out.join('\n').replace(/dominance certificate: /g, 'certificate: ')}`);
+    if (process.env.GITHUB_STEP_SUMMARY) { try { appendFileSync(process.env.GITHUB_STEP_SUMMARY, out.join('\n') + '\n'); } catch (e) { note(`could not write the job summary: ${e.message}`); } }
   }
 
   // proof block in the PR body for rung 3+

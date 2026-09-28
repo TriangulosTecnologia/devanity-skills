@@ -2,7 +2,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -215,5 +215,33 @@ describe('rules CI', () => {
       if (verifier) { assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*devanity\.rules\.json/); }
       else { assert.equal(r.code, 0, `the same rules, reordered and with explicit defaults, are not a verifier change:\n${r.out}`); }
     }
+  });
+  test('what was at stake: the touched paths\' purpose and invariants, and the dominance certificate, observed only', () => {
+    const rules = { version: 1, tests: ['billing/t.js'], paths: { 'billing/**': { tier: 'high-risk', check: 'node billing/t.js', purpose: 'charges and refunds', invariants: ['amounts are integer cents'] }, 'docs/**': { tier: 'trivial' } } };
+    const body = join(temp, `sbody${n}.md`);
+    writeFileSync(body, 'Fix.\n\nverifier-change: test tightened\n\n```\ndevanity-proof:\n  check: node billing/t.js\n  failed_before: yes\n  passed_after: yes\n  status: VERIFIED\n  pending: 0\n```\n');
+    const seedWith = (changes) => {
+      const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+      write(d, 'devanity.rules.json', JSON.stringify(rules));
+      write(d, 'billing/charge.js', 'module.exports = 2;\n'); write(d, 'billing/t.js', "process.exit(require('./charge.js') === 1 ? 0 : 1);\n"); write(d, 'docs/a.md', 'a\n');
+      commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature');
+      for (const [rel, text] of Object.entries(changes)) write(d, rel, text);
+      commitAll(d, 'change');
+      return d;
+    };
+    // A fix that makes the existing check pass, with no verifier touched: the certificate holds.
+    let d = seedWith({ 'billing/charge.js': 'module.exports = 1;\n' });
+    const summary = join(temp, `summary${n}.md`);
+    let r = runCi(d, ['--base', 'main', '--pr-body-file', body], { GITHUB_STEP_SUMMARY: summary });
+    assert.equal(r.code, 0, r.out);
+    for (const part of ['What was at stake', 'billing/**', 'charges and refunds', 'amounts are integer cents', 'certificate: holds']) assert.ok(r.out.includes(part), `stdout lacks "${part}":\n${r.out}`);
+    assert.match(r.out, /observation only/);
+    const md = readFileSync(summary, 'utf8');
+    assert.ok(md.includes('amounts are integer cents') && md.includes('holds'), md);
+    // The same fix that also rewrites the check it must pass: the certificate does not hold, and says why.
+    d = seedWith({ 'billing/charge.js': 'module.exports = 1;\n', 'billing/t.js': 'process.exit(0);\n' });
+    r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+    assert.equal(r.code, 0, `observation never changes the verdict:\n${r.out}`);
+    assert.match(r.out, /certificate: does not hold[^\n]*verifier/, r.out);
   });
 });
