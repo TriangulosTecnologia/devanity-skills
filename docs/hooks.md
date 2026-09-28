@@ -234,7 +234,6 @@ This repository's own rules (`devanity.rules.json`) are its map: `hooks/**`, `sc
 | `contracts.jsonl` | `Stop` (a `devanity-contract:` block); `/devanity reset` | `{id, phase, intent?, scope?, forbidden?, proof?, pending?, reason?}`; the latest record per id wins field by field |
 | `decisions.jsonl` | `PreToolUse` guard (`by: agent`, `status: pending`); `/devanity decide` (the only hook that writes `by: human`) | `{id, path?, kind, status: pending\|decided\|rejected, by, chosen?, contract?}`; latest per id wins |
 | `proofs.jsonl` | `Stop` oracle | `{kind: 'proof', contract, check, agent_check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason}` |
-| `deferrals.jsonl` | nothing yet (`debt` reads the `deferred:` markers in the code instead) | reserved |
 | `events.jsonl` | guard, oracle, inject | `{kind: blocked \| would_block \| false_ready \| unmeasured \| rules_invalid \| guard_payload_missing \| guard_error \| oracle_error \| inject_truncated, …}` |
 
 ### The open change (`devanity-contract:`)
@@ -261,14 +260,13 @@ node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-ledger.js" stats [--cwd <path>] [--js
 node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-ledger.js" prune [--cwd <path>] [--json]
 ```
 
-`stats` is read-only and counts, over the retention window: decisions (pending, decided by human, decided by agent-default), proofs (`VERIFIED`, `NOT_VERIFIED`, `false_ready` events), contracts (open, done, abandoned, expired), deferrals, and guard events (`blocked`, `would_block`). The `debt` mode renders it verbatim for `debt --stats` (`skills/devanity/modes/debt.md`, "Stats"). `--json` returns the raw object, `null` outside git.
+`stats` is read-only and counts, over the retention window: decisions (pending, decided by human, decided by agent-default), proofs (`VERIFIED`, `NOT_VERIFIED`, `false_ready` events), contracts (open, done, abandoned, expired), and guard events (`blocked`, `would_block`). The `debt` mode renders it verbatim for `debt --stats` (`skills/devanity/modes/debt.md`, "Stats"). `--json` returns the raw object, `null` outside git.
 
 ```
 devanity stats (/repo/.git/devanity, last 90 days)
 decisions: 1 pending · 1 decided by human · 1 decided by agent-default
 proofs: 1 VERIFIED · 2 NOT_VERIFIED · 1 false_ready
 contracts: 1 open · 1 done · 1 abandoned · 1 expired
-deferrals: 1
 guards: 1 blocked · 2 would_block
 ```
 

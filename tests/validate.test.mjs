@@ -1,11 +1,11 @@
-// Dependency-free self-test for the skill validator (node:test). Run: node --test tests/validate-skills.test.mjs
+// Dependency-free self-test for the validator (node:test). Run: node --test tests/validate.test.mjs
 // One test per invariant that breaks an install or a mode silently; the validator lints no prose.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validate, checkRelativeLinks, checkSkillTotal, KERNEL_TOKEN_CAP } from '../scripts/validate-skills.mjs';
+import { validate, checkRelativeLinks, checkSkillTotal, KERNEL_TOKEN_CAP } from '../scripts/validate.mjs';
 
 const fm = (name, extra = '') => `---\nname: ${name}\ndescription: test skill\n${extra}---\n\n# ${name}\n`;
 

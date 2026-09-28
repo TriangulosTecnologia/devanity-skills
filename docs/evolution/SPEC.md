@@ -199,13 +199,11 @@ hooks/                          só na instalação como plugin; documentados em
   devanity-guard.js             PreToolUse: caminhos high-risk, autoridade de comandos
   devanity-oracle.js            Stop: mede o bloco devanity-proof
 scripts/
-  validate-skills.mjs           frontmatter, referências e rotas existentes, tabela de roteamento ≡ argument-hint ≡ arquivos, linha Load: ⊇ citações, citações de degrau, cap do kernel, orçamento
-  validate-open.mjs             conjunto deliberado de modos e agentes, nomes aposentados, repositório canônico, versão única, protocolo, atribuição do harness
+  validate.mjs                  a skill: frontmatter, referências e rotas existentes, tabela de roteamento ≡ argument-hint ≡ arquivos, linha Load: ⊇ citações, citações de degrau, cap do kernel, orçamento; o repositório: conjunto deliberado de modos e agentes, nomes aposentados, repositório canônico, versão única, protocolo, atribuição do harness
   kernel.mjs                    invariants · build-agents · check-agents
   devanity-rules-ci.mjs         job de CI de referência (o teto do guard); --self-check neste repositório
 tests/                          node:test de hooks, scripts e kernel; `npm test` roda todos
 docs/
-  OPEN_DEVELOPMENT_MODEL.md     modelo de desenvolvimento (em inglês): problema, contrato, fronteiras
   hooks.md                      o que cada hook aplica e registra
   evolution/SPEC.md  PLAN.md    esta especificação; fases, gates e decisões
 evals/
@@ -304,7 +302,7 @@ Regras:
 - Cada modo carrega só o que sua linha `Load:` declara; o validador reprova uma citação a `reference/` que a linha omite.
 - Uma só gramática de finding e de `[DECIDE]` para todos os modos (`reference/vocabulary.md`), validada estruturalmente; o tipo `design` cobre a escolha entre arquiteturas materialmente diferentes.
 - Os modos de diagnóstico (`review`, `audit`, `debt`) são somente leitura: nada sobrevive à resposta sem pedido do usuário. As catracas são dependências do repositório, propostas por PR; o devanity não carrega nenhuma.
-- Invocação só por `/devanity <verbo>`; os nomes dos capabilities de origem não aparecem em nada que o modelo carrega nem em `docs/` fora do histórico (validate-open.mjs).
+- Invocação só por `/devanity <verbo>`; os nomes dos capabilities de origem não aparecem em nada que o modelo carrega nem em `docs/` fora do histórico (validate.mjs).
 
 ## 7. Guardas
 
@@ -397,7 +395,7 @@ Job de exemplo (GitHub Actions) que o `init` oferece: valida `rules.json`, mant�
 
 - Diretório `<git-common-dir>/devanity/` (isto é, dentro de `.git/`, resolvido por `git rev-parse --git-common-dir`): nunca commitável por construção, compartilhado entre worktrees e subagentes do mesmo repositório. Sem git, o ledger é desativado e o kernel avisa uma vez.
 - Concorrência: escrita append-only em JSONL com `O_APPEND`; leitores toleram linha parcial no fim. Subagentes paralelos escrevem no mesmo arquivo; o `session_id` distingue.
-- Arquivos JSONL, um por tipo: `contracts.jsonl`, `decisions.jsonl`, `proofs.jsonl`, `deferrals.jsonl` (reservado; ainda sem escritor), `events.jsonl` (`blocked`, `would_block`, `false_ready`, `unmeasured`, `rules_invalid`, `guard_payload_missing`, `guard_error`, `oracle_error`, `inject_truncated`). Todo registro carrega `ts` e `session_id`; onde há `id`, o último registro por id vence campo a campo.
+- Arquivos JSONL, um por tipo: `contracts.jsonl`, `decisions.jsonl`, `proofs.jsonl`, `events.jsonl` (`blocked`, `would_block`, `false_ready`, `unmeasured`, `rules_invalid`, `guard_payload_missing`, `guard_error`, `oracle_error`, `inject_truncated`). Todo registro carrega `ts` e `session_id`; onde há `id`, o último registro por id vence campo a campo.
 - Registro de contrato: `{ id, phase: FRAME|INSPECT|PROVE|EXECUTE|VERIFY|ASSURE|DONE|ABANDONED, intent?, scope?, forbidden?, proof?, pending?, reason? }`; escrito pelo `Stop` a partir do bloco `devanity-contract:` e por `/devanity reset` (`ABANDONED`, `reason: reset`).
 - Registro de decisão: `{ id, path?, kind: reversible|irreversible|human, status: pending|decided|rejected, by: agent|agent-default|human, chosen? }`; `by: human` só via `/devanity decide`.
 - Registro de prova: `{ kind: proof, contract, check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason }`; `measured: null` quando o oráculo não reexecutou.
