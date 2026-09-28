@@ -112,7 +112,7 @@ ARMS = {
     "devanity-nudge":    {"plugins": ["devanity-nudge"]},
 }
 FIELD = [a for a in ARMS if a not in ("devanity-examples", "devanity-nudge")]   # the default --arms
-MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-4-6", "opus": "claude-opus-4-8"}
+MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}   # current as of 2026-09-28; the 2026-09-24 round ran sonnet-4-6
 
 PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
 # Harness-local plugins (gitignored). devanity-released is GENERATED from the released ref's skills/ + agents/
@@ -826,7 +826,7 @@ def _claude_version():
     try: return subprocess.run([shutil.which("claude"), "--version"], capture_output=True, text=True).stdout.strip()
     except Exception: return "unknown"
 
-def main():
+def parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--rescore", help="recompute metrics from a kept run dir (no API)")
@@ -835,13 +835,16 @@ def main():
     ap.add_argument("--arms", default=",".join(FIELD), help="default: the field; the experiment arms run only when named")
     ap.add_argument("--model", help="single model (shorthand for --models)")
     ap.add_argument("--models", default="haiku", help="comma list: haiku,sonnet,opus")
-    ap.add_argument("--runs", type=int, default=1, help="cells per (task, arm, model), the most a sequential run spends")
-    ap.add_argument("--full", action="store_true", help="every cell --runs times: no floor, no sequential stop (tasks.FLOORS, tasks.GATES)")
+    ap.add_argument("--runs", type=int, default=4, help="cells per (task, arm, model); SPEC §9's n=4 by default")
+    ap.add_argument("--sequential", action="store_true", help="floors and the sequential stop (tasks.FLOORS, tasks.GATES): --runs becomes the most a (task, arm, model) spends")
     ap.add_argument("--workers", type=int, default=4, help="cells to run concurrently (default 4; cells are fully isolated)")
     ap.add_argument("--fill", help="re-run the cells of a kept run dir that ended in an error (limit, empty output) into a new stamp; failed workspaces move to <dir>/_failed/")
     ap.add_argument("--smoke", metavar="ARM", choices=list(ARMS),
                     help="live one-prompt check that ARM's plugins are visible (tiny API spend; manual, not a gate)")
-    args = ap.parse_args()
+    return ap
+
+def main():
+    args = parser().parse_args()
     from selftest import selftest            # lazy: selftest.py imports from run
 
     if args.selftest:
@@ -921,15 +924,15 @@ def main():
         skipped = sorted({(t, a) for t in task_ids for a in arms} - {(c[0], c[1]) for c in cells})
         if skipped: print(f"skipping {len(skipped)} (task, arm) pairs outside a task's `arms`: "
                           + ", ".join(f"{t}/{a}" for t, a in skipped[:6]) + (" ..." if len(skipped) > 6 else ""))
-        if args.full:
-            run_cells(cells, " (--full: every cell --runs times)")
+        if not args.sequential:
+            run_cells(cells, " (every cell --runs times)")
         else:                                        # floors and gates decide each next wave (next_wave)
             wave_no = 0
             while (wave := next_wave(task_ids, arms, models, args.runs, scored, stalled)):
                 wave_no += 1
                 run_cells(wave, f" (wave {wave_no})")
             spent = sum(len(v) for v in scored.values())
-            print(f"sequential: {spent} scored cells of the {len(cells)} a --full run would spend"
+            print(f"sequential: {spent} scored cells of the {len(cells)} the full grid would spend"
                   + (f"; {len(stalled)} stalled pair(s), re-run with --fill" if stalled else ""), flush=True)
 
     rows = aggregate(results)

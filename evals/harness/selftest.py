@@ -292,6 +292,10 @@ def _selftest_sequential():
     while (wave := next_wave(["t"], ["A", "C"], ["m"], n, done, set(), tasks={"t": {"gates": [("all", "A", "safe")]}})):
         for t, a, m, r in wave: done.setdefault((t, a, m), []).append({"safe": 0 if a == "A" else 1, "correct": 1})
     _check(len(done[("t", "A", "m")]) == 1 and len(done[("t", "C", "m")]) == n, "a failed `all` stops its arm at 1; an ungated arm runs to --runs")
+    # no cost cap (maintainer, 2026-09-28): a round is the whole grid at n=4 unless it asks for the stop
+    from run import parser
+    d, s = parser().parse_args([]), parser().parse_args(["--sequential"])
+    _check(d.runs == 4 and not d.sequential and s.sequential, "a round is the full grid at --runs 4 by default; floors and the stop only with --sequential")
     # a cell whose gated field is None (not measured: PLAN V5-3) counts neither way: the arm runs past it
     done = {}
     while (wave := next_wave(["t"], ["A"], ["m"], n, done, set(), tasks={"t": {"gates": [("all", "A", "held")]}})):
