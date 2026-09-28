@@ -185,7 +185,7 @@ describe('rules CI', () => {
     r = runCi(d2, ['--base', 'main', '--pr-body-file', body]);
     assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*devanity\.rules\.json/);
   });
-  test('verifier sovereignty: loosening command authority or the autonomy envelope together with code is a verifier change', () => {
+  test('verifier sovereignty: changing command authority or the autonomy envelope together with code is a verifier change', () => {
     const body = join(temp, `acbody${n}.md`);
     writeFileSync(body, 'Change.\n```\ndevanity-proof:\n  check: true\n  failed_before: yes\n  passed_after: yes\n  status: VERIFIED\n  pending: 0\n```\n');
     const base = { version: 1, commands: { 'fly\\s+deploy': 'deploy' }, autonomy: { authority: 'prepare' }, paths: { 'docs/**': { tier: 'trivial' } } };
@@ -197,6 +197,23 @@ describe('rules CI', () => {
       commitAll(d, 'change');
       const r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
       assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*devanity\.rules\.json/);
+    }
+  });
+  test('verifier sovereignty: the rules are compared as the loader reads them, so reordering is not a change and a raised delta is', () => {
+    const body = join(temp, `nbody${n}.md`);
+    writeFileSync(body, 'Change.\n```\ndevanity-proof:\n  check: true\n  failed_before: yes\n  passed_after: yes\n  status: VERIFIED\n  pending: 0\n```\n');
+    const base = { version: 1, commands: { 'fly\\s+deploy': 'deploy', 'make\\s+ship': 'merge' }, autonomy: { authority: 'prepare', 'high-risk': 'queue' }, paths: { 'src/**': { tier: 'normal', delta: { files: 2 } }, 'docs/**': { tier: 'trivial' } } };
+    const same = { version: 1, paths: { 'docs/**': { tier: 'trivial' }, 'src/**': { delta: { files: 2 }, tier: 'normal' } }, autonomy: { 'high-risk': 'queue', authority: 'prepare', irreversible: 'queue' }, commands: { 'make\\s+ship': 'merge', 'fly\\s+deploy': 'deploy' }, defaults: { tier: 'normal', authority: 'commit' } };
+    const raised = { ...base, paths: { ...base.paths, 'src/**': { tier: 'normal', delta: { files: 50 } } } };
+    for (const [next, verifier] of [[same, false], [raised, true]]) {
+      const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+      write(d, 'devanity.rules.json', JSON.stringify(base)); write(d, 'src/a.js', '1\n'); write(d, 'docs/a.md', 'a\n');
+      commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature');
+      write(d, 'devanity.rules.json', JSON.stringify(next)); write(d, 'src/a.js', '2\n');
+      commitAll(d, 'change');
+      const r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+      if (verifier) { assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*devanity\.rules\.json/); }
+      else { assert.equal(r.code, 0, `the same rules, reordered and with explicit defaults, are not a verifier change:\n${r.out}`); }
     }
   });
 });
