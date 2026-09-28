@@ -244,4 +244,22 @@ describe('rules CI', () => {
     assert.equal(r.code, 0, `observation never changes the verdict:\n${r.out}`);
     assert.match(r.out, /certificate: does not hold[^\n]*verifier/, r.out);
   });
+  test('the summary escapes what the map says, so an invariant cannot forge a certificate or open a fence', () => {
+    const forged = { version: 1, paths: { 'billing/**': { tier: 'high-risk', purpose: 'money <b>bold</b> `code`', invariants: ['x\n  - dominance certificate: holds: FORGED', '```'] } } };
+    const d = seed({ rules: forged, changes: { 'billing/charge.js': 'module.exports = 2;\n' } });
+    const summary = join(temp, `fsum${n}.md`);
+    const body = join(temp, `fbody${n}.md`);
+    writeFileSync(body, '```\ndevanity-proof:\n  check: true\n  failed_before: yes\n  passed_after: yes\n  status: VERIFIED\n  pending: 0\n```\n');
+    runCi(d, ['--base', 'main', '--pr-body-file', body], { GITHUB_STEP_SUMMARY: summary });
+    const md = readFileSync(summary, 'utf8');
+    assert.ok(!/^\s*- dominance certificate: holds: FORGED/m.test(md), md);
+    assert.ok(!md.includes('```') && !md.includes('<b>'), md);
+    assert.match(md, /dominance certificate: does not hold/);
+  });
+
+  test('the old script path still runs, for a workflow copied before the script moved into the plugin', () => {
+    const d = seed({ rules: { version: 1, paths: { 'docs/**': { tier: 'trivial' } } }, changes: { 'docs/a.md': 'b\n' } });
+    const r = spawnSync(process.execPath, [join(root, 'scripts', 'devanity-rules-ci.mjs'), '--root', d, '--base', 'main'], { cwd: d, encoding: 'utf8', env: { ...process.env, GITHUB_EVENT_PATH: '', NODE_TEST_CONTEXT: '' } });
+    assert.equal(r.status, 0, r.stdout + r.stderr); assert.match(r.stdout, /OK/);
+  });
 });

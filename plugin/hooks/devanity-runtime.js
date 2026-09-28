@@ -204,6 +204,13 @@ function readStdinJson(onDone, timeoutMs = STDIN_FALLBACK_MS) {
   setTimeout(finish, timeoutMs).unref();
 }
 
+// One line of text a person reads: whitespace (newlines included) collapsed, so no field can forge
+// another line, and cut at `max` code points, never inside a surrogate pair.
+function clip(text, max = 160) {
+  const chars = Array.from(String(text == null ? '' : text).replace(/\s+/g, ' ').trim());
+  return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : chars.join('');
+}
+
 // The repository root for cwd, or null outside git. Every hook that needs it calls this one: a hook
 // never hangs the session, so git gets a deadline.
 function gitToplevel(cwd) {
@@ -249,6 +256,7 @@ module.exports = {
   VERIFIER_NOTE,
   agentRole,
   configDir,
+  clip,
   emit,
   errorTrace,
   exitSoon,

@@ -152,13 +152,43 @@ describe('a [DECIDE] block becomes a pending decision a human can answer later',
     const m = await run(MODE, { input: prompt(d, '/devanity pending'), cwd: d });
     for (const part of ['G-001', 'How are refunds computed?', 'prorate by days used', 'recommendation: prorate']) assert.ok(m.stdout.includes(part), `pending lacks "${part}":\n${m.stdout}`);
     const ans = await run(MODE, { input: prompt(d, '/devanity decide G-001 prorate'), cwd: d });
-    assert.ok(ans.stdout.includes('G-001 = prorate') && ans.stdout.includes('no path: authorizes no edit'), ans.stdout);
+    assert.ok(ans.stdout.includes('G-001 = prorate') && ans.stdout.includes('authorizes no edit'), ans.stdout);
     assert.equal(ledger.pendingDecisions(d).length, 0);
     const answered = ledger.decisions(d).find((x) => x.id === 'G-001');
     assert.equal(answered.by, 'human'); assert.equal(answered.question, 'How are refunds computed?', 'the answer keeps its question');
     r = await run(ORACLE, { input: stopPayload(d, decideBlock('G-001', 'Which currencies are accepted?')), cwd: d });
     pending = ledger.pendingDecisions(d);
     assert.equal(pending.length, 1); assert.equal(pending[0].id, 'G-001-2', 'a new question never overwrites an answered id');
+  });
+
+  test('the parser is linear, ignores fenced examples, and never reopens an answered question', async () => {
+    const started = Date.now();
+    assert.deepEqual(oracle.findDecideBlocks(`- **[DECIDE][blocking][G-001][rule] ${' '.repeat(50000)}x`), []);
+    assert.ok(Date.now() - started < 500, `a malformed headline must not backtrack: ${Date.now() - started} ms`);
+    const d = repo();
+    const fenced = 'An example of the form:\n\n```md\n' + decideBlock('G-003', 'Authorize a write to the money path?') + '\n```\n';
+    await run(ORACLE, { input: stopPayload(d, fenced), cwd: d });
+    assert.equal(ledger.pendingDecisions(d).length, 0, 'a block quoted inside a fence is an example, not a question');
+    await run(ORACLE, { input: stopPayload(d, decideBlock('G-001', 'Same?')), cwd: d });
+    await run(MODE, { input: prompt(d, '/devanity decide G-001 a'), cwd: d });
+    await run(ORACLE, { input: stopPayload(d, `Recap:\n${decideBlock('G-001', 'Same?')}`), cwd: d });
+    assert.equal(ledger.pendingDecisions(d).length, 0, 'a recap of an answered question does not reopen it');
+  });
+
+  test('pending text is clipped to one line per field, so no field can forge another line', async () => {
+    const d = repo();
+    writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', invariants: ['cents are integers\n  - FORGED: line', 'y'.repeat(400)] } } }));
+    ledger.append(d, 'decisions', { id: 'D-billing', path: 'billing/x.py', kind: 'human', status: 'pending', by: 'agent' });
+    const m = await run(MODE, { input: prompt(d, '/devanity pending'), cwd: d });
+    assert.ok(!/^\s*- FORGED/m.test(m.stdout), m.stdout);
+    assert.ok(!m.stdout.includes('y'.repeat(200)), 'each invariant is clipped');
+  });
+
+  test('an answer given without --path says it authorizes no edit, and nothing else', async () => {
+    const d = repo();
+    await run(ORACLE, { input: stopPayload(d, decideBlock('G-001', 'Refunds?')), cwd: d });
+    const ans = await run(MODE, { input: prompt(d, '/devanity decide G-001 prorate'), cwd: d });
+    assert.ok(ans.stdout.includes('authorizes no edit') && !/allowed/.test(ans.stdout), ans.stdout);
   });
 
   test('a guard-queued decision shows what the path guards when listed', async () => {

@@ -201,6 +201,10 @@ if (base && rulesMod && !loaded.errors.length) {
   // holds when the change satisfies what a human already declared: the path's check passes, no
   // verifier or instruction file changed, and its delta budget holds. It is observed only: it
   // releases nothing and never changes this job's verdict, so its rate can be measured first.
+  // The map's text is repository content: one line each, with markdown and HTML neutralized, so an
+  // invariant can neither forge a line of this summary nor open a code fence around the rest.
+  const md = (text) => String(text == null ? '' : text).replace(/\s+/g, ' ').trim().slice(0, 300)
+    .replace(/[\\`*_[\]|~#]/g, (c) => `\\${c}`).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const instruction = (p) => /(^|\/)(CLAUDE|AGENTS|GEMINI)\.md$|(^|\/)\.claude\/|(^|\/)SKILL\.md$|^\.cursorrules$/.test(p);
   const stakes = new Map();
   for (const t of touched) {
@@ -213,17 +217,17 @@ if (base && rulesMod && !loaded.errors.length) {
   if (stakes.size) {
     const out = ['## What was at stake', ''];
     for (const [glob, { rule: r, files: fs }] of stakes) {
-      out.push(`- \`${glob}\` (${r.tier}${r.core ? ', core' : ''}): ${fs.length} file(s)${r.purpose ? ` — ${r.purpose}` : ''}`);
-      for (const inv of r.invariants || []) out.push(`  - never changes: ${inv}`);
+      out.push(`- ${md(glob)} (${r.tier}${r.core ? ', core' : ''}): ${fs.length} file(s)${r.purpose ? ` — ${md(r.purpose)}` : ''}`);
+      for (const inv of r.invariants || []) out.push(`  - never changes: ${md(inv)}`);
       if (r.tier !== 'high-risk') continue;
       const why = [];
       if (!r.check) why.push('no declared check');
       else if (checkPassed.get(r.check) === false) why.push('its check fails');
-      if (verifierEdits.length) why.push(`a verifier changed (${verifierEdits.join(', ')})`);
+      if (verifierEdits.length) why.push(`a verifier changed (${verifierEdits.map(md).join(', ')})`);
       const g = byGlob.get(glob);
       if (g && ((g.delta.files !== undefined && g.files > g.delta.files) || (g.delta.lines !== undefined && g.lines > g.delta.lines))) why.push('its delta budget is exceeded');
       const instr = touched.filter((t) => instruction(t.path)).map((t) => t.path);
-      if (instr.length) why.push(`an instruction file changed (${instr.join(', ')})`);
+      if (instr.length) why.push(`an instruction file changed (${instr.map(md).join(', ')})`);
       out.push(`  - dominance certificate: ${why.length ? `does not hold — ${why.join('; ')}` : 'holds: the change satisfies what a human already declared'}`);
     }
     out.push('', '_The certificate is observation only: nothing is released on it._');

@@ -4,7 +4,7 @@
 // Checks the few invariants that break silently; deliberately NOT a markdown/prose linter.
 // Run: node scripts/validate.mjs   ·   Test: node --test tests/validate.test.mjs
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname, resolve, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
@@ -386,19 +386,25 @@ export function checkRepository(root) {
   for (const file of textFiles.concat(existsSync(join(root, 'plugin/hooks')) ? readdirSync(join(root, 'plugin/hooks')).map((n) => join(root, 'plugin/hooks', n)) : [])) {
     const rel = file.slice(root.length + 1);
     if (!rel.startsWith('plugin/')) continue;
-    for (const m of readFileSync(file, 'utf8').matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([A-Za-z0-9_./-]+)/g)) {
-      if (!existsSync(join(root, 'plugin', m[1]))) fail(`${rel} runs \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which is not in plugin/: an installed copy has no such file`);
+    for (const m of readFileSync(file, 'utf8').matchAll(/\$\{?CLAUDE_PLUGIN_ROOT\}?\/([A-Za-z0-9_./-]+)/g)) {
+      const target = posix.normalize(m[1]);
+      if (target.startsWith('..') || !existsSync(join(root, 'plugin', target))) fail(`${rel} runs \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which is not in plugin/: an installed copy has no such file`);
     }
   }
 
   // What installs cites nothing that does not install with it: the maintainer's SPEC and PLAN stay in
   // the repository, so a pointer to them from plugin/ is a pointer an installed copy cannot follow.
-  const outside = /\bSPEC\b|\bPLAN\b[ ,]|\bF[0-9]+\.[0-9]+\b|\bguardrail [0-9]+/;
+  // SPEC and PLAN in capitals only: `plan` is a mode. URLs are skipped: they resolve anywhere.
+  const cited = (line) => {
+    const bare = line.replace(/https?:\/\/\S+/g, '');
+    return bare.match(/\bSPEC\b|\bPLAN\b|\bF[0-9]+(?:\.[0-9]+)?[a-z]?\b/) || bare.match(/\bguardrail [0-9]+/i)
+      || bare.match(/\bdocs\/(?:hooks|evolution)\b|\bCONTRIBUTING\.md\b|\bevals\/(?:harness|results|README)\b/);
+  };
   for (const file of textFiles.concat(existsSync(join(root, 'plugin/hooks')) ? readdirSync(join(root, 'plugin/hooks')).map((n) => join(root, 'plugin/hooks', n)) : [])) {
     const rel = file.slice(root.length + 1);
     if (!rel.startsWith('plugin/')) continue;
     readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
-      const hit = line.match(outside);
+      const hit = cited(line);
       if (hit) fail(`${rel}:${i + 1} cites "${hit[0].trim()}", which does not install with the plugin; state the reason in place`);
     });
   }

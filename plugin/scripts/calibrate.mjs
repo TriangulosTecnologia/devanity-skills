@@ -14,7 +14,7 @@ for (const [i, raw] of readFileSync(0, 'utf8').split('\n').entries()) {
   const line = raw.trim();
   if (!line) continue;
   const [v, ...label] = line.split(/\s+/);
-  const value = Number(v);
+  const value = /^[+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?$/i.test(v) ? Number(v) : NaN;   // decimal only: never 0x10
   if (!Number.isFinite(value)) { process.stderr.write(`calibrate: line ${i + 1}: "${v}" is not a number\n`); process.exit(1); }
   rows.push({ value, label: label.join(' ') || null });
 }

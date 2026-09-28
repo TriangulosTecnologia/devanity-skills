@@ -48,7 +48,7 @@
     "scripts/**": {
       "tier": "high-risk",
       "check": "npm test && node scripts/validate.mjs",
-      "purpose": "the repository validator and the AGENTS.md generator",
+      "purpose": "the repository validator, the AGENTS.md generator, and the old path of the reference CI job (a shim)",
       "invariants": [
         "dependency-free"
       ]

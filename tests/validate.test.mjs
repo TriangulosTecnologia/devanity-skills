@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { validate, checkRelativeLinks, checkSkillTotal, KERNEL_TOKEN_CAP } from '../scripts/validate.mjs';
 
 const fm = (name, extra = '') => `---\nname: ${name}\ndescription: test skill\n${extra}---\n\n# ${name}\n`;
@@ -121,4 +121,34 @@ test('skill total over its ratchet budget fails; within passes; a missing entry 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- the repository around the skill (checkRepository), on a mutated copy of this repository ---
+import { cpSync, readFileSync as readText, appendFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { checkRepository } from '../scripts/validate.mjs';
+
+const repoRoot = join(dirname(new URL(import.meta.url).pathname), '..');
+const withRepoCopy = (fn) => {
+  const dir = mkdtempSync(join(tmpdir(), 'repotest-'));
+  try {
+    for (const f of spawnSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8' }).stdout.trim().split('\n')) {
+      mkdirSync(dirname(join(dir, f)), { recursive: true });
+      cpSync(join(repoRoot, f), join(dir, f));
+    }
+    fn(dir);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+};
+
+test('the repository copy passes; each way of pointing outside the installed plugin fails', () => {
+  withRepoCopy((dir) => {
+    assert.deepEqual(checkRepository(dir), []);
+    const hook = join(dir, 'plugin/hooks/devanity-mode.js');
+    const original = readText(hook, 'utf8');
+    for (const line of ['// GUARDRAIL 13', '// Guardrail 13 applies', '// see PLAN.', '// (F2.2b)', '// the grammar is in docs/hooks.md', '// see CONTRIBUTING.md',
+      '// node "${CLAUDE_PLUGIN_ROOT}/../scripts/validate.mjs"', '// node "$CLAUDE_PLUGIN_ROOT/scripts/nope.mjs"', '// ${CLAUDE_PLUGIN_ROOT}/scripts/../../scripts/kernel.mjs']) {
+      writeFileSync(hook, original); appendFileSync(hook, `\n${line}\n`);
+      assert.ok(checkRepository(dir).some((e) => e.includes('plugin/hooks/devanity-mode.js')), `not caught: ${line}`);
+    }
+  });
 });

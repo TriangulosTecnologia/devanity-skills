@@ -19,7 +19,7 @@
 // DEVANITY_GUARDS=off or <config dir>/devanity/config.json {"guards": false} turns blocking off.
 // Fail open by design: no payload, no git, invalid rules → allow and record what can be recorded.
 //
-// GUARDRAIL 12 (no self-grant path): nothing in this file writes a decision with by:'human'.
+// No self-grant path: nothing in this file writes a decision with by:'human'.
 // The only writer of by:'human' in the whole plugin is the `/devanity decide` handler in
 // hooks/devanity-mode.js (UserPromptSubmit). That event is trusted because its `prompt` is the
 // text the human typed into the terminal; the model never authors a UserPromptSubmit payload,
@@ -122,7 +122,7 @@ function writtenPaths(command) {
 
 // ---- messages ---------------------------------------------------------------------------------
 
-const clip = (text) => { const t = String(text).replace(/\s+/g, ' ').trim(); return t.length > 160 ? `${t.slice(0, 159)}…` : t; };
+const clip = (text) => rt.clip(text, 160);
 
 function pathMessage(tool, rel, rule, via) {
   const id = suggestId(rel);

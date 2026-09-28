@@ -73,7 +73,7 @@ function respond(intent) {
 
 // ---- human decisions --------------------------------------------------------
 //
-// GUARDRAIL 12: this is the ONLY place in the plugin that writes a decision with by:'human'.
+// No self-grant path: this is the ONLY place in the plugin that writes a decision with by:'human'.
 // It is trusted because the UserPromptSubmit payload's `prompt` is the text the human typed;
 // the model cannot author that payload and no tool call reaches this hook. The PreToolUse guard
 // (devanity-guard.js) only ever writes by:'agent' pending records and events. Do not add another
@@ -87,13 +87,13 @@ function pendingList(cwd) {
   const root = rt.gitToplevel(cwd) || cwd;
   const loaded = rulesMod.loadRules(root);
   const lines = pending.map((d) => {
-    const head = `- ${d.id}${d.question ? `: ${d.question}` : ''}  path: ${d.path || '(none)'}  queued by: ${d.by || '?'}  at: ${d.ts || '?'}`;
+    const head = `- ${rt.clip(d.id, 40)}${d.question ? `: ${rt.clip(d.question, 300)}` : ''}  path: ${rt.clip(d.path || '(none)', 120)}  queued by: ${rt.clip(d.by || '?', 20)}  at: ${rt.clip(d.ts || '?', 30)}`;
     const rule = d.path && !loaded.errors.length ? rulesMod.ruleFor(loaded.rules, d.path) : null;
     const detail = [
-      d.options && `    options: ${d.options}`,
-      d.recommendation && `    recommendation: ${d.recommendation}`,
-      d.if_undecided && `    if undecided: ${d.if_undecided}`,
-      rule && Array.isArray(rule.invariants) && rule.invariants.length && `    never changes: ${rule.invariants.join('; ')}`,
+      d.options && `    options: ${rt.clip(d.options, 400)}`,
+      d.recommendation && `    recommendation: ${rt.clip(d.recommendation, 400)}`,
+      d.if_undecided && `    if undecided: ${rt.clip(d.if_undecided, 400)}`,
+      rule && Array.isArray(rule.invariants) && rule.invariants.length && `    never changes: ${rule.invariants.slice(0, 3).map((v) => rt.clip(v, 160)).join('; ')}${rule.invariants.length > 3 ? '; …' : ''}`,
     ].filter(Boolean);
     return [head, ...detail].join('\n');
   });
@@ -126,8 +126,9 @@ function decide(args, cwd, sessionId) {
   const change = ledger.openContract(cwd);
   record.contract = change ? change.id : null;   // null, not absent: the ledger merges field by field
   if (!ledger.append(cwd, 'decisions', record, sessionId)) return 'DEVANITY DECIDE: the ledger could not be written; nothing recorded.';
-  const scope = pathGlob || (known && known.path) || '(no path: authorizes no edit)';
-  if (rejected) return `DEVANITY DECISION REJECTED: ${id} = ${chosen}, by human. Guarded edits under ${scope} stay blocked.`;
+  const scope = pathGlob || (known && known.path) || null;
+  if (rejected) return `DEVANITY DECISION REJECTED: ${id} = ${chosen}, by human. ${scope ? `Guarded edits under ${scope} stay blocked.` : 'It authorizes no edit.'}`;
+  if (!scope) return `DEVANITY DECISION RECORDED: ${id} = ${chosen}, by human. It records the answer and authorizes no edit; give --path <glob> to authorize edits.`;
   const lasts = change ? `while change ${change.id} is open` : `for ${Math.round(ledger.DECISION_TTL_MS / 3600000)} h`;
   return `DEVANITY DECISION RECORDED: ${id} = ${chosen}, path ${scope}, by human. Guarded edits under that path are allowed ${lasts}.`;
 }

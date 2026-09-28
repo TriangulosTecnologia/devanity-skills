@@ -63,3 +63,29 @@ test('calibrate: median, p90 and max; the limit sits where only genuine outliers
   const bad = run(CALIBRATE, [], { input: 'ten a.js\n' });
   assert.equal(bad.code, 1); assert.match(bad.err, /not a number/);
 });
+
+test('hotspots: non-ASCII and spaced names are counted, a subdirectory sees the same ranking, bad arguments are refused', () => {
+  const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
+  commit(d, { 'src/é.js': '1\n2\n', 'src/a b.js': '1\n' }, 'one');
+  commit(d, { 'src/é.js': '1\n2\n3\n' }, 'two');
+  const top = JSON.parse(run(HOTSPOTS, ['--json', '--', 'src'], { cwd: d }).out);
+  assert.deepEqual(top.files.map((f) => [f.path, f.commits, f.lines]), [['src/é.js', 2, 3], ['src/a b.js', 1, 1]]);
+  const sub = JSON.parse(run(HOTSPOTS, ['--json'], { cwd: join(d, 'src') }).out);
+  assert.deepEqual(sub.files.map((f) => f.path), ['src/é.js', 'src/a b.js'], 'paths are repository paths wherever it runs');
+  for (const args of [['--window', 'abc'], ['--top'], ['--window', '0']]) {
+    const r = run(HOTSPOTS, args, { cwd: d });
+    assert.equal(r.code, 1, `${args.join(' ')} must be refused`); assert.match(r.err, /usage/);
+  }
+  const empty = join(temp, `e${n}`); mkdirSync(empty); git(empty, 'init', '-q');
+  const r = run(HOTSPOTS, ['--json'], { cwd: empty });
+  assert.equal(r.code, 0, r.err); assert.equal(JSON.parse(r.out).commits, 0);
+});
+
+test('calibrate: only decimal numbers are values', () => {
+  for (const v of ['0x10', '0b101', '1e999', '']) {
+    if (!v) continue;
+    const r = run(CALIBRATE, [], { input: `${v} a\n` });
+    assert.equal(r.code, 1, `${v} is not a decimal value`);
+  }
+  assert.equal(JSON.parse(run(CALIBRATE, ['--json'], { input: '-2.5 a\n1e2 b\n' }).out).max, 100);
+});

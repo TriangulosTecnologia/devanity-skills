@@ -13,7 +13,7 @@
 // (outside git, no check, guards recording), re-run an honest NOT_VERIFIED, or hang the session.
 //
 // The same pass persists a `devanity-contract:` block (the change's lifecycle phase) to
-// contracts.jsonl. It is recorded, never measured or blocked; docs/hooks.md (Ledger) has the grammar.
+// contracts.jsonl. It is recorded, never measured or blocked; CONTRACT_KEYS below is its grammar.
 //
 // Host contract confirmed against Claude Code 2.1.281: the payload carries last_assistant_message,
 // transcript_path, stop_hook_active, cwd, session_id; `{"decision":"block","reason":…}` on stdout
@@ -88,35 +88,46 @@ function findContractBlock(text) {
 // carrying its question, options and recommendation, so the human who answers later, from
 // `/devanity pending` or a new session, decides from the block and not from an id. Dormant ones
 // may sleep and are not queued. Recorded by the agent, as pending: it authorizes nothing.
-const DECIDE_HEAD = /^\s*-\s+\*\*\[DECIDE\]\[(blocking|dormant)\]\[(G-\d{3,})\]\[([a-z]+)\]\s*(.*?)\s*\*\*\s*$/;
-const DECIDE_FIELD = /^\s+-\s+(decision|context|options|recommendation|if undecided):\s*(.*)$/;
+// Line-anchored and backtracking-free: the headline's prefix is matched, and its closing `**` is
+// checked by string, so no line can make the Stop hook spin. Lines inside a code fence are examples.
+const DECIDE_HEAD = /^\s*-\s+\*\*\[DECIDE\]\[(blocking|dormant)\]\[(G-\d{3,})\]\[([a-z]+)\]/;
+const DECIDE_FIELD = /^\s+-\s+(decision|context|options|recommendation|if undecided):/;
+const DECIDE_LINE_MAX = 2000;
 function findDecideBlocks(text) {
   const lines = String(text || '').replace(/\r/g, '').split('\n');
   const out = [];
+  let fenced = false;
   for (let i = 0; i < lines.length; i++) {
+    if (/^\s*(```|~~~)/.test(lines[i])) { fenced = !fenced; continue; }
+    if (fenced || lines[i].length > DECIDE_LINE_MAX) continue;
     const h = DECIDE_HEAD.exec(lines[i]);
     if (!h) continue;
-    const b = { status: h[1], id: h[2], kind: h[3], question: h[4] };
+    const rest = lines[i].slice(h[0].length).trim();
+    if (!rest.endsWith('**')) continue;
+    const b = { status: h[1], id: h[2], kind: h[3], question: rest.slice(0, -2).trim() };
     for (let j = i + 1; j < lines.length && /^\s+\S/.test(lines[j]); j++) {
+      if (lines[j].length > DECIDE_LINE_MAX) continue;
       const f = DECIDE_FIELD.exec(lines[j]);
-      if (f) b[f[1].replace(' ', '_')] = f[2].trim();
+      if (f) b[f[1].replace(' ', '_')] = rt.clip(lines[j].slice(f[0].length), 400);
     }
+    b.question = rt.clip(b.question, 300);
     out.push(b);
   }
   return out;
 }
 
 function persistDecisions(root, blocks, sid) {
+  const all = ledger.decisions(root);   // read once: many blocks must not re-read the ledger each time
   for (const b of blocks.filter((x) => x.status === 'blocking' && x.question)) {
-    const all = ledger.decisions(root);
-    if (all.some((d) => d.status === 'pending' && d.question === b.question)) continue;   // re-emitted
+    // Asked before, pending or answered: a recap never reopens a question a human already answered.
+    if (all.some((d) => d.question === b.question)) continue;
     // Never append over an id that holds another question or an answer: the latest record per id
     // wins, so reusing it would rewrite a decision a human already made.
     let id = b.id;
     for (let k = 2; all.some((d) => d.id === id); k++) id = `${b.id}-${k}`;
     const rec = { id, status: 'pending', by: 'agent', kind: 'human', decide_kind: b.kind, question: b.question };
     for (const k of ['decision', 'context', 'options', 'recommendation', 'if_undecided']) if (b[k]) rec[k] = b[k];
-    ledger.append(root, 'decisions', rec, sid);
+    if (ledger.append(root, 'decisions', rec, sid)) all.push(rec);
   }
 }
 
