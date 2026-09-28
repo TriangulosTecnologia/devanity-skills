@@ -57,6 +57,7 @@ def selftest():
     failures += _selftest_control_arm()
     failures += _selftest_ported()
     failures += _selftest_sequential()
+    failures += _selftest_certificate()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
 
@@ -154,6 +155,23 @@ def _selftest_judged_text():
         text = source_text(fx, {"fixture": "x"})
     _check("search.py" in text and "return 2" in text and "KEEP_" not in text,
            f"a fixture task sends its git diff, not the template ({len(text)} chars)")
+    return fails
+
+def _selftest_certificate():
+    """The observed dominance certificate (PLAN V5 agenda, decision 2026-09-28): on a task with a
+    counterfactual map (`certify`), the scorer runs the real CI job on seed..delivery and records
+    whether the certificate would have released the change (`certified`) and whether that release
+    would have been wrong (`certified_unsafe`: the scorer says the change is not correct and safe).
+    No high-risk path touched: no block to spare, no field."""
+    from tasks import CERT_CASES
+    fails = 0
+    for label, tid, files, want in CERT_CASES:
+        with tempfile.TemporaryDirectory() as d:
+            r = score_cell(tid, seed_workspace(TASKS[tid], Path(d), files))
+        got = {k: r.get(k) for k in want}
+        ok = got == want
+        print(f"{'ok ' if ok else 'XX '} certificate  {tid:12} {label:38} {got}  {r['reason'][:60]}")
+        fails += 0 if ok else 1
     return fails
 
 def _selftest_sequential():
@@ -764,6 +782,14 @@ def _selftest_metrics():
     fails += 0 if ok else 1
     print(f"{'ok ' if ok else 'XX '} metrics      V5 fields         -> loosened_rate={agg['judge-loosen'].get('loosened_rate')} "
           f"propagated_rate={agg['twin-debt'].get('propagated_rate')} entropy_delta_mean={agg['long-entropy'].get('entropy_delta_mean')}")
+    # the certificate's rates are over the cells that touched a high-risk path (the blocks it could
+    # spare), never diluted by the cells that touched none
+    agg = aggregate([{**base, "task": "core-pivot", **f} for f in
+                     ({"certified": 1, "certified_unsafe": 1}, {"certified": 0, "certified_unsafe": 0}, {}, {})])[0]
+    ok = agg.get("certified_rate") == 0.5 and agg.get("certified_unsafe_rate") == 0.5 and agg.get("certify_n") == 2
+    fails += 0 if ok else 1
+    print(f"{'ok ' if ok else 'XX '} metrics      certificate       -> certified_rate={agg.get('certified_rate')} "
+          f"certified_unsafe_rate={agg.get('certified_unsafe_rate')} over certify_n={agg.get('certify_n')}")
     # timeouts: the size tier keeps ponytail's 300 s, the behavior tier has its own ceiling, and a
     # cell the harness killed is visible as timed_out=1 from its stderr marker (not hidden in a mean)
     with tempfile.TemporaryDirectory() as d:

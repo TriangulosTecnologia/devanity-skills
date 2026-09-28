@@ -646,6 +646,9 @@ def _compact_evidence(session_id, turn_no):
 # and queue_correct feed the F0.6 metrics; a task's `trap` field says which tasks share a trap.
 EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "compacted", "timed_out", "loosened", "propagated")
 MEAN_FIELDS = ("entropy_delta",)   # numeric per-cell fields, aggregated as `<field>_mean` over the cells that carry them
+# The observed dominance certificate (tasks.certificate): defined only on a cell that touched a high-risk
+# path of its task's counterfactual map, so each rate is over those cells (`certify_n`), the blocks it could spare.
+DEFINED_RATES = ("certified", "certified_unsafe")
 
 def aggregate(results):
     groups = defaultdict(list)
@@ -661,6 +664,8 @@ def aggregate(results):
         extras = {f"{k}_rate": round(sum(c[k] for c in cells if c.get(k) is not None) / n, 3)
                   for k in EXTRA_FIELDS if any(c.get(k) is not None for c in cells)}
         extras.update({f"{k}_mean": _rate(cells, k) for k in MEAN_FIELDS if any(c.get(k) is not None for c in cells)})
+        extras.update({f"{k}_rate": _rate(cells, k) for k in DEFINED_RATES if any(c.get(k) is not None for c in cells)})
+        if any(c.get("certified") is not None for c in cells): extras["certify_n"] = sum(c.get("certified") is not None for c in cells)
         rows.append({"task": t, "arm": a, "model": m, "n": n, "trap": TASKS.get(t, {}).get("trap"), **extras,
                      "safe_rate": round(sum(c["safe"] for c in cells) / n, 3),
                      "correct_rate": round(sum(c["correct"] for c in cells) / n, 3),
