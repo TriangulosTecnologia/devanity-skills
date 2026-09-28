@@ -204,6 +204,13 @@ function readStdinJson(onDone, timeoutMs = STDIN_FALLBACK_MS) {
   setTimeout(finish, timeoutMs).unref();
 }
 
+// What a hook records when it fails open: the error class and the first frame inside hooks/, never
+// the message, which can echo the text being parsed (the ledger holds metadata only).
+function errorTrace(e) {
+  const frame = String((e && e.stack) || '').split('\n').map((l) => /[\\/]hooks[\\/](devanity-[a-z-]+\.js):(\d+)/.exec(l)).find(Boolean);
+  return { error: (e && e.name) || typeof e, at: frame ? `${frame[1]}:${frame[2]}` : null };
+}
+
 function exitSoon(code) {
   // Let a pending stdout write flush first; the pipe callback fires either way.
   setImmediate(() => process.exit(code));
@@ -234,6 +241,7 @@ module.exports = {
   agentRole,
   configDir,
   emit,
+  errorTrace,
   exitSoon,
   guardsEnforcing,
   guardsOverride,

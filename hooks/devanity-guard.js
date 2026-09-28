@@ -234,7 +234,11 @@ function main() {
       return;
     }
     let verdict;
-    try { verdict = evaluate(payload, process.env); } catch (e) { verdict = { allow: true, reason: 'guard error' }; }
+    try { verdict = evaluate(payload, process.env); } catch (e) {
+      // Fail open, as with an unreadable payload, and leave the same kind of trace.
+      ledger.append(payload.cwd || process.cwd(), 'events', { kind: 'guard_error', ...rt.errorTrace(e) }, payload.session_id || null);
+      verdict = { allow: true, reason: 'guard error' };
+    }
     if (verdict.allow) rt.exitSoon(0);
     else block(verdict.message);
   });

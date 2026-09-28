@@ -64,6 +64,7 @@ devanity: blocked Bash command: git push --force origin main
 | `DEVANITY_GUARDS=on` (or `{"guards": true}`) | block even without a rules file |
 | Not a git repository | no ledger: nothing recorded, nothing blocked |
 | Payload unreadable (host hiccup) | fail open, `guard_payload_missing` event; a guard that cannot read its payload cannot know the path, and failing closed would freeze every tool call |
+| The guard or the oracle throws | fail open; a `guard_error` / `oracle_error` event names the error class and the hook line (`devanity-guard.js:170`), never the message, which can echo file content |
 
 Every real block records `{kind: blocked, path|command, rule|authority}`; every evaluated-but-not-enforced block records `would_block` with the same fields, which is how a team measures false blocks before turning enforcement on (guardrail 4: ≤ 5 %).
 
@@ -213,7 +214,7 @@ node scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-
 2. Changed files: `git diff --numstat` from the merge base of `--base` (default `origin/main`, then `main`) to `HEAD`.
 3. The map stays alive: every `paths` glob must match a tracked file (`git ls-files`), or the job fails naming the dead entry.
 4. Per touched path: `delta` budgets (files and added lines per glob); the distinct `check` of every touched high-risk path is run in the repository root, and when the diff changes `devanity.rules.json` every check it declares is run too, so a check that does not pass cannot enter the map; a `devanity-proof:` block with a `status:` line is required in the PR body (`--pr-body-file`, else `GITHUB_EVENT_PATH` `pull_request.body`) when any touched path is tier normal or high-risk, unless `--no-proof-required`. Without any PR context (a push), the requirement is reported, not failed.
-5. Verifier sovereignty (SPEC §0.2): when the diff, together with code, removes or rewrites lines of existing test files (the `tests` globs), edits a file the map declares under `verifiers` (package scripts, test-runner config), or changes what the rules file makes a judge (a path's `check` or `tier`, `tests`, `defaults`, `verifiers`), the PR body must carry a `verifier-change: <why>` line, so review treats the change to the checks separately from the change they judge. Adding tests next to a fix is not a verifier change.
+5. Verifier sovereignty (SPEC §0.2): when the diff, together with code, removes or rewrites lines of existing test files (the `tests` globs), edits a file the map declares under `verifiers` (package scripts, test-runner config), or changes what the rules file makes a judge (a path's `check` or `tier`, `tests`, `defaults`, `verifiers`, `commands`, `autonomy`), the PR body must carry a `verifier-change: <why>` line, so review treats the change to the checks separately from the change they judge. Adding tests next to a fix is not a verifier change.
 6. Exit 1 with the list of failures, 0 otherwise.
 
 `--self-check` is the dogfood mode: this repository's own `devanity.rules.json` is validated and steps 2–5 run on `HEAD~1..HEAD` (the checks execute) without a PR body (`.github/workflows/validate.yml` runs it; a shallow clone with no parent validates the rules and reports an empty change set).
@@ -234,7 +235,7 @@ This repository's own rules (`devanity.rules.json`) are its map: `hooks/**`, `sc
 | `decisions.jsonl` | `PreToolUse` guard (`by: agent`, `status: pending`); `/devanity decide` (the only hook that writes `by: human`) | `{id, path?, kind, status: pending\|decided\|rejected, by, chosen?, contract?}`; latest per id wins |
 | `proofs.jsonl` | `Stop` oracle | `{kind: 'proof', contract, check, agent_check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason}` |
 | `deferrals.jsonl` | nothing yet (`debt` reads the `deferred:` markers in the code instead) | reserved |
-| `events.jsonl` | guard, oracle, inject | `{kind: blocked \| would_block \| false_ready \| unmeasured \| rules_invalid \| guard_payload_missing \| inject_truncated, …}` |
+| `events.jsonl` | guard, oracle, inject | `{kind: blocked \| would_block \| false_ready \| unmeasured \| rules_invalid \| guard_payload_missing \| guard_error \| oracle_error \| inject_truncated, …}` |
 
 ### The open change (`devanity-contract:`)
 

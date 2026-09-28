@@ -339,7 +339,10 @@ function decide(payload, env = process.env) {
 function main() {
   rt.readStdinJson((payload) => {
     let d;
-    try { d = decide(payload); } catch (e) { d = { action: 'exit' }; }
+    try { d = decide(payload); } catch (e) {
+      ledger.append(payload.cwd || process.cwd(), 'events', { kind: 'oracle_error', ...rt.errorTrace(e) }, payload.session_id || null);
+      d = { action: 'exit' };
+    }
     if (d.action !== 'correct' || payload.stop_hook_active === true) { rt.exitSoon(0); return; }
     const lines = [
       'devanity oracle: the proof block you wrote does not match what was measured. Corrected block:',

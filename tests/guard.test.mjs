@@ -318,6 +318,34 @@ describe('guard: enforcement by install origin (f) (g) (h)', () => {
   });
 });
 
+describe('failure paths leave a trace (map invariant for hooks/**)', () => {
+  // The error's message can echo what was being parsed (Node prints the start of invalid JSON), and
+  // the ledger holds metadata only: the event names the error class and where in the hook, never the text.
+  test('a guard or oracle that throws still allows, and records where it failed, never the message', async () => {
+    const d = repo();
+    const preload = join(freshDir('preload'), 'throw.cjs');
+    writeFileSync(preload, `const r = require(${JSON.stringify(join(hooksDir, 'devanity-rules.js'))}); r.loadRules = r.parseRules = () => { throw new TypeError('boom sk-live-secret'); };\n`);
+    const withPreload = (script, input) => new Promise((done) => {
+      const child = spawn(process.execPath, ['-r', preload, script], { env: baseEnv(), cwd: d, stdio: ['pipe', 'pipe', 'pipe'] });
+      let stdout = ''; child.stdout.on('data', (c) => { stdout += c; });
+      child.on('close', (code) => done({ code, stdout }));
+      child.stdin.end(input);
+    });
+    const g = await withPreload(GUARD, edit(d, 'billing/x.py'));
+    assert.equal(g.code, 0, 'fail open'); assert.equal(g.stdout, '');
+    const stop = JSON.stringify({ hook_event_name: 'Stop', session_id: sid, cwd: d, stop_hook_active: false, last_assistant_message: 'devanity-proof:\n  check: true\n  failed_before: yes\n  passed_after: yes\n  status: VERIFIED\n  pending: 0\n' });
+    const o = await withPreload(join(hooksDir, 'devanity-oracle.js'), stop);
+    assert.equal(o.code, 0, 'fail open'); assert.equal(o.stdout, '');
+    for (const [kind, file] of [['guard_error', 'devanity-guard.js'], ['oracle_error', 'devanity-oracle.js']]) {
+      const ev = events(d).find((e) => e.kind === kind);
+      assert.ok(ev, `${kind} missing: ${JSON.stringify(events(d))}`);
+      assert.equal(ev.error, 'TypeError');
+      assert.match(ev.at, new RegExp(`^${file.replace('.', '\\.')}:\\d+$`), `${kind} names the hook frame: ${ev.at}`);
+    }
+    assert.ok(!JSON.stringify(events(d)).includes('sk-live-secret'), 'the message never reaches the ledger');
+  });
+});
+
 describe('guard: autonomous session without a human (i)', () => {
   test('a blocked high-risk edit leaves one pending decision; /devanity pending lists it; the session is not stalled', async () => {
     const d = repo();

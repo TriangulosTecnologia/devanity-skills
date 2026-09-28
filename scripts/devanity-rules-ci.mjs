@@ -163,13 +163,14 @@ if (base && rulesMod && !loaded.errors.length) {
   // verifier sovereignty (SPEC §0.2): a diff that removes or rewrites lines of existing tests
   // together with code is reviewed as a verifier change, declared in the PR body
   const verifierEdits = touched.filter((t) => t.deleted > 0 && rulesMod.isTestPath(rules, t.path)).map((t) => t.path);
-  // The rules file is a verifier too: a changed `check`, `tier` or `tests` is a change to what judges.
+  // The rules file is a verifier too: a changed `check`, `tier` or `tests` is a change to what judges,
+  // and so is a changed `commands` or `autonomy`, which decide what the session may do unasked.
   if (rulesChanged) {
     const mb = git('merge-base', base, 'HEAD');
     const before = git('show', `${mb.ok && mb.out ? mb.out : base}:${rulesMod.FILE}`);
     const judges = (text) => {
       const raw = (() => { try { return JSON.parse(text); } catch (e) { return {}; } })();
-      return JSON.stringify([Object.entries(raw.paths || {}).map(([g, r]) => [g, r && r.check, r && r.tier]).sort(), raw.tests || null, raw.defaults || null, raw.verifiers || null]);
+      return JSON.stringify([Object.entries(raw.paths || {}).map(([g, r]) => [g, r && r.check, r && r.tier]).sort(), raw.tests || null, raw.defaults || null, raw.verifiers || null, raw.commands || null, raw.autonomy || null]);
     };
     if (!before.ok || judges(before.out) !== judges(readFileSync(join(root, rulesMod.FILE), 'utf8'))) verifierEdits.push(rulesMod.FILE);
   }

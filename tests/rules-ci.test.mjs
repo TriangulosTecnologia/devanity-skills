@@ -185,4 +185,18 @@ describe('rules CI', () => {
     r = runCi(d2, ['--base', 'main', '--pr-body-file', body]);
     assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*devanity\.rules\.json/);
   });
+  test('verifier sovereignty: loosening command authority or the autonomy envelope together with code is a verifier change', () => {
+    const body = join(temp, `acbody${n}.md`);
+    writeFileSync(body, 'Change.\n```\ndevanity-proof:\n  check: true\n  failed_before: yes\n  passed_after: yes\n  status: VERIFIED\n  pending: 0\n```\n');
+    const base = { version: 1, commands: { 'fly\\s+deploy': 'deploy' }, autonomy: { authority: 'prepare' }, paths: { 'docs/**': { tier: 'trivial' } } };
+    for (const loosened of [{ ...base, commands: {} }, { ...base, autonomy: { authority: 'commit' } }]) {
+      const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+      write(d, 'devanity.rules.json', JSON.stringify(base)); write(d, 'src/a.js', '1\n'); write(d, 'docs/a.md', 'a\n');
+      commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature');
+      write(d, 'devanity.rules.json', JSON.stringify(loosened)); write(d, 'src/a.js', '2\n');
+      commitAll(d, 'change');
+      const r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+      assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*devanity\.rules\.json/);
+    }
+  });
 });
