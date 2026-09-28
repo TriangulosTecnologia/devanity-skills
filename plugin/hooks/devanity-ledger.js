@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// devanity — the local ledger (SPEC §8): append-only JSONL under <git-common-dir>/devanity/,
+// devanity — the local ledger: append-only JSONL under <git-common-dir>/devanity/,
 // so it is shared by every worktree and subagent of one repository and can never be committed.
 // Without git the ledger is disabled (every write is a no-op that reports false) and the guards
 // then record nothing and block nothing.
@@ -16,9 +16,9 @@ const { spawnSync } = require('child_process');
 const KINDS = ['contracts', 'decisions', 'proofs', 'events'];
 const RETENTION_DAYS = 90;
 
-// Contract lifecycle (PLAN F3.1): the phases a `devanity-contract:` block may declare, the two that
+// Contract lifecycle: the phases a `devanity-contract:` block may declare, the two that
 // close a change, and how long an unclosed change stays "open" before an abandoned session stops
-// pinning the next one to its phase (SPEC §7.2 risk table).
+// pinning the next one to its phase.
 const CONTRACT_PHASES = ['FRAME', 'INSPECT', 'PROVE', 'EXECUTE', 'VERIFY', 'ASSURE', 'DONE', 'ABANDONED'];
 const CLOSED_PHASES = ['DONE', 'ABANDONED'];
 const CONTRACT_TTL_MS = 24 * 3600000;
@@ -169,7 +169,7 @@ function prune(cwd, now = Date.now()) {
   }
 }
 
-// ---------------------------------------------------------------- stats (PLAN F3.7)
+// ---------------------------------------------------------------- stats
 
 // The repository's numbers over the retention window. Read-only; null outside git.
 function stats(cwd, now = Date.now()) {

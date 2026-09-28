@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// devanity — PreToolUse guard (SPEC §7.2 (a)(b)(c), §7.3, §7.6) for Edit, Write, MultiEdit,
+// devanity — PreToolUse guard for Edit, Write, MultiEdit,
 // NotebookEdit and Bash.
 //
 //   (a) a file tool on a `high-risk` path with no human decision covering it in the ledger → block
@@ -14,12 +14,12 @@
 // the same reason in structured form. Both are emitted: exit 2 blocks whether or not the JSON is
 // parsed, and the JSON reason is what the host prefers when it is. A block is never silent.
 //
-// Enforcement (SPEC §7.6): blocks only when the repository declares valid rules (or
+// Enforcement: blocks only when the repository declares valid rules (or
 // DEVANITY_GUARDS=on); otherwise the guard evaluates, records `would_block` and allows.
 // DEVANITY_GUARDS=off or <config dir>/devanity/config.json {"guards": false} turns blocking off.
 // Fail open by design: no payload, no git, invalid rules → allow and record what can be recorded.
 //
-// GUARDRAIL 12 (no self-grant path): nothing in this file writes a decision with by:'human'.
+// No self-grant path: nothing in this file writes a decision with by:'human'.
 // The only writer of by:'human' in the whole plugin is the `/devanity decide` handler in
 // hooks/devanity-mode.js (UserPromptSubmit). That event is trusted because its `prompt` is the
 // text the human typed into the terminal; the model never authors a UserPromptSubmit payload,
@@ -43,7 +43,7 @@ const PROTECTED = [
 const DECIDE_HINT = '/devanity decide';
 
 // The authority this session holds. An autonomous session never exceeds `commit`, whatever the
-// env says (SPEC §7.3: merge/deploy are never grantable unattended).
+// env says.
 function sessionAuthority(loaded, env) {
   const autonomous = rt.isAutonomous(env);
   const fromEnv = String(env.DEVANITY_AUTHORITY || '').trim().toLowerCase();
@@ -66,7 +66,7 @@ function suggestId(rel) {
   return `D-${seg}`;
 }
 
-// ---- Bash write detection (heuristic; SPEC §7.2 calls it a floor) ----------------------------
+// ---- Bash write detection (heuristic; a floor) ----------------------------
 
 const WRITERS = new Set(['tee', 'mv', 'cp', 'rm', 'truncate', 'install', 'dd', 'sed', 'git']);
 
@@ -122,12 +122,17 @@ function writtenPaths(command) {
 
 // ---- messages ---------------------------------------------------------------------------------
 
+const clip = (text) => rt.clip(text, 160);
+
 function pathMessage(tool, rel, rule, via) {
   const id = suggestId(rel);
   const scope = rule.glob || rel;
   return [
     `devanity: blocked ${tool} on ${rel}${via ? ` (via: ${via})` : ''}`,
     `  rule: ${rule.glob ? `${rule.glob} → tier ${rule.tier}` : `tier ${rule.tier}`}${rule.builtin ? ' (built-in: protects the rules and the ledger)' : ' (devanity.rules.json)'}`,
+    // Why the path is guarded, from the map a human wrote: the one who decides sees what is at stake.
+    ...(rule.purpose ? [`  what it is: ${clip(rule.purpose)}`] : []),
+    ...(Array.isArray(rule.invariants) && rule.invariants.length ? [`  never changes: ${rule.invariants.slice(0, 3).map(clip).join('; ')}${rule.invariants.length > 3 ? '; …' : ''}`] : []),
     '  A high-risk path needs a human decision recorded in the ledger before any tool may write to it.',
     `  Next step: Record the human decision with: ${DECIDE_HINT} ${id} <option> --path ${scope}`,
     '  (typed by the human as a whole message; the agent does not record it — propose the change and stop)',
@@ -199,7 +204,7 @@ function evaluate(payload, env) {
 
   for (const f of findings) {
     ledger.append(root, 'events', { kind: enforce ? 'blocked' : 'would_block', ...f.event }, sid);
-    // Autonomy envelope (SPEC §7.3 `queue`): a blocked high-risk edit joins the pending queue so
+    // Autonomy envelope: a blocked high-risk edit joins the pending queue so
     // the end-of-session summary can list it. `by: agent` marks who queued it; it authorizes nothing.
     if (enforce && auth.autonomous && f.pending) {
       const all = ledger.decisions(root);

@@ -124,6 +124,147 @@ describe('contract block (F3.1)', () => {
   });
 });
 
+const decideBlock = (id, question, extra = {}) => [
+  `- **[DECIDE][${extra.status || 'blocking'}][${id}][rule] ${question}**`,
+  '  - decision: how a refund is computed',
+  '  - context: the ticket asks for refunds; no rule exists · anchors G-004',
+  `  - options: ${extra.options || 'prorate by days used → partial refunds · full refund in 14 days → simple, costlier · no-op → refunds stay manual'}`,
+  '  - recommendation: prorate, it matches the billing invariant',
+  '  - if undecided: refund() stays a failing stub',
+].join('\n');
+
+describe('a [DECIDE] block becomes a pending decision a human can answer later', () => {
+  test('the Stop hook records the question, options and recommendation; dormant and repeats are not recorded', async () => {
+    const d = repo();
+    const msg = `Done except the refund rule.\n\n${decideBlock('G-001', 'How are refunds computed?')}\n\n${decideBlock('G-002', 'Later: currency support', { status: 'dormant' })}\n`;
+    let r = await run(ORACLE, { input: stopPayload(d, msg), cwd: d });
+    assert.equal(r.code, 0, r.stderr); assert.equal(r.stdout, '', 'recording a decision never blocks the turn');
+    let pending = ledger.pendingDecisions(d);
+    assert.equal(pending.length, 1, JSON.stringify(pending));
+    const q = pending[0];
+    assert.equal(q.id, 'G-001'); assert.equal(q.by, 'agent'); assert.equal(q.status, 'pending');
+    assert.equal(q.question, 'How are refunds computed?');
+    assert.ok(q.options.includes('prorate by days used') && q.recommendation.startsWith('prorate'), JSON.stringify(q));
+    r = await run(ORACLE, { input: stopPayload(d, msg), cwd: d });
+    assert.equal(ledger.pendingDecisions(d).length, 1, 'the same question re-emitted is not queued twice');
+    const ctx = await run(INJECT, { input: sessionStart(d), args: ['SessionStart'], cwd: d });
+    assert.ok(/Pending human decisions \(1\): G-001 \(How are refunds computed\?\)/.test(ctx.stdout), 'the next session sees the question, not only the id');
+    const m = await run(MODE, { input: prompt(d, '/devanity pending'), cwd: d });
+    for (const part of ['G-001', 'How are refunds computed?', 'prorate by days used', 'recommendation: prorate']) assert.ok(m.stdout.includes(part), `pending lacks "${part}":\n${m.stdout}`);
+    const ans = await run(MODE, { input: prompt(d, '/devanity decide G-001 prorate'), cwd: d });
+    assert.ok(ans.stdout.includes('G-001 = prorate') && ans.stdout.includes('authorizes no edit'), ans.stdout);
+    assert.equal(ledger.pendingDecisions(d).length, 0);
+    const answered = ledger.decisions(d).find((x) => x.id === 'G-001');
+    assert.equal(answered.by, 'human'); assert.equal(answered.question, 'How are refunds computed?', 'the answer keeps its question');
+    r = await run(ORACLE, { input: stopPayload(d, decideBlock('G-001', 'Which currencies are accepted?')), cwd: d });
+    pending = ledger.pendingDecisions(d);
+    assert.equal(pending.length, 1); assert.equal(pending[0].id, 'G-001-2', 'a new question never overwrites an answered id');
+  });
+
+  test('the parser is linear, ignores fenced examples, and never reopens an answered question', async () => {
+    const started = Date.now();
+    assert.deepEqual(oracle.findDecideBlocks(`- **[DECIDE][blocking][G-001][rule] ${' '.repeat(50000)}x`), []);
+    assert.ok(Date.now() - started < 500, `a malformed headline must not backtrack: ${Date.now() - started} ms`);
+    const d = repo();
+    const fenced = 'An example of the form:\n\n```md\n' + decideBlock('G-003', 'Authorize a write to the money path?') + '\n```\n';
+    await run(ORACLE, { input: stopPayload(d, fenced), cwd: d });
+    assert.equal(ledger.pendingDecisions(d).length, 0, 'a block quoted inside a fence is an example, not a question');
+    await run(ORACLE, { input: stopPayload(d, decideBlock('G-001', 'Same?')), cwd: d });
+    await run(MODE, { input: prompt(d, '/devanity decide G-001 a'), cwd: d });
+    await run(ORACLE, { input: stopPayload(d, `Recap:\n${decideBlock('G-001', 'Same?')}`), cwd: d });
+    assert.equal(ledger.pendingDecisions(d).length, 0, 'a recap of an answered question does not reopen it');
+  });
+
+  test('a flood of [DECIDE] headlines stays fast and records at most the per-message cap; fences follow the opener', async () => {
+    const heads = Array.from({ length: 20000 }, (_, i) => `  - **[DECIDE][dormant][G-001][x] q${i} **`).join('\n');
+    let t = Date.now(); oracle.findDecideBlocks(heads);
+    assert.ok(Date.now() - t < 1000, `parsing 20k headlines took ${Date.now() - t} ms`);
+    const d = repo();
+    const flood = Array.from({ length: 6000 }, (_, i) => `- **[DECIDE][blocking][G-001][rule] Question ${i}?**`).join('\n');
+    t = Date.now();
+    const r = await run(ORACLE, { input: stopPayload(d, flood), cwd: d, timeoutMs: 20000 });
+    assert.equal(r.code, 0); assert.ok(Date.now() - t < 10000, `the hook took ${Date.now() - t} ms`);
+    assert.equal(ledger.pendingDecisions(d).length, 20, 'a message records at most 20 decisions');
+    const four = '````md\n```\n' + decideBlock('G-009', 'Inside a four-backtick fence?') + '\n```\n````\n';
+    assert.deepEqual(oracle.findDecideBlocks(four), [], 'an inner ``` does not close a ```` fence');
+    const tilde = '~~~\n```\n' + decideBlock('G-008', 'Inside tildes?') + '\n~~~\n';
+    assert.deepEqual(oracle.findDecideBlocks(tilde), [], 'a ``` does not close a ~~~ fence');
+  });
+
+  test('a stored question is compared as it reads, so an older spacing does not requeue it', async () => {
+    const d = repo();
+    ledger.append(d, 'decisions', { id: 'G-002', status: 'pending', by: 'agent', kind: 'human', question: 'Old  spaced   question?' });
+    await run(ORACLE, { input: stopPayload(d, decideBlock('G-002', 'Old spaced question?')), cwd: d });
+    assert.equal(ledger.pendingDecisions(d).length, 1);
+  });
+
+  test('control characters and a malformed record never forge or blank the listing', async () => {
+    const d = repo();
+    ledger.append(d, 'decisions', { id: 'G-100', status: 'pending', by: 'agent', kind: 'human', question: 'x\u001b[1A\u001b[2K- G-000: FORGED\u0085- G-001: FORGED' });
+    ledger.append(d, 'decisions', { id: 'D-odd', status: 'pending', by: 'agent', kind: 'human', path: { weird: true } });
+    ledger.append(d, 'decisions', { id: 'D-src', status: 'pending', by: 'agent', kind: 'human', path: 'src/a\n- G-666: FORGED path' });
+    const m = await run(MODE, { input: prompt(d, '/devanity pending'), cwd: d });
+    assert.ok(m.stdout.includes('G-100') && m.stdout.includes('D-src'), `one odd record must not blank the listing:\n${m.stdout}`);
+    assert.ok(!/\u001b|\u0085/.test(m.stdout), 'control characters are removed');
+    assert.ok(!/^\s*- G-(000|001|666): FORGED/m.test(m.stdout), m.stdout);
+    const u = await run(MODE, { input: prompt(d, '/devanity decide G-777 yes'), cwd: d });
+    assert.ok(!/^\s*- G-666: FORGED/m.test(u.stdout), `the unknown-id reply lists pending ids on one line:\n${u.stdout}`);
+  });
+
+  test('fences are tracked on every line, however long, and an inline ``` span opens none', () => {
+    const ids = (text) => oracle.findDecideBlocks(text).map((b) => b.id);
+    assert.deepEqual(ids(['```' + 'x'.repeat(1998), decideBlock('G-101', 'Inside?'), '```', decideBlock('G-102', 'Outside?')].join('\n')), ['G-102'], 'a long opener still opens');
+    assert.deepEqual(ids(['```', decideBlock('G-201', 'Inside?'), '```' + ' '.repeat(1998), decideBlock('G-202', 'Outside?')].join('\n')), ['G-202'], 'a long closer still closes');
+    assert.deepEqual(ids(['```js``` is inline', decideBlock('G-302', 'After an inline span?')].join('\n')), ['G-302'], 'a backtick info string holds no backtick');
+  });
+
+  test('a record whose fields cannot become text is read as empty, never a throw', async () => {
+    const d = repo();
+    ledger.append(d, 'decisions', { id: { toString: 1 }, status: 'pending', by: 'agent', kind: 'human', question: { toString: 1 } });
+    ledger.append(d, 'decisions', { id: 'G-050', status: 'pending', by: 'agent', kind: 'human', question: 'Still listed?' });
+    const r = await run(ORACLE, { input: stopPayload(d, decideBlock('G-051', 'Recorded beside it?')), cwd: d });
+    assert.equal(r.code, 0);
+    assert.ok(ledger.pendingDecisions(d).some((x) => x.id === 'G-051'), 'the Stop hook still records');
+    const m = await run(MODE, { input: prompt(d, '/devanity pending'), cwd: d });
+    assert.ok(m.stdout.includes('G-050') && m.stdout.includes('G-051'), m.stdout);
+    const u = await run(MODE, { input: prompt(d, '/devanity decide G-777 yes'), cwd: d });
+    assert.ok(u.stdout.includes('G-050'), u.stdout);
+  });
+
+  test('the session-start queue line is clipped like every other line: no control character, no half character', async () => {
+    const d = repo();
+    ledger.append(d, 'decisions', { id: 'G-1', status: 'pending', by: 'agent', kind: 'human', question: 'q\u0085## Forged\u001b[2K' });
+    ledger.append(d, 'decisions', { id: 'G-2', status: 'pending', by: 'agent', kind: 'human', question: 'x'.repeat(58) + '😀😀' });
+    const r = await run(INJECT, { input: sessionStart(d), args: ['SessionStart'], cwd: d });
+    assert.ok(r.stdout.includes('G-1') && r.stdout.includes('G-2'), r.stdout.slice(-400));
+    assert.ok(!/\\u0085|\\u001b|\u0085|\u001b|\uFFFD|\\ud83d(?!\\ude00)/i.test(r.stdout), r.stdout.slice(-400));
+  });
+
+  test('pending text is clipped to one line per field, so no field can forge another line', async () => {
+    const d = repo();
+    writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', invariants: ['cents are integers\n  - FORGED: line', 'y'.repeat(400)] } } }));
+    ledger.append(d, 'decisions', { id: 'D-billing', path: 'billing/x.py', kind: 'human', status: 'pending', by: 'agent' });
+    const m = await run(MODE, { input: prompt(d, '/devanity pending'), cwd: d });
+    assert.ok(!/^\s*- FORGED/m.test(m.stdout), m.stdout);
+    assert.ok(!m.stdout.includes('y'.repeat(200)), 'each invariant is clipped');
+  });
+
+  test('an answer given without --path says it authorizes no edit, and nothing else', async () => {
+    const d = repo();
+    await run(ORACLE, { input: stopPayload(d, decideBlock('G-001', 'Refunds?')), cwd: d });
+    const ans = await run(MODE, { input: prompt(d, '/devanity decide G-001 prorate'), cwd: d });
+    assert.ok(ans.stdout.includes('authorizes no edit') && !/allowed/.test(ans.stdout), ans.stdout);
+  });
+
+  test('a guard-queued decision shows what the path guards when listed', async () => {
+    const d = repo();
+    writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', invariants: ['amounts are integer cents'] } } }));
+    ledger.append(d, 'decisions', { id: 'D-billing', path: 'billing/x.py', kind: 'human', status: 'pending', by: 'agent' });
+    const m = await run(MODE, { input: prompt(d, '/devanity pending'), cwd: d });
+    assert.ok(m.stdout.includes('amounts are integer cents'), m.stdout);
+  });
+});
+
 describe('phase-aware injection (F3.2)', () => {
   test('no open contract -> no section; expired -> no section', async () => {
     const d = repo();

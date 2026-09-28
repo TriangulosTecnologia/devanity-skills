@@ -2,7 +2,7 @@
 'use strict';
 // devanity — UserPromptSubmit hook: tracks the on/off state.
 //
-// Only a whole message switches state (SPEC §7.2): `/devanity off`,
+// Only a whole message switches state: `/devanity off`,
 // `stop devanity`, `normal mode` -> off; `/devanity on` -> on (and the kernel is
 // re-injected, since a session that started while off never received it);
 // bare `/devanity` -> reports the state; `/devanity status` adds the open change
@@ -17,13 +17,14 @@
 
 const rt = require('./devanity-runtime');
 const ledger = require('./devanity-ledger');
+const rulesMod = require('./devanity-rules');
 
 // Accepts the bare command and the plugin-scoped form Claude Code may show.
 const COMMAND = /^\/(?:devanity:)?devanity(?:\s+(\S+))?$/;
 // `decide` keeps its arguments' case: matched on the raw prompt, still whole-message.
 const DECIDE = /^\/(?:devanity:)?devanity\s+decide(?:\s+(.*))?$/i;
 // Argument-less verbs handled here, not by the skill. `pending`, `status` only read the ledger;
-// `reset` (F3.6) writes only contract records with phase ABANDONED (never a decision, never
+// `reset` writes only contract records with phase ABANDONED (never a decision, never
 // by:'human' on a decision).
 const VERBS = new Set(['off', 'on', 'pending', 'reset', 'status']);
 const OFF_PHRASES = new Set(['stop devanity', 'normal mode']);
@@ -70,9 +71,9 @@ function respond(intent) {
   return '';
 }
 
-// ---- human decisions (SPEC §7.3, F2.2b) --------------------------------------------------------
+// ---- human decisions --------------------------------------------------------
 //
-// GUARDRAIL 12: this is the ONLY place in the plugin that writes a decision with by:'human'.
+// No self-grant path: this is the ONLY place in the plugin that writes a decision with by:'human'.
 // It is trusted because the UserPromptSubmit payload's `prompt` is the text the human typed;
 // the model cannot author that payload and no tool call reaches this hook. The PreToolUse guard
 // (devanity-guard.js) only ever writes by:'agent' pending records and events. Do not add another
@@ -81,7 +82,25 @@ function respond(intent) {
 function pendingList(cwd) {
   const pending = ledger.pendingDecisions(cwd);
   if (!pending.length) return 'DEVANITY PENDING: none.';
-  const lines = pending.map((d) => `- ${d.id}  path: ${d.path || '(none)'}  kind: ${d.kind || 'human'}  queued by: ${d.by || '?'}  at: ${d.ts || '?'}`);
+  // What the one who decides needs: the question and its options when an agent asked one, and what
+  // the path guards (from the map) when the guard queued it.
+  const root = rt.gitToplevel(cwd) || cwd;
+  const loaded = rulesMod.loadRules(root);
+  // A record is data someone else wrote: a field of the wrong type reads as absent, never as a throw
+  // that blanks the whole listing.
+  const str = (v) => (typeof v === 'string' ? v : '');
+  const lines = pending.map((d) => {
+    const path = str(d.path);
+    const head = `- ${rt.clip(d.id, 40)}${str(d.question) ? `: ${rt.clip(d.question, 300)}` : ''}  path: ${rt.clip(path || '(none)', 120)}  queued by: ${rt.clip(str(d.by) || '?', 20)}  at: ${rt.clip(str(d.ts) || '?', 30)}`;
+    const rule = path && !loaded.errors.length ? rulesMod.ruleFor(loaded.rules, path) : null;
+    const detail = [
+      str(d.options) && `    options: ${rt.clip(d.options, 400)}`,
+      str(d.recommendation) && `    recommendation: ${rt.clip(d.recommendation, 400)}`,
+      str(d.if_undecided) && `    if undecided: ${rt.clip(d.if_undecided, 400)}`,
+      rule && Array.isArray(rule.invariants) && rule.invariants.length && `    never changes: ${rule.invariants.slice(0, 3).map((v) => rt.clip(v, 160)).join('; ')}${rule.invariants.length > 3 ? '; …' : ''}`,
+    ].filter(Boolean);
+    return [head, ...detail].join('\n');
+  });
   return `DEVANITY PENDING: ${pending.length} decision(s) waiting for a human (record one with \`/devanity decide <id> <option> [--path <glob>]\`):\n${lines.join('\n')}`;
 }
 
@@ -99,25 +118,26 @@ function decide(args, cwd, sessionId) {
   if (!ledger.ledgerDir(cwd)) return 'DEVANITY DECIDE: no ledger here (not a git repository); nothing recorded.';
   const known = ledger.decisions(cwd).find((d) => d.id === id);
   if (!known && !pathGlob) {
-    const ids = ledger.pendingDecisions(cwd).map((d) => `${d.id} (${d.path || 'no path'})`);
-    return `DEVANITY DECIDE: "${id}" is not a known decision; a human decision must name what it authorizes. Re-run with \`--path <glob>\`, or pick a pending id: ${ids.length ? ids.join(', ') : 'none pending'}.`;
+    const ids = ledger.pendingDecisions(cwd).map((d) => `${rt.clip(d.id, 40)} (${typeof d.path === 'string' && d.path ? rt.clip(d.path, 120) : 'no path'})`);
+    return `DEVANITY DECIDE: "${rt.clip(id, 40)}" is not a known decision; a human decision must name what it authorizes. Re-run with \`--path <glob>\`, or pick a pending id: ${ids.length ? ids.join(', ') : 'none pending'}.`;
   }
   // A "no" answers the question and authorizes nothing: recorded as rejected, never as decided.
   const rejected = REJECT.test(chosen.trim().toLowerCase().replace(/[.!?,;:]+$/, '').split(/[\s,;:!?.]+/)[0] || '') || REJECT_PHRASE.test(chosen.trim());
   const record = { id, status: rejected ? 'rejected' : 'decided', by: 'human', chosen, kind: (known && known.kind) || 'human' };
   if (pathGlob) record.path = pathGlob;
   // Scope: the decision serves the open change (and lives as long as it is open), else it expires
-  // after ledger.DECISION_TTL_MS; it never authorizes every later session (SPEC §0.5).
+  // after ledger.DECISION_TTL_MS; it never authorizes every later session.
   const change = ledger.openContract(cwd);
   record.contract = change ? change.id : null;   // null, not absent: the ledger merges field by field
   if (!ledger.append(cwd, 'decisions', record, sessionId)) return 'DEVANITY DECIDE: the ledger could not be written; nothing recorded.';
-  const scope = pathGlob || (known && known.path) || '(no path: authorizes no edit)';
-  if (rejected) return `DEVANITY DECISION REJECTED: ${id} = ${chosen}, by human. Guarded edits under ${scope} stay blocked.`;
+  const scope = pathGlob || (known && known.path) || null;
+  if (rejected) return `DEVANITY DECISION REJECTED: ${id} = ${chosen}, by human. ${scope ? `Guarded edits under ${scope} stay blocked.` : 'It authorizes no edit.'}`;
+  if (!scope) return `DEVANITY DECISION RECORDED: ${id} = ${chosen}, by human. It records the answer and authorizes no edit; give --path <glob> to authorize edits.`;
   const lasts = change ? `while change ${change.id} is open` : `for ${Math.round(ledger.DECISION_TTL_MS / 3600000)} h`;
   return `DEVANITY DECISION RECORDED: ${id} = ${chosen}, path ${scope}, by human. Guarded edits under that path are allowed ${lasts}.`;
 }
 
-// ---- open change (SPEC §7.2 risk table, F3.6) --------------------------------------------------
+// ---- open change --------------------------------------------------
 
 // `/devanity reset`: every open contract (unclosed, declared within 24 h) is marked ABANDONED with
 // reason `reset` (only this handler writes that reason, and only a typed whole message reaches it).

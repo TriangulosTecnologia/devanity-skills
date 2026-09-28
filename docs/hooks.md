@@ -2,7 +2,7 @@
 
 The hooks run only when devanity is installed as a Claude Code plugin (`plugin/hooks/hooks.json`); an `AGENTS.md`-only host gets the kernel and nothing below. Four entry points share three libraries: `devanity-runtime.js` (payload, kernel, fallbacks), `devanity-rules.js` (the `devanity.rules.json` loader and globs) and `devanity-ledger.js` (the state every hook reads). None of them asks the model anything, and every failure path allows and leaves a trace.
 
-The hooks stop the agent that errs or races for a green check, and they measure; they run with the agent's own permissions, so they are not a boundary against one that sets out to get around them. That boundary is the [reference CI job](#reference-ci-job-scriptsdevanity-rules-cimjs) with branch protection and `CODEOWNERS`; what each hook does not stop is under the guard's [Limits](#limits) and the oracle's [What it cannot prove](#what-it-cannot-prove).
+The hooks stop the agent that errs or races for a green check, and they measure; they run with the agent's own permissions, so they are not a boundary against one that sets out to get around them. That boundary is the [reference CI job](#reference-ci-job-pluginscriptsdevanity-rules-cimjs) with branch protection and `CODEOWNERS`; what each hook does not stop is under the guard's [Limits](#limits) and the oracle's [What it cannot prove](#what-it-cannot-prove).
 
 **Blocked?** Read the `Next step` line of the message ([examples](#the-messages-a-developer-sees)): a high-risk path needs a human to type `/devanity decide <id> <option> --path <glob>`; a command above the session's authority needs a human to raise `DEVANITY_AUTHORITY` or `devanity.rules.json#defaults.authority` (an unattended session is capped at `commit` by `#autonomy.authority`; merge and deploy are never its to run). To stop blocking, set `DEVANITY_GUARDS=off` ([defaults](#defaults-by-install-origin-spec-76)); `/devanity off` stops the injection and the oracle, not the guard.
 
@@ -12,7 +12,7 @@ The hooks stop the agent that errs or races for a green check, and they measure;
 | `UserPromptSubmit` | `devanity-mode.js` | the whole-message commands a human types: `on`, `off`, `status`, `reset`, `pending`, `decide` ([Commands](#commands-devanity-modejs)) |
 | `Stop` | `devanity-oracle.js` | measure the `devanity-proof` block the agent wrote ([Oracle](#oracle-devanity-oraclejs)) |
 | `SessionStart`, `SubagentStart` | `devanity-inject.js` | kernel, repository rules and the open change into context ([Injection](#injection-devanity-injectjs)) |
-| CI | `scripts/devanity-rules-ci.mjs` | the ceiling of the guard: the whole diff of a pull request ([Reference CI job](#reference-ci-job-scriptsdevanity-rules-cimjs)) |
+| CI | `plugin/scripts/devanity-rules-ci.mjs` | the ceiling of the guard: the whole diff of a pull request ([Reference CI job](#reference-ci-job-pluginscriptsdevanity-rules-cimjs)) |
 | — | `devanity-ledger.js` | the local state all of them read and write ([Ledger](#ledger-devanity-ledgerjs)) |
 
 ## Guard (`devanity-guard.js`)
@@ -36,11 +36,13 @@ The session's authority is, in order: `DEVANITY_AUTHORITY` when it names a valid
 
 ### The messages a developer sees
 
-A blocked call exits 2 and prints the reason to stderr (shown to the model) and as JSON `permissionDecision: "deny"` on stdout (the structured form the host prefers). A block is never silent.
+The `what it is` and `never changes` lines come from the path's `purpose` and `invariants` in the map (up to three, 160 characters each); a path that declares neither shows neither. A blocked call exits 2 and prints the reason to stderr (shown to the model) and as JSON `permissionDecision: "deny"` on stdout (the structured form the host prefers). A block is never silent.
 
 ```
 devanity: blocked Edit on billing/x.py
   rule: billing/** → tier high-risk (devanity.rules.json)
+  what it is: charges and refunds
+  never changes: amounts are integer cents; a refund never exceeds its charge
   A high-risk path needs a human decision recorded in the ledger before any tool may write to it.
   Next step: Record the human decision with: /devanity decide D-billing <option> --path billing/**
   (typed by the human as a whole message; the agent does not record it — propose the change and stop)
@@ -90,7 +92,7 @@ Type, as a whole message in the Claude Code prompt:
 - `decide` appends `{id, status: decided, by: human, chosen, path, contract?}` to `decisions.jsonl`. For an id that is not yet in the ledger, `--path` is mandatory: a human decision must name what it authorizes. For a pending id (queued by an autonomous session) the path is inherited.
 - An answer whose first word is `no`, `n`, `nope`, `reject`, `deny`, `decline`, `refuse`, `não`, `rejeitar`, `negado` or `recuso` (trailing punctuation ignored; also `no way`, `not now`, `don't`) records `status: rejected`: it answers the pending question and authorizes nothing (`DEVANITY DECISION REJECTED: … stay blocked`).
 - A decision is scoped: it is tied to the change open when it was typed and authorizes while that change is open; with no open change it expires after 24 hours. It never authorizes every later session.
-- `pending` lists the queue.
+- `pending` lists the queue: each item's question, options, recommendation and fate when an agent asked one in a `[DECIDE]` block, and the path's invariants when the guard queued it.
 - Both are handled by the `UserPromptSubmit` hook only. That event is trusted because its payload is the text the human typed; the model does not author it and no tool reaches it. No devanity tool, command or env var writes `by: human` for the agent (guardrail 12; `tests/guard.test.mjs` asserts it against the source); a direct write into the ledger file is a limit, see [Limits](#limits).
 - In an autonomous session (`DEVANITY_AUTONOMOUS=1`, `claude -p`, `CI=true`) a blocked high-risk edit is also queued once as a pending decision (`by: agent`), so the end-of-session summary can list it; unrelated work continues.
 
@@ -202,20 +204,21 @@ Map (high-risk: rung 4, propose and stop; core: rung 5, its invariants survive p
 
 This is the **repository map** (SPEC §0.4): one line per path that declares a `purpose`, `invariants`, `core` or the high-risk tier, high-risk first, then core. Hard cap: 1,600 characters (about 400 tokens). The fixed lines always fit; entries are added whole while they fit, and the rest is named (`… N more path(s) in devanity.rules.json`), never cut mid-line. No rules file, or an invalid one, adds nothing.
 
-## Reference CI job (`scripts/devanity-rules-ci.mjs`)
+## Reference CI job (`plugin/scripts/devanity-rules-ci.mjs`)
 
 The ceiling of what the `PreToolUse` guard can only estimate from a Bash command: in CI the whole diff is known.
 
 ```
-node scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-proof-required] [--root <dir>] [--plugin-dir <dir>] [--self-check]
+node plugin/scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-proof-required] [--root <dir>] [--plugin-dir <dir>] [--self-check]
 ```
 
-1. Validates `<root>/devanity.rules.json` with the plugin's loader (`plugin/hooks/devanity-rules.js`: `plugin/` beside `scripts/`, or `--plugin-dir` / `DEVANITY_PLUGIN_DIR`).
+1. Validates `<root>/devanity.rules.json` with the plugin's loader (`hooks/devanity-rules.js` of the plugin the script ships in, or `--plugin-dir` / `DEVANITY_PLUGIN_DIR`).
 2. Changed files: `git diff --numstat` from the merge base of `--base` (default `origin/main`, then `main`) to `HEAD`.
 3. The map stays alive: every `paths` glob must match a tracked file (`git ls-files`), or the job fails naming the dead entry.
 4. Per touched path: `delta` budgets (files and added lines per glob); the distinct `check` of every touched high-risk path is run in the repository root, and when the diff changes `devanity.rules.json` every check it declares is run too, so a check that does not pass cannot enter the map; a `devanity-proof:` block with a `status:` line is required in the PR body (`--pr-body-file`, else `GITHUB_EVENT_PATH` `pull_request.body`) when any touched path is tier normal or high-risk, unless `--no-proof-required`. Without any PR context (a push), the requirement is reported, not failed.
 5. Verifier sovereignty (SPEC §0.2): when the diff, together with code, removes or rewrites lines of existing test files (the `tests` globs), edits a file the map declares under `verifiers` (package scripts, test-runner config), or changes what the rules file makes a judge (a path's `check` or `tier`, `tests`, `defaults`, `verifiers`, `commands`, `autonomy`), the PR body must carry a `verifier-change: <why>` line, so review treats the change to the checks separately from the change they judge. Adding tests next to a fix is not a verifier change.
-6. Exit 1 with the list of failures, 0 otherwise.
+6. **What was at stake**, printed and appended to the job summary (`$GITHUB_STEP_SUMMARY`): each touched path the map says something about, with its purpose and invariants, so the reviewer sees what the change could break without trusting what the agent wrote. For each touched high-risk path it adds the **dominance certificate**: it holds when the change satisfies what a human already declared (the path's check passes, no verifier or instruction file changed, the delta budget holds), and otherwise names what failed. The certificate is observation only: it never releases a path and never changes the verdict, so its rate (how many blocks it would have spared, and whether any of those would have been wrong) is measured before anyone turns it on.
+7. Exit 1 with the list of failures, 0 otherwise.
 
 `--self-check` is the dogfood mode: this repository's own `devanity.rules.json` is validated and steps 2–5 run on `HEAD~1..HEAD` (the checks execute) without a PR body (`.github/workflows/validate.yml` runs it; a shallow clone with no parent validates the rules and reports an empty change set).
 
@@ -232,7 +235,7 @@ This repository's own rules (`devanity.rules.json`) are its map: `plugin/hooks/*
 | file | written by | record |
 |---|---|---|
 | `contracts.jsonl` | `Stop` (a `devanity-contract:` block); `/devanity reset` | `{id, phase, intent?, scope?, forbidden?, proof?, pending?, reason?}`; the latest record per id wins field by field |
-| `decisions.jsonl` | `PreToolUse` guard (`by: agent`, `status: pending`); `/devanity decide` (the only hook that writes `by: human`) | `{id, path?, kind, status: pending\|decided\|rejected, by, chosen?, contract?}`; latest per id wins |
+| `decisions.jsonl` | `PreToolUse` guard and the `Stop` hook for a blocking `[DECIDE]` block (both `by: agent`, `status: pending`); `/devanity decide` (the only hook that writes `by: human`) | `{id, path?, kind, status: pending\|decided\|rejected, by, chosen?, contract?, question?, options?, recommendation?, if_undecided?}`; latest per id wins, field by field, so an answer keeps its question |
 | `proofs.jsonl` | `Stop` oracle | `{kind: 'proof', contract, check, agent_check, head, failed_before, passed_after, status, agent_status, probes, pending, measured, reason}` |
 | `events.jsonl` | guard, oracle, inject | `{kind: blocked \| would_block \| false_ready \| unmeasured \| rules_invalid \| guard_payload_missing \| guard_error \| oracle_error \| inject_truncated, …}` |
 

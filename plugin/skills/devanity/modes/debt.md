@@ -11,7 +11,7 @@ The outer loop's recurring engine: every deliberate shortcut, every decision sti
 1. **Code markers:** `grep -rnE '(#|//|--|<!--) ?deferred:' .` skipping `node_modules`, `.git`, build output (add comment prefixes your stack uses). Each hit is one row; its age is `git blame -L<line>,<line>`.
 2. **Pending decisions:** the session's queue and every `pending` entry of `<git-common-dir>/devanity/decisions.jsonl`.
 3. **Ledger:** `node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-ledger.js" stats --json` for the counts, then the records beside it: `events.jsonl` (`blocked`, `would_block` with `path` or `command` and `rule`; `false_ready` with `check`; `unmeasured` with `paths`), `proofs.jsonl` (`status`, `agent_status`, `measured`, `reason`, `contract`), `contracts.jsonl` (the `scope` that places a proof on paths). A proof with `measured: null` reads by its `reason`: `no declared check…` is a `VERIFIED` claim nothing could measure (it pairs with an `unmeasured` event); no `reason` with an `agent_status` other than `VERIFIED` is an honest `NOT_VERIFIED`, which claims nothing and promotes nothing. Skip a torn last line. No ledger → say so and continue.
-4. **Hotspots:** the ranking of `modes/audit.md` over the whole repository.
+4. **Hotspots:** `node "${CLAUDE_PLUGIN_ROOT}/scripts/hotspots.mjs"` over the whole repository.
 
 ## Promote
 

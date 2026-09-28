@@ -1,6 +1,6 @@
 'use strict';
 // devanity — shared helpers for the hook scripts (Node >= 18, no npm dependencies).
-// Hook contract (SPEC §7.2): never hang the session, never crash, BOM stripped
+// Hook contract: never hang the session, never crash, BOM stripped
 // before JSON.parse, every write wrapped. Host: Claude Code only in v1; nothing
 // here depends on a Claude-specific API beyond env vars and stdio, so another
 // host that speaks the same hook protocol would not break it.
@@ -141,7 +141,7 @@ function readDevanityConfig() {
   }
 }
 
-// Whether the guards BLOCK or only RECORD (SPEC §7.6), decided in one place for the PreToolUse
+// Whether the guards BLOCK or only RECORD, decided in one place for the PreToolUse
 // guard, the Stop oracle and the rules context alike: DEVANITY_GUARDS on/off wins, then
 // config.json {"guards": …}, else "rules present and valid". Returns 'on' | 'off' | null for the
 // override alone (guardsOverride) and the final boolean given the loaded rules (guardsEnforcing).
@@ -204,6 +204,16 @@ function readStdinJson(onDone, timeoutMs = STDIN_FALLBACK_MS) {
   setTimeout(finish, timeoutMs).unref();
 }
 
+// One line of text a person reads: whitespace and control characters (newlines, NEL, terminal
+// escapes) collapsed, so no field can forge another line, and cut at `max` code points, never inside
+// a surrogate pair. A value that cannot become text (a record someone edited by hand) reads as empty.
+function clip(text, max = 160) {
+  let s;
+  try { s = String(text == null ? '' : text); } catch (e) { s = ''; }
+  const chars = Array.from(s.replace(/[\s\u0000-\u001F\u007F-\u009F]+/g, ' ').trim());
+  return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : chars.join('');
+}
+
 // The repository root for cwd, or null outside git. Every hook that needs it calls this one: a hook
 // never hangs the session, so git gets a deadline.
 function gitToplevel(cwd) {
@@ -249,6 +259,7 @@ module.exports = {
   VERIFIER_NOTE,
   agentRole,
   configDir,
+  clip,
   emit,
   errorTrace,
   exitSoon,

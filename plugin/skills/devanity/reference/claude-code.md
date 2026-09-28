@@ -21,7 +21,7 @@ What the host provides and what the plugin enforces today. Every other rule in t
 | oracle | Stop | re-runs the `devanity-proof` check on HEAD plus the test overlay and on the working tree; rewrites an unsupported claim to `NOT_VERIFIED` and blocks the turn once; records `devanity-contract` |
 | ledger | (library) | keeps decisions, proofs, contracts and events under `<git-common-dir>/devanity/` |
 
-The guards block only with a valid `devanity.rules.json` (or `DEVANITY_GUARDS=on`); otherwise they record `would_block`. Bash detection is a heuristic; the reference CI job (`scripts/devanity-rules-ci.mjs`) is the ceiling. The plugin repository documents each hook in `docs/hooks.md`.
+The guards block only with a valid `devanity.rules.json` (or `DEVANITY_GUARDS=on`); otherwise they record `would_block`. Bash detection is a heuristic; the reference CI job (`${CLAUDE_PLUGIN_ROOT}/scripts/devanity-rules-ci.mjs`) is the ceiling. Each hook is documented at https://github.com/usedevanity/skills/blob/main/docs/hooks.md.
 
 Held by the model alone: a read-only mode writes nothing unless the user asks for a record; a writing mode writes one approved unit; the adjudicator runs no command.
 

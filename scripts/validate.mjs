@@ -4,7 +4,7 @@
 // Checks the few invariants that break silently; deliberately NOT a markdown/prose linter.
 // Run: node scripts/validate.mjs   ·   Test: node --test tests/validate.test.mjs
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname, resolve, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
@@ -377,10 +377,58 @@ export function checkRepository(root) {
   // session runs or the init mode copies, carries the licence, and reaches nothing outside itself.
   const market = parseJson('.claude-plugin/marketplace.json');
   if (market && (market.plugins ?? []).map((p) => p.source).join(',') !== './plugin') fail('.claude-plugin/marketplace.json must install ./plugin, the one installable unit');
-  const unit = ['.claude-plugin', 'LICENCE', 'agents', 'hooks', 'skills', 'templates'];
+  const unit = ['.claude-plugin', 'LICENCE', 'agents', 'hooks', 'scripts', 'skills', 'templates'];
   const shipped = existsSync(join(root, 'plugin')) ? readdirSync(join(root, 'plugin')).sort() : [];
   if (shipped.join(',') !== unit.join(',')) fail(`plugin/ must hold exactly ${unit.join(', ')} (what installs is what runs); found: ${shipped.join(', ')}`);
   if (existsSync(join(root, 'plugin/LICENCE')) && read('plugin/LICENCE') !== read('LICENCE')) fail('plugin/LICENCE must be a copy of LICENCE: the licence travels with what installs');
+  // Every file under plugin/, whatever its extension (a local install copies the directory as it is
+  // on disk); binary files are not text and cite nothing.
+  const pluginFiles = [];
+  const walkPlugin = (dir) => {
+    for (const name of readdirSync(dir)) {
+      const path = join(dir, name);
+      if (statSync(path).isDirectory()) walkPlugin(path);
+      else if (!readFileSync(path).includes(0)) pluginFiles.push(path);
+    }
+  };
+  if (existsSync(join(root, 'plugin'))) walkPlugin(join(root, 'plugin'));
+  // Every ${CLAUDE_PLUGIN_ROOT}/<path> the plugin names resolves inside it: that variable is the
+  // installed copy's root, so a path outside plugin/ is a command that fails on the user's machine.
+  for (const file of pluginFiles) {
+    const rel = file.slice(root.length + 1);
+    // The expansion as the shell reads it: `$VAR`, or `${VAR…}` up to its own closing brace, whatever
+    // operator it carries (`:-`, `-`, `:?`, `%`, one nested `${…}`), then an optional closing quote,
+    // bare or escaped inside hooks.json's JSON, then the path. Each character has one way to match,
+    // so the scan is linear. A doubled slash is the same path to the shell: `//..` still climbs out.
+    const EXPANSION = /\$(?:\{CLAUDE_PLUGIN_ROOT(?!\w)(?:[^{}$]|\$(?!\{)|\$\{[^{}]*\})*\}|CLAUDE_PLUGIN_ROOT\b)\\?["']?\/([A-Za-z0-9_./-]+)/g;
+    for (const m of readFileSync(file, 'utf8').matchAll(EXPANSION)) {
+      const target = posix.normalize(m[1].replace(/^\/+/, ''));
+      if (target.startsWith('..') || !existsSync(join(root, 'plugin', target))) fail(`${rel} runs \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which is not in plugin/: an installed copy has no such file`);
+    }
+  }
+
+  // What installs cites nothing that does not install with it: the maintainer's SPEC and PLAN stay in
+  // the repository, so a pointer to them from plugin/ is a pointer an installed copy cannot follow.
+  // SPEC and PLAN in capitals only: `plan` is a mode. A feature id is dotted (F2.2b): bare F1 is a
+  // phase, a key or a score. A guardrail number has one or two digits. A docs/ or evals/ path (bare,
+  // or after ./) is a citation when it names something inside them in this repository, with or
+  // without .md: a reader's own docs/ is not one, unless its name is also one of this repository's,
+  // where an installed reader cannot tell the two apart either, so the sentence is reworded. URLs
+  // are skipped: they resolve anywhere.
+  const cited = (line) => {
+    const bare = line.replace(/https?:\/\/\S+/g, '');
+    const repoPath = [...bare.matchAll(/(?<![\w.-])(?<!(?<!\.)\/)(?:docs|evals)\/[\w.-][\w./-]*/g)]
+      .map((m) => m[0].replace(/[./]+$/, ''))
+      .find((rel) => rel.includes('/') && (existsSync(join(root, rel)) || existsSync(join(root, `${rel}.md`))));   // a name inside, not the bare directory
+    return bare.match(/\bSPEC\b|\bPLAN\b|\bF[0-9]+\.[0-9]+[a-z]?\b|\bCONTRIBUTING\.md\b/) || bare.match(/\bguard-?rails?\s*[-#]?\s*[0-9]{1,2}\b/i) || (repoPath && [repoPath]);
+  };
+  for (const file of pluginFiles) {
+    const rel = file.slice(root.length + 1);
+    readFileSync(file, 'utf8').split('\n').forEach((line, i) => {
+      const hit = cited(line);
+      if (hit) fail(`${rel}:${i + 1} cites "${hit[0].trim()}", which does not install with the plugin; state the reason in place`);
+    });
+  }
   for (const name of existsSync(join(root, 'plugin/hooks')) ? readdirSync(join(root, 'plugin/hooks')) : []) {
     if (/\.\.[\\/]\.\.|'\.\.', '\.\.'/.test(read(`plugin/hooks/${name}`))) fail(`plugin/hooks/${name} reaches outside the plugin; an installed copy has nothing there`);
   }

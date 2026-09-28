@@ -45,13 +45,7 @@ A surface is one file; for JSDoc/TSDoc, one file's doc blocks, whose claims tag 
 
 ## Hotspots
 
-Change frequency, from `git log` alone:
-
-```txt
-git log -n 300 --no-merges --format= --name-only -- <scope…> | grep . | grep -Fxf <(git ls-files) | sort | uniq -c | sort -rn | head -20
-```
-
-The window is the last 300 commits from HEAD, never a date relative to today, so the same HEAD ranks the same; paths that no longer exist drop out. Fewer commits than the window → the ranking covers the whole history; say so. Priority is frequency × complexity (the ratchet's metric when one runs, else line count, generated files excluded). A shallow clone (`git rev-parse --is-shallow-repository`) makes frequency `UNKNOWN`; never extrapolate.
+Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/hotspots.mjs" -- <scope…>` and cite its table; never recount by hand. It ranks tracked files by change frequency over the last 300 commits from HEAD (so the same HEAD ranks the same) times their line count, lockfiles and minified output excluded, and says when the ranking covers the whole history. It prints `frequency UNKNOWN` on a shallow clone: report that, never extrapolate. When a ratchet's metric runs, rank by it instead of line count.
 
 ## Map proposal
 
@@ -73,7 +67,7 @@ Show the whole file. The guards read it, so writing it is a hook-affecting chang
 A ratchet freezes the legacy in a baseline and fails only what gets worse. Propose one, as a finding, for each class a gate can decide that recurs or sits in a top hotspot:
 
 - **Tool:** one the repository already runs first; otherwise the stack's standard (Foundations, `reference/quality.md`). It is the repository's dependency, proposed for its PR; devanity never adds one.
-- **Threshold:** measured, never a default. Run the metric over the scope, cite the distribution (median, p90, max), and set the limit where only genuine outliers report. Today's outliers go into the baseline, never into a looser limit. A flat distribution with no outliers → the limit is today's max, and the baseline is empty.
+- **Threshold:** measured, never a default. Run the metric over the scope and pipe one `<value> <file or function>` line per unit into `node "${CLAUDE_PLUGIN_ROOT}/scripts/calibrate.mjs"`; cite its median, p90 and max, and take its limit and baseline: the limit sits where only genuine outliers report, and today's outliers go into the baseline, never into a looser limit.
 - **Where it fires:** a CI step, or the map's `check`. A new dependency or a CI change is a trade: propose and stop.
 
 ## Output

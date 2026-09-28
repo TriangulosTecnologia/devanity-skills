@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// devanity — Stop hook: the proof oracle (SPEC §7.2 Stop row, §7.4; PLAN F2.4).
+// devanity — Stop hook: the proof oracle.
 //
 // Fires only when the last assistant message carries a `devanity-proof:` block. If that block
 // claims VERIFIED, the oracle measures the claim instead of trusting it: the declared check must
@@ -12,8 +12,8 @@
 // What it never does: run when there is no block, police prose, block a claim it cannot measure
 // (outside git, no check, guards recording), re-run an honest NOT_VERIFIED, or hang the session.
 //
-// F3.1: the same pass persists a `devanity-contract:` block (the change's lifecycle phase) to
-// contracts.jsonl. It is recorded, never measured or blocked; docs/hooks.md (Ledger) has the grammar.
+// The same pass persists a `devanity-contract:` block (the change's lifecycle phase) to
+// contracts.jsonl. It is recorded, never measured or blocked; CONTRACT_KEYS below is its grammar.
 //
 // Host contract confirmed against Claude Code 2.1.281: the payload carries last_assistant_message,
 // transcript_path, stop_hook_active, cwd, session_id; `{"decision":"block","reason":…}` on stdout
@@ -31,7 +31,7 @@ const ledger = require('./devanity-ledger');
 
 const DEFAULT_TIMEOUT_MS = 120000;
 const BLOCK_KEYS = ['contract', 'check', 'baseline', 'failed_before', 'passed_after', 'probes', 'status', 'pending', 'pending_decisions'];
-// F3.1: the lifecycle block, a compact projection of the Change Contract; persisted, never enforced.
+// The lifecycle block, a compact projection of the Change Contract; persisted, never enforced.
 const CONTRACT_KEYS = ['id', 'phase', 'intent', 'scope', 'forbidden', 'proof', 'pending'];
 const REASONS = {
   passedBefore: 'check passed before the fix (no oracle)',
@@ -84,6 +84,76 @@ function findContractBlock(text) {
 }
 
 // Appends the contract record: the block's seven fields, latest per id wins (see ledger.contracts).
+// `[DECIDE]` blocks (reference/vocabulary.md, Decision): a blocking one becomes a pending decision
+// carrying its question, options and recommendation, so the human who answers later, from
+// `/devanity pending` or a new session, decides from the block and not from an id. Dormant ones
+// may sleep and are not queued. Recorded by the agent, as pending: it authorizes nothing.
+// Line-anchored and backtracking-free: the headline's prefix is matched, and its closing `**` is
+// checked by string, so no line can make the Stop hook spin. Lines inside a code fence are examples;
+// a fence closes only on its opener's character, at least as long, alone on the line (CommonMark).
+// A block's fields are the indented lines right under it, up to the next headline: linear in the
+// message, however many headlines it holds.
+const DECIDE_HEAD = /^\s*-\s+\*\*\[DECIDE\]\[(blocking|dormant)\]\[(G-\d{3,})\]\[([a-z]+)\]/;
+const DECIDE_FIELD = /^\s+-\s+(decision|context|options|recommendation|if undecided):/;
+const DECIDE_LINE_MAX = 2000;
+const DECIDE_FIELDS_MAX = 10;
+const DECIDE_PER_MESSAGE = 20;   // pending records one message may add; the rest are a flood, not questions
+const FENCE_OPEN = /^\s*(?:(`{3,})[^`]*$|(~{3,}))/;   // a backtick fence's info string holds no backtick
+const FENCE_CLOSE = /^\s*(`{3,}|~{3,})\s*$/;
+function findDecideBlocks(text) {
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  const out = [];
+  let fence = null;
+  for (let i = 0; i < lines.length; i++) {
+    // Fences first, on every line: a long line still opens or closes one (both patterns are linear).
+    if (fence) {
+      const c = FENCE_CLOSE.exec(lines[i]);
+      if (c && c[1][0] === fence[0] && c[1].length >= fence.length) fence = null;
+      continue;
+    }
+    const o = FENCE_OPEN.exec(lines[i]);
+    if (o) { fence = o[1] || o[2]; continue; }
+    if (lines[i].length > DECIDE_LINE_MAX) continue;
+    const h = DECIDE_HEAD.exec(lines[i]);
+    if (!h) continue;
+    const rest = lines[i].slice(h[0].length).trim();
+    if (!rest.endsWith('**')) continue;
+    const b = { status: h[1], id: h[2], kind: h[3], question: rt.clip(rest.slice(0, -2), 300) };
+    for (let j = i + 1; j < lines.length && j <= i + DECIDE_FIELDS_MAX && /^\s+\S/.test(lines[j]); j++) {
+      if (lines[j].length > DECIDE_LINE_MAX) continue;
+      if (DECIDE_HEAD.test(lines[j])) break;
+      const f = DECIDE_FIELD.exec(lines[j]);
+      if (f) b[f[1].replace(' ', '_')] = rt.clip(lines[j].slice(f[0].length), 400);
+    }
+    out.push(b);
+  }
+  return out;
+}
+
+function persistDecisions(root, blocks, sid) {
+  const all = ledger.decisions(root);   // read once: many blocks must not re-read the ledger each time
+  const ids = new Set(all.map((d) => d.id));
+  // Compared as they read: a question stored before clipping, or with other spacing, is the same one.
+  const asked = new Set(all.map((d) => rt.clip(d.question, 300)).filter(Boolean));
+  let added = 0;
+  for (const b of blocks) {
+    if (added >= DECIDE_PER_MESSAGE) break;
+    // Asked before, pending or answered: a recap never reopens a question a human already answered.
+    if (b.status !== 'blocking' || !b.question || asked.has(b.question)) continue;
+    // Never append over an id that holds another question or an answer: the latest record per id
+    // wins, so reusing it would rewrite a decision a human already made.
+    // deferred: no lock, like every ledger write; two Stop hooks in the same instant on one ledger can
+    // take the same free id and the later question replaces the earlier. Revisit when parallel
+    // sessions share a ledger in practice (worktrees of one repository do).
+    let id = b.id;
+    for (let k = 2; ids.has(id); k++) id = `${b.id}-${k}`;
+    const rec = { id, status: 'pending', by: 'agent', kind: 'human', decide_kind: b.kind, question: b.question };
+    for (const k of ['decision', 'context', 'options', 'recommendation', 'if_undecided']) if (b[k]) rec[k] = b[k];
+    if (!ledger.append(root, 'decisions', rec, sid)) break;   // an unwritable ledger fails the same way for the next one
+    ids.add(id); asked.add(b.question); added++;
+  }
+}
+
 function persistContract(root, fields, sid) {
   const rec = { id: fields.id, phase: fields.phase };
   for (const k of ['intent', 'scope', 'forbidden', 'proof', 'pending']) if (fields[k] !== undefined && fields[k] !== '') rec[k] = fields[k];
@@ -166,7 +236,7 @@ function changedPaths(root, head) {
 
 // The rules that choose the check: devanity.rules.json as committed at HEAD, the version a human
 // reviewed; before the first commit, the working tree's. A working-tree edit never chooses the check
-// that judges the same change (verifier sovereignty, SPEC §0.2).
+// that judges the same change (verifier sovereignty).
 function declaredRules(root, head) {
   if (!head) return rulesMod.loadRules(root);
   const shown = git(root, ['show', `${head}:${rulesMod.FILE}`]);
@@ -283,10 +353,12 @@ function decide(payload, env = process.env) {
     : (payload.transcript_path ? lastAssistantFromTranscript(payload.transcript_path) : '');
   const found = findProofBlock(message);
   const contract = findContractBlock(message);
-  if (!found && !contract) return { action: 'exit' };
+  const decides = findDecideBlocks(message);
+  if (!found && !contract && !decides.length) return { action: 'exit' };
   const sid = payload.session_id || null;
   const info = repoInfo(cwd);
   const root = info ? info.root : cwd;
+  if (decides.length) persistDecisions(root, decides, sid);
   // The lifecycle block is persisted first and independently of the proof: a message that only
   // declares a phase records it and lets the turn end.
   if (contract) persistContract(root, contract.fields, sid);
@@ -309,7 +381,7 @@ function decide(payload, env = process.env) {
     return { action: 'exit' };
   }
 
-  // Only the check the repository declares is ever run (verifier sovereignty, SPEC §0.5): the one
+  // Only the check the repository declares is ever run (verifier sovereignty): the one
   // the agent wrote is kept as `agent_check` and never executed. A claim the oracle cannot measure
   // is recorded, never enforced: outside git there is no baseline and no ledger; with guards
   // recording there is no authority to block; with no declared check there is nothing the agent
@@ -356,7 +428,7 @@ function main() {
   });
 }
 
-module.exports = { REASONS, decide, findContractBlock, findProofBlock, lastAssistantFromTranscript, renderProofBlock };
+module.exports = { REASONS, decide, findContractBlock, findDecideBlocks, findProofBlock, lastAssistantFromTranscript, renderProofBlock };
 
 if (require.main === module) {
   try { main(); } catch (e) { rt.exitSoon(0); }

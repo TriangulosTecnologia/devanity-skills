@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
 import { validate, checkRelativeLinks, checkSkillTotal, KERNEL_TOKEN_CAP } from '../scripts/validate.mjs';
 
 const fm = (name, extra = '') => `---\nname: ${name}\ndescription: test skill\n${extra}---\n\n# ${name}\n`;
@@ -121,4 +121,55 @@ test('skill total over its ratchet budget fails; within passes; a missing entry 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+// --- the repository around the skill (checkRepository), on a mutated copy of this repository ---
+import { cpSync, readFileSync as readText, appendFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { checkRepository } from '../scripts/validate.mjs';
+
+const repoRoot = join(dirname(new URL(import.meta.url).pathname), '..');
+const withRepoCopy = (fn) => {
+  const dir = mkdtempSync(join(tmpdir(), 'repotest-'));
+  try {
+    for (const f of spawnSync('git', ['ls-files'], { cwd: repoRoot, encoding: 'utf8' }).stdout.trim().split('\n')) {
+      mkdirSync(dirname(join(dir, f)), { recursive: true });
+      cpSync(join(repoRoot, f), join(dir, f));
+    }
+    fn(dir);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+};
+
+test('the repository copy passes; each way of pointing outside the installed plugin fails', () => {
+  withRepoCopy((dir) => {
+    assert.deepEqual(checkRepository(dir), []);
+    const hook = join(dir, 'plugin/hooks/devanity-mode.js');
+    const original = readText(hook, 'utf8');
+    for (const line of ['// GUARDRAIL 13', '// Guardrail 13 applies', '// see PLAN.', '// (F2.2b)', '// the grammar is in docs/hooks.md', '// see CONTRIBUTING.md',
+      '// node "${CLAUDE_PLUGIN_ROOT}/../scripts/validate.mjs"', '// node "$CLAUDE_PLUGIN_ROOT/scripts/nope.mjs"', '// ${CLAUDE_PLUGIN_ROOT}/scripts/../../scripts/kernel.mjs',
+      '// guardrail  12', '// guardrail-12', '// Guardrails #12', '// node "${CLAUDE_PLUGIN_ROOT}"/scripts/nope.mjs',
+      '// "command": "node \\"${CLAUDE_PLUGIN_ROOT}\\"/../scripts/validate.mjs"', '// ${CLAUDE_PLUGIN_ROOT}//../hooks/devanity-mode.js', '// ${CLAUDE_PLUGIN_ROOT:-.}/../x.mjs',
+      '// ${CLAUDE_PLUGIN_ROOT:-${HOME}}/../x.mjs', '// node ${CLAUDE_PLUGIN_ROOT:?unset}/../scripts/validate.mjs', '// node ${CLAUDE_PLUGIN_ROOT-.}/../scripts/validate.mjs', '// ${CLAUDE_PLUGIN_ROOT%/}/../x.mjs',
+      `// \${CLAUDE_PLUGIN_ROOT:-${'d'.repeat(120)}}/../x.mjs`, '// the grammar is in ./docs/hooks.md', '// see docs/hooks for the grammar', '// guard-rail 12', '// see evals/RUNBOOK.md', '// evals/kernel-sentences.md']) {
+      writeFileSync(hook, original); appendFileSync(hook, `\n${line}\n`);
+      assert.ok(checkRepository(dir).some((e) => e.includes('plugin/hooks/devanity-mode.js')), `not caught: ${line}`);
+    }
+    writeFileSync(hook, original);
+    for (const ok of ['// the plan mode, then /devanity plan', '// an F1 score, press F5', '// https://github.com/usedevanity/skills/tree/main/evals/harness', '// Deterministic Guardrails',
+      '// Keep your own evals/ directory next to the code.', '// see docs/adr/0001-queue.md', '// press [F5] to reload, (F1) is help', '// Guardrails 2026 edition',
+      '// node ${CLAUDE_PLUGIN_ROOT:-/opt/x}/hooks/devanity-mode.js', '// node ${CLAUDE_PLUGIN_ROOT:-$HOME/.x}/hooks/devanity-mode.js',
+      "// const env = {ROOT:'${CLAUDE_PLUGIN_ROOT}',BIN:'/usr/bin'}", '// ${CLAUDE_PLUGIN_ROOT_DIR}/elsewhere/x.mjs', '// Write the decision record under your own docs/.', '// Keep the cases in your evals/...']) {
+      writeFileSync(hook, original); appendFileSync(hook, `\n${ok}\n`);
+      assert.deepEqual(checkRepository(dir), [], `false positive: ${ok}`);
+    }
+    writeFileSync(hook, original);
+    // A hostile line stays linear: no pattern scans ahead from every `${`.
+    appendFileSync(hook, `\n// \${CLAUDE_PLUGIN_ROOT:-${'${'.repeat(40000)}\n`);
+    const t = Date.now(); checkRepository(dir);
+    assert.ok(Date.now() - t < 1500, `validation took ${Date.now() - t} ms`);
+    writeFileSync(hook, original);
+    // Every file that installs is read, whatever its extension.
+    writeFileSync(join(dir, 'plugin/scripts/probe.js'), '// GUARDRAIL 12, see docs/hooks.md\n');
+    assert.ok(checkRepository(dir).some((e) => e.includes('plugin/scripts/probe.js')), 'a .js file under plugin/ is read');
+  });
 });
