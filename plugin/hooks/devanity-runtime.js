@@ -206,9 +206,11 @@ function readStdinJson(onDone, timeoutMs = STDIN_FALLBACK_MS) {
 
 // One line of text a person reads: whitespace and control characters (newlines, NEL, terminal
 // escapes) collapsed, so no field can forge another line, and cut at `max` code points, never inside
-// a surrogate pair.
+// a surrogate pair. A value that cannot become text (a record someone edited by hand) reads as empty.
 function clip(text, max = 160) {
-  const chars = Array.from(String(text == null ? '' : text).replace(/[\s\u0000-\u001F\u007F-\u009F]+/g, ' ').trim());
+  let s;
+  try { s = String(text == null ? '' : text); } catch (e) { s = ''; }
+  const chars = Array.from(s.replace(/[\s\u0000-\u001F\u007F-\u009F]+/g, ' ').trim());
   return chars.length > max ? `${chars.slice(0, max - 1).join('')}…` : chars.join('');
 }
 

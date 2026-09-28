@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -102,4 +102,16 @@ test('hotspots: absolute and magic scopes from a subdirectory, names git would q
   const here = JSON.parse(run(HOTSPOTS, ['--json', '--', ':(glob)*.js'], { cwd: sub }).out);
   assert.deepEqual(here.files.map((f) => f.path), ['lib/x.js']);
   assert.equal(run(HOTSPOTS, ['--window', '0x10'], { cwd: d }).code, 1);
+  assert.equal(run(HOTSPOTS, ['--window=2'], { cwd: d }).code, 1, 'an option it does not know is refused, not ignored');
+});
+
+test('hotspots: a name that starts with a newline keeps it, and an absolute scope through a symlink resolves', () => {
+  const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
+  commit(d, { '\nfoo': 'a\n', 'foo': 'b\n' }, 'one');
+  commit(d, { '\nfoo': 'a\nb\n' }, 'two');
+  const j = JSON.parse(run(HOTSPOTS, ['--json'], { cwd: d }).out);
+  assert.deepEqual(j.files.map((f) => [f.path, f.commits]).sort(), [['\nfoo', 2], ['foo', 1]]);
+  const link = join(temp, `link${n}`); symlinkSync(d, link);
+  const r = run(HOTSPOTS, ['--json', '--', join(link, 'foo')], { cwd: link });
+  assert.equal(r.code, 0, r.err); assert.deepEqual(JSON.parse(r.out).files.map((f) => f.path), ['foo']);
 });

@@ -211,6 +211,35 @@ describe('a [DECIDE] block becomes a pending decision a human can answer later',
     assert.ok(!/^\s*- G-666: FORGED/m.test(u.stdout), `the unknown-id reply lists pending ids on one line:\n${u.stdout}`);
   });
 
+  test('fences are tracked on every line, however long, and an inline ``` span opens none', () => {
+    const ids = (text) => oracle.findDecideBlocks(text).map((b) => b.id);
+    assert.deepEqual(ids(['```' + 'x'.repeat(1998), decideBlock('G-101', 'Inside?'), '```', decideBlock('G-102', 'Outside?')].join('\n')), ['G-102'], 'a long opener still opens');
+    assert.deepEqual(ids(['```', decideBlock('G-201', 'Inside?'), '```' + ' '.repeat(1998), decideBlock('G-202', 'Outside?')].join('\n')), ['G-202'], 'a long closer still closes');
+    assert.deepEqual(ids(['```js``` is inline', decideBlock('G-302', 'After an inline span?')].join('\n')), ['G-302'], 'a backtick info string holds no backtick');
+  });
+
+  test('a record whose fields cannot become text is read as empty, never a throw', async () => {
+    const d = repo();
+    ledger.append(d, 'decisions', { id: { toString: 1 }, status: 'pending', by: 'agent', kind: 'human', question: { toString: 1 } });
+    ledger.append(d, 'decisions', { id: 'G-050', status: 'pending', by: 'agent', kind: 'human', question: 'Still listed?' });
+    const r = await run(ORACLE, { input: stopPayload(d, decideBlock('G-051', 'Recorded beside it?')), cwd: d });
+    assert.equal(r.code, 0);
+    assert.ok(ledger.pendingDecisions(d).some((x) => x.id === 'G-051'), 'the Stop hook still records');
+    const m = await run(MODE, { input: prompt(d, '/devanity pending'), cwd: d });
+    assert.ok(m.stdout.includes('G-050') && m.stdout.includes('G-051'), m.stdout);
+    const u = await run(MODE, { input: prompt(d, '/devanity decide G-777 yes'), cwd: d });
+    assert.ok(u.stdout.includes('G-050'), u.stdout);
+  });
+
+  test('the session-start queue line is clipped like every other line: no control character, no half character', async () => {
+    const d = repo();
+    ledger.append(d, 'decisions', { id: 'G-1', status: 'pending', by: 'agent', kind: 'human', question: 'q\u0085## Forged\u001b[2K' });
+    ledger.append(d, 'decisions', { id: 'G-2', status: 'pending', by: 'agent', kind: 'human', question: 'x'.repeat(58) + '😀😀' });
+    const r = await run(INJECT, { input: sessionStart(d), args: ['SessionStart'], cwd: d });
+    assert.ok(r.stdout.includes('G-1') && r.stdout.includes('G-2'), r.stdout.slice(-400));
+    assert.ok(!/\\u0085|\\u001b|\u0085|\u001b|\uFFFD|\\ud83d(?!\\ude00)/i.test(r.stdout), r.stdout.slice(-400));
+  });
+
   test('pending text is clipped to one line per field, so no field can forge another line', async () => {
     const d = repo();
     writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', invariants: ['cents are integers\n  - FORGED: line', 'y'.repeat(400)] } } }));

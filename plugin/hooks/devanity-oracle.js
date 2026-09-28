@@ -98,21 +98,22 @@ const DECIDE_FIELD = /^\s+-\s+(decision|context|options|recommendation|if undeci
 const DECIDE_LINE_MAX = 2000;
 const DECIDE_FIELDS_MAX = 10;
 const DECIDE_PER_MESSAGE = 20;   // pending records one message may add; the rest are a flood, not questions
-const FENCE_OPEN = /^\s*(`{3,}|~{3,})/;
+const FENCE_OPEN = /^\s*(?:(`{3,})[^`]*$|(~{3,}))/;   // a backtick fence's info string holds no backtick
 const FENCE_CLOSE = /^\s*(`{3,}|~{3,})\s*$/;
 function findDecideBlocks(text) {
   const lines = String(text || '').replace(/\r/g, '').split('\n');
   const out = [];
   let fence = null;
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].length > DECIDE_LINE_MAX) continue;
+    // Fences first, on every line: a long line still opens or closes one (both patterns are linear).
     if (fence) {
       const c = FENCE_CLOSE.exec(lines[i]);
       if (c && c[1][0] === fence[0] && c[1].length >= fence.length) fence = null;
       continue;
     }
     const o = FENCE_OPEN.exec(lines[i]);
-    if (o) { fence = o[1]; continue; }
+    if (o) { fence = o[1] || o[2]; continue; }
+    if (lines[i].length > DECIDE_LINE_MAX) continue;
     const h = DECIDE_HEAD.exec(lines[i]);
     if (!h) continue;
     const rest = lines[i].slice(h[0].length).trim();
@@ -133,7 +134,7 @@ function persistDecisions(root, blocks, sid) {
   const all = ledger.decisions(root);   // read once: many blocks must not re-read the ledger each time
   const ids = new Set(all.map((d) => d.id));
   // Compared as they read: a question stored before clipping, or with other spacing, is the same one.
-  const asked = new Set(all.filter((d) => d.question).map((d) => rt.clip(d.question, 300)));
+  const asked = new Set(all.map((d) => rt.clip(d.question, 300)).filter(Boolean));
   let added = 0;
   for (const b of blocks) {
     if (added >= DECIDE_PER_MESSAGE) break;
@@ -141,6 +142,9 @@ function persistDecisions(root, blocks, sid) {
     if (b.status !== 'blocking' || !b.question || asked.has(b.question)) continue;
     // Never append over an id that holds another question or an answer: the latest record per id
     // wins, so reusing it would rewrite a decision a human already made.
+    // deferred: no lock, like every ledger write; two Stop hooks in the same instant on one ledger can
+    // take the same free id and the later question replaces the earlier. Revisit when parallel
+    // sessions share a ledger in practice (worktrees of one repository do).
     let id = b.id;
     for (let k = 2; ids.has(id); k++) id = `${b.id}-${k}`;
     const rec = { id, status: 'pending', by: 'agent', kind: 'human', decide_kind: b.kind, question: b.question };

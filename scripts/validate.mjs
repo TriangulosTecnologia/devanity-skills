@@ -396,8 +396,10 @@ export function checkRepository(root) {
   // installed copy's root, so a path outside plugin/ is a command that fails on the user's machine.
   for (const file of pluginFiles) {
     const rel = file.slice(root.length + 1);
-    for (const m of readFileSync(file, 'utf8').matchAll(/\$\{?CLAUDE_PLUGIN_ROOT\}?["']?\/([A-Za-z0-9_./-]+)/g)) {
-      const target = posix.normalize(m[1]);
+    // Braced or bare, with a `:-` default, quoted, or quoted inside JSON (hooks.json's commands); a
+    // doubled slash is the same path to the shell, so `//..` still climbs out.
+    for (const m of readFileSync(file, 'utf8').matchAll(/\$\{?CLAUDE_PLUGIN_ROOT(?::-[^}]*)?\}?\\?["']?\/([A-Za-z0-9_./-]+)/g)) {
+      const target = posix.normalize(m[1].replace(/^\/+/, ''));
       if (target.startsWith('..') || !existsSync(join(root, 'plugin', target))) fail(`${rel} runs \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which is not in plugin/: an installed copy has no such file`);
     }
   }
@@ -405,11 +407,11 @@ export function checkRepository(root) {
   // What installs cites nothing that does not install with it: the maintainer's SPEC and PLAN stay in
   // the repository, so a pointer to them from plugin/ is a pointer an installed copy cannot follow.
   // SPEC and PLAN in capitals only: `plan` is a mode. A feature id is dotted (F2.2b) or in
-  // parentheses (F12), so an F1 score or the F5 key is not one. URLs are skipped: they resolve anywhere.
+  // bracketed ((F12), [F12], (F12, F14)), so an F1 score or the F5 key is not one. URLs are skipped: they resolve anywhere.
   const cited = (line) => {
     const bare = line.replace(/https?:\/\/\S+/g, '');
-    return bare.match(/\bSPEC\b|\bPLAN\b|\bF[0-9]+\.[0-9]+[a-z]?\b|\(F[0-9]+(?:\.[0-9]+)?[a-z]?\)/) || bare.match(/\bguardrails?\s*[-#]?\s*[0-9]+/i)
-      || bare.match(/\bdocs\/(?:hooks|evolution)\b|\bCONTRIBUTING\.md\b|\bevals\/(?:harness|results|README)\b/);
+    return bare.match(/\bSPEC\b|\bPLAN\b|\bF[0-9]+\.[0-9]+[a-z]?\b|[(\[]F[0-9]+(?:\.[0-9]+)?[a-z]?\b/) || bare.match(/\bguard-?rails?\s*[-#]?\s*[0-9]+/i)
+      || bare.match(/\bdocs\/(?:hooks|evolution)\b|\bCONTRIBUTING\.md\b|\bevals\//);
   };
   for (const file of pluginFiles) {
     const rel = file.slice(root.length + 1);

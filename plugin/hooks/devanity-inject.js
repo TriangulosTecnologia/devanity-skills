@@ -68,10 +68,7 @@ function rulesContext(cwd) {
 }
 
 // One ledger field on one line, clipped: a hand-edited ledger must not break the section shape.
-function clip(v, max = CHANGE_FIELD_MAX_CHARS) {
-  const s = String(v === undefined || v === null ? '' : v).replace(/\s+/g, ' ').trim();
-  return s.length > max ? s.slice(0, max - 1) + '…' : s;
-}
+const clip = (v, max = CHANGE_FIELD_MAX_CHARS) => rt.clip(v, max);
 
 function phaseLine(c) {
   if (c.phase === 'EXECUTE') return `EXECUTE: implement inside scope; the proof is ${clip(c.proof) || '<undeclared>'}; forbidden: ${clip(c.forbidden) || 'none declared'}.`;
@@ -95,7 +92,7 @@ function changeContext(cwd) {
 function queueContext(cwd) {
   const pending = ledger.pendingDecisions(cwd);
   if (!pending.length) return '';
-  const named = pending.slice(0, 5).map((d) => `${clip(d.id, 30)} (${clip(d.question || d.path || 'no path', 60)})`).join(', ');
+  const named = pending.slice(0, 5).map((d) => `${clip(d.id, 30)} (${clip(d.question, 60) || (typeof d.path === 'string' && clip(d.path, 60)) || 'no path'})`).join(', ');
   return `Pending human decisions (${pending.length}): ${named}${pending.length > 5 ? ', …' : ''}. Record one with /devanity decide <id> <option>.`;
 }
 

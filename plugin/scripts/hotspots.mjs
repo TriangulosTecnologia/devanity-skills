@@ -4,7 +4,7 @@
 // same HEAD ranks the same. A shallow clone cannot count history: frequency is UNKNOWN, never guessed.
 //   node hotspots.mjs [--window 300] [--top 20] [--json] [-- <scope…>]
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, posix, relative, sep } from 'node:path';
 
 const argv = process.argv.slice(2);
@@ -12,6 +12,10 @@ const dash = argv.indexOf('--');
 const opts = dash >= 0 ? argv.slice(0, dash) : argv;
 const scope = dash >= 0 ? argv.slice(dash + 1) : [];
 const usage = (why) => { process.stderr.write(`hotspots: ${why}\nusage: node hotspots.mjs [--window <commits>] [--top <n>] [--json] [-- <scope…>]\n`); process.exit(1); };
+for (let i = 0; i < opts.length; i++) {
+  if (opts[i] === '--window' || opts[i] === '--top') i++;
+  else if (opts[i] !== '--json') usage(`unknown argument ${opts[i]}`);
+}
 const opt = (name, fallback) => {
   const i = opts.indexOf(name);
   if (i < 0) return fallback;
@@ -29,10 +33,12 @@ const top = raw(process.cwd(), 'rev-parse', '--show-toplevel');
 if (top.status !== 0) usage('not inside a git repository');
 const ROOT = top.stdout.trim();
 const prefix = raw(process.cwd(), 'rev-parse', '--show-prefix').stdout.trim();
+// The root git reports is a real path; an absolute scope through a symlink resolves to it too.
+const real = (s) => { try { return realpathSync(s); } catch { return s; } };
 // A scope is relative to where the command runs, as git reads it: an absolute path is made relative
 // to the root, and a pathspec with magic (`:(glob)…`, `:/…`) is git's to resolve, from here.
 const scoped = scope.map((s) => s.startsWith(':') ? s
-  : isAbsolute(s) ? relative(ROOT, s).split(sep).join('/') || '.'
+  : isAbsolute(s) ? relative(ROOT, real(s)).split(sep).join('/') || '.'
   : posix.normalize(prefix + s));
 const magic = scope.some((s) => s.startsWith(':'));
 const git = (...args) => {
@@ -55,8 +61,14 @@ if (git('rev-parse', '--is-shallow-repository').trim() === 'true') {
   const scopeArgs = magic ? scope : scoped;
   const tracked = new Set(listed('ls-files', '-z', '--full-name', '--', ...scopeArgs).filter(Boolean));
   const counts = new Map();
-  for (const entry of listed('log', '-z', '-n', String(WINDOW), '--no-merges', '--format=', '--name-only', '--', ...scopeArgs)) {
-    const p = entry.replace(/^\n+/, '');   // -z still separates commits with a newline
+  // Each commit opens with a header token no path can equal (a path never ends in `/`); git puts one
+  // newline between it and the commit's first name, and that newline only, so a name may start with one.
+  const HEAD = '\x01/';   // --format=%x01/
+  let afterHead = false;
+  for (const token of listed('log', '-z', '-n', String(WINDOW), '--no-merges', '--format=%x01/', '--name-only', '--', ...scopeArgs)) {
+    if (token === HEAD) { afterHead = true; continue; }
+    const p = afterHead ? token.replace(/^\n/, '') : token;
+    afterHead = false;
     if (p && tracked.has(p) && !generated(p)) counts.set(p, (counts.get(p) || 0) + 1);
   }
   const lines = (p) => { try { const t = readFileSync(join(ROOT, p), 'utf8'); return t ? t.split('\n').length - (t.endsWith('\n') ? 1 : 0) : 0; } catch { return 0; } };
