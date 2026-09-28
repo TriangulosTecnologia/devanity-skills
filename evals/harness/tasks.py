@@ -151,13 +151,13 @@ def _result_text(workdir):
     try: return str(json.loads(cj.read_text(encoding="utf-8")).get("result") or "")
     except Exception: return ""
 
-_HARNESS_NAMES = {"__pycache__", "_compact.json", "_remote.git", "_failed"}
+_HARNESS_NAMES = {"__pycache__", "_compact.json", "_remote.git", "_failed", "_nudges.jsonl"}
 _HARNESS_RE = _re.compile(r"_claude(?:\.[\w-]+)*\.(?:json|txt)")     # _claude.json, _claude.turn2.stderr.txt
 
 def _harness_part(part):
     """A path part that is harness or VCS state, never the agent's delivery: dot dirs and files,
     and the entries the harness itself writes, by name (`_claude*.json`, `_claude*.stderr.txt`,
-    `_compact.json`, `_remote.git`, `_failed`, `__pycache__`). Any other `_name` is the agent's
+    `_compact.json`, `_remote.git`, `_failed`, `__pycache__`, the nudge arm's `_nudges.jsonl`). Any other `_name` is the agent's
     code (review G-040: `_email_norm.py` and `_search.py` were dropped as harness state)."""
     return part.startswith(".") or part in _HARNESS_NAMES or bool(_HARNESS_RE.fullmatch(part))
 

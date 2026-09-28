@@ -58,6 +58,7 @@ def selftest():
     failures += _selftest_ported()
     failures += _selftest_sequential()
     failures += _selftest_certificate()
+    failures += _selftest_experiment_arms()
     print(f"\nselftest: {'all instruments valid' if not failures else str(failures) + ' BROKEN'}")
     return failures
 
@@ -155,6 +156,82 @@ def _selftest_judged_text():
         text = source_text(fx, {"fixture": "x"})
     _check("search.py" in text and "return 2" in text and "KEEP_" not in text,
            f"a fixture task sends its git diff, not the template ({len(text)} chars)")
+    return fails
+
+def _selftest_experiment_arms():
+    """The V5 experiment arms (PLAN V5 agenda, 2026-09-28) are the candidate plus exactly their
+    declared difference, so a delta between them and `devanity` has one cause: devanity-examples
+    adds one kernel sentence, devanity-nudge adds one hook script behind a PostToolUse and a Stop
+    entry. The nudge hook is then run with node on each trigger: once per session, and silent
+    everywhere else."""
+    import build_plugins
+    fails = 0
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} experiment   {label}")
+        fails += 0 if ok else 1
+    unit = ROOT / "plugin"
+    def tree(d): return {str(p.relative_to(d)): p.read_bytes() for p in sorted(Path(d).rglob("*")) if p.is_file() and "__pycache__" not in p.parts}
+    cand = tree(unit)
+    for name in ("devanity-examples", "devanity-nudge"):
+        _check(ARMS.get(name, {}).get("plugins") == [name], f"{name} is an arm that loads exactly its plugin")
+    with tempfile.TemporaryDirectory() as d:
+        ex = tree(build_plugins.build_experiment("devanity-examples", Path(d) / "ex"))
+        nu_dir = build_plugins.build_experiment("devanity-nudge", Path(d) / "nu")
+        nu = tree(nu_dir)
+        skill = "skills/devanity/SKILL.md"
+        old, new = cand[skill].decode().splitlines(), ex.get(skill, b"").decode().splitlines()
+        added = [l for l in new if l not in old]
+        _check(len(new) == len(old) + 1 and added == [build_plugins.EXAMPLES_SENTENCE.rstrip("\n")]
+               and [l for l in new if l in old] == old, "devanity-examples: the kernel plus exactly one sentence")
+        same = lambda t, extra: set(t) == set(cand) | set(extra) and all(t[k] == cand[k] for k in cand if k not in (skill, ".claude-plugin/plugin.json", "hooks/hooks.json"))
+        _check(same(ex, []) and ex["hooks/hooks.json"] == cand["hooks/hooks.json"], "devanity-examples: every other file is the candidate's")
+        hooks_c = json.loads(cand["hooks/hooks.json"])["hooks"]; hooks_n = json.loads(nu["hooks/hooks.json"])["hooks"]
+        cmd = lambda e: [h["command"] for x in e for h in x["hooks"]]
+        _check(same(nu, ["hooks/devanity-nudge.js"]) and nu[skill] == cand[skill], "devanity-nudge: the candidate plus hooks/devanity-nudge.js, kernel untouched")
+        _check(set(hooks_n) == set(hooks_c) | {"PostToolUse"}
+               and all(hooks_n[k] == hooks_c[k] for k in hooks_c if k != "Stop")
+               and hooks_n["Stop"][:len(hooks_c["Stop"])] == hooks_c["Stop"]
+               and [c for c in cmd(hooks_n["Stop"]) if c not in cmd(hooks_c["Stop"])] == cmd(hooks_n["PostToolUse"])
+               and len(cmd(hooks_n["PostToolUse"])) == 1 and "devanity-nudge.js" in cmd(hooks_n["PostToolUse"])[0],
+               "devanity-nudge: hooks.json is the candidate's plus one PostToolUse and one Stop entry for the nudge")
+        if not shutil.which("node"):
+            _check(False, "node is required to run the nudge hook"); return fails
+        repo = Path(d) / "repo"; repo.mkdir()
+        for fn, text in {"pricing.py": "X = 1\n", "test_pricing.py": "import pricing\n", "CLAUDE.md": "# notes\n",
+                         "devanity.rules.json": json.dumps({"version": 1, "paths": {"pricing.py": {"check": "python3 -m unittest"}}})}.items():
+            (repo / fn).write_text(text, encoding="utf-8")
+        _git(repo, "init", "-q"); _git(repo, "add", "-A")
+        _git(repo, "-c", "user.email=a@b", "-c", "user.name=a", "commit", "-q", "-m", "base", "--no-verify")
+        run_id = os.urandom(4).hex()             # the hook keeps per-session state in the temp dir: fresh ids each run
+        def hook(payload):
+            payload = {**payload, "session_id": f"{run_id}-{payload['session_id']}"}
+            r = subprocess.run(["node", str(nu_dir / "hooks" / "devanity-nudge.js")], input=json.dumps({"cwd": str(repo), **payload}),
+                               env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(nu_dir), "CLAUDE_PROJECT_DIR": str(repo)},
+                               capture_output=True, text=True, timeout=30)
+            try: return json.loads(r.stdout) if r.stdout.strip() else {}
+            except ValueError: return {"unparsed": r.stdout}
+        edit = lambda sid, f: hook({"hook_event_name": "PostToolUse", "session_id": sid, "tool_name": "Edit", "tool_input": {"file_path": str(repo / f)}})
+        ctx = lambda out: (out.get("hookSpecificOutput") or {}).get("additionalContext", "")
+        first, second, third = edit("s1", "pricing.py"), edit("s1", "test_pricing.py"), edit("s1", "test_pricing.py")
+        _check(not first and "test" in ctx(second) and "\n" not in ctx(second) and not third,
+               "test edited with code: one line, once per session, never on the code edit alone")
+        _check(not edit("s2", "test_pricing.py"), "a test edited alone is silent")
+        _check("instruction" in ctx(edit("s3", "CLAUDE.md")), "an instruction file edited: one line")
+        (repo / "pricing.py").write_text("X = 2\n", encoding="utf-8")
+        stop = lambda sid, msg, active=False: hook({"hook_event_name": "Stop", "session_id": sid, "last_assistant_message": msg, "stop_hook_active": active})
+        blocked = stop("s4", "Done.")
+        _check(blocked.get("decision") == "block" and "python3 -m unittest" in blocked.get("reason", "") and "\n" not in blocked.get("reason", ""),
+               "Stop without a proof block on a path with a declared check: blocked once, with the check, in one line")
+        _check(not stop("s4", "Done."), "the same session is never blocked twice")
+        _check(not stop("s5", "Done.", active=True), "stop_hook_active: silent")
+        _check(not stop("s6", "Done.\n\ndevanity-proof:\n  check: python3 -m unittest\n  status: NOT_VERIFIED: no shell\n"), "a proof block present: silent")
+        log = [json.loads(l) for l in (repo / "_nudges.jsonl").read_text(encoding="utf-8").splitlines()] if (repo / "_nudges.jsonl").exists() else []
+        _check(sorted(e.get("trigger") for e in log) == ["instruction", "stop_without_proof", "test_with_code"],
+               f"every fire is logged to _nudges.jsonl ({len(log)} lines)")
+        from tasks import is_delivery
+        _check(not is_delivery(repo, repo / "_nudges.jsonl") and _cell_meta(repo)[0].get("nudges") == 3,
+               "the log is harness state, never delivery, and the cell's `nudges` counts it")
     return fails
 
 def _selftest_certificate():

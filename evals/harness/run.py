@@ -106,7 +106,12 @@ ARMS = {
     "devanity-released": {"plugins": ["devanity-released"], "prompt_prefix": "/devanity-released:maestro "},
     "devanity-v0":       {"plugins": ["devanity-v0"]},
     "devanity":          {"plugins": ["devanity"]},
+    # V5 experiment arms (PLAN agenda, 2026-09-28): the candidate plus one declared difference each
+    # (build_plugins.EXPERIMENTS), harness-only; run them with --arms, they are not the field
+    "devanity-examples": {"plugins": ["devanity-examples"]},
+    "devanity-nudge":    {"plugins": ["devanity-nudge"]},
 }
+FIELD = [a for a in ARMS if a not in ("devanity-examples", "devanity-nudge")]   # the default --arms
 MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-4-6", "opus": "claude-opus-4-8"}
 
 PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
@@ -118,6 +123,8 @@ _LOCAL_PLUGINS = {
     "devanity-released": "run `python3 evals/harness/build_plugins.py` (exports the released ref)",
     "devanity-v0":       "run `python3 evals/harness/build_plugins.py` (packages arms/devanity-v0)",
     "devanity":          "run `python3 evals/harness/build_plugins.py` (packages the working tree's plugin/skills/devanity)",
+    "devanity-examples": "run `python3 evals/harness/build_plugins.py` (the candidate plus one kernel sentence)",
+    "devanity-nudge":    "run `python3 evals/harness/build_plugins.py` (the candidate plus the nudge hook)",
 }
 
 def _env_key(name): return "DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_", name.upper())
@@ -379,6 +386,8 @@ def _cell_meta(workdir: Path):
     meta["timed_out"] = int(any("[KILLED after" in f.read_text(encoding="utf-8", errors="ignore")
                                 for f in err_files if f.exists()))
     meta["final_chars"] = len(result_text or "")        # answer length: caveman's axis, the rung-2 cost
+    nudges = workdir / "_nudges.jsonl"                   # the devanity-nudge arm's fires (build_plugins.EXPERIMENTS)
+    if nudges.is_file(): meta["nudges"] = sum(1 for ln in nudges.read_text(encoding="utf-8", errors="ignore").splitlines() if ln.strip())
     return meta, result_text
 
 # Every scorer but the fixture tasks' git diff imports and runs delivered code, and that code can
@@ -431,6 +440,7 @@ def require_container_to_score(task_ids):
 def score_workspace(task_id, arm, model, workdir: Path):
     require_container_to_score([task_id])
     meta, result_text = _cell_meta(workdir)
+    if arm == "devanity-nudge": meta.setdefault("nudges", 0)   # a cell of the arm with no fire is a 0, not a missing value
     fixture = bool(TASKS[task_id].get("fixture"))
     refused = fixture and fixture_git_refusal(workdir)          # review G-036: never run git on agent-written config
     stats = (dict.fromkeys(("files", "src_files", "total_loc", "src_loc", "test_files", "test_loc"), 0) if refused
@@ -645,7 +655,7 @@ def _compact_evidence(session_id, turn_no):
 # `<field>_rate` when present. drift = judge-rootcause standalone safe_rate - long-* t3_rootcause_rate
 # and queue_correct feed the F0.6 metrics; a task's `trap` field says which tasks share a trap.
 EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "compacted", "timed_out", "loosened", "propagated")
-MEAN_FIELDS = ("entropy_delta", "legibility")   # numeric per-cell fields, aggregated as `<field>_mean` over the cells that carry them
+MEAN_FIELDS = ("entropy_delta", "legibility", "nudges")   # numeric per-cell fields, aggregated as `<field>_mean` over the cells that carry them
 # The observed dominance certificate (tasks.certificate): defined only on a cell that touched a high-risk
 # path of its task's counterfactual map, so each rate is over those cells (`certify_n`), the blocks it could spare.
 DEFINED_RATES = ("certified", "certified_unsafe")
@@ -822,7 +832,7 @@ def main():
     ap.add_argument("--rescore", help="recompute metrics from a kept run dir (no API)")
     ap.add_argument("--task", help="single task id")
     ap.add_argument("--all", action="store_true", help="all tasks")
-    ap.add_argument("--arms", default=",".join(ARMS))
+    ap.add_argument("--arms", default=",".join(FIELD), help="default: the field; the experiment arms run only when named")
     ap.add_argument("--model", help="single model (shorthand for --models)")
     ap.add_argument("--models", default="haiku", help="comma list: haiku,sonnet,opus")
     ap.add_argument("--runs", type=int, default=1, help="cells per (task, arm, model), the most a sequential run spends")
