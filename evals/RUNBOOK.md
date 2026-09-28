@@ -35,7 +35,9 @@ Iteration rule (PLAN "Acompanhamento"): a gate that does not close after two ite
 ## This cloud environment
 
 - Docker: the daemon is not running at session start; `dockerd >/tmp/dockerd.log 2>&1 &` then wait for `docker info`. The image build needs `DEVANITY_HARNESS_CA_BUNDLE=/root/.ccr/ca-bundle.crt` (TLS-intercepting proxy) and, for a reference round, `DEVANITY_HARNESS_CLAUDE_VERSION` pinned to the CLI version the writeup names.
-- The host user is root: size-tier cells need `DEVANITY_HARNESS_PERMISSION_MODE=acceptEdits`; the container's `bench` user is unaffected.
+- The build secret reaches only the build: live cells in the container fail with `SELF_SIGNED_CERT_IN_CHAIN` until the same bundle is handed to the run, `DEVANITY_HARNESS_DOCKER_ARGS="-v /root/.ccr/ca-bundle.crt:/etc/devanity-ca.crt:ro -e NODE_EXTRA_CA_CERTS=/etc/devanity-ca.crt"`. Docker Hub may answer 429 to the base image: `DEVANITY_HARNESS_BASE_IMAGE=public.ecr.aws/docker/library/node:22-bookworm-slim`.
+- The host user is root: size-tier cells and the host `--smoke` need `DEVANITY_HARNESS_PERMISSION_MODE=acceptEdits`; the container's `bench` user is unaffected.
+- A subscription token works in place of the key: `CLAUDE_CODE_OAUTH_TOKEN` is passed through as-is (cost is then not attributable per run).
 - `claude -p` launched from inside a Claude Code session inherits its session id; multi-turn cells already pin their own.
 - Secrets enter only at session start: a key added to the environment is visible to the next session, not to a running one.
 - Disk: `runs/<stamp>/` keeps every workspace; a full round is several GB. Check free space before step 4 and delete nothing under `runs/` until `--rescore` and the writeup are done.
