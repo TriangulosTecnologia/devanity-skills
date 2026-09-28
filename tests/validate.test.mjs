@@ -149,7 +149,7 @@ test('the repository copy passes; each way of pointing outside the installed plu
       '// node "${CLAUDE_PLUGIN_ROOT}/../scripts/validate.mjs"', '// node "$CLAUDE_PLUGIN_ROOT/scripts/nope.mjs"', '// ${CLAUDE_PLUGIN_ROOT}/scripts/../../scripts/kernel.mjs',
       '// guardrail  12', '// guardrail-12', '// Guardrails #12', '// node "${CLAUDE_PLUGIN_ROOT}"/scripts/nope.mjs',
       '// "command": "node \\"${CLAUDE_PLUGIN_ROOT}\\"/../scripts/validate.mjs"', '// ${CLAUDE_PLUGIN_ROOT}//../hooks/devanity-mode.js', '// ${CLAUDE_PLUGIN_ROOT:-.}/../x.mjs',
-      '// ${CLAUDE_PLUGIN_ROOT:-${HOME}}/../x.mjs', '// guard-rail 12', '// see evals/RUNBOOK.md', '// evals/kernel-sentences.md']) {
+      '// ${CLAUDE_PLUGIN_ROOT:-${HOME}}/../x.mjs', '// the grammar is in ./docs/hooks.md', '// see docs/hooks for the grammar', '// guard-rail 12', '// see evals/RUNBOOK.md', '// evals/kernel-sentences.md']) {
       writeFileSync(hook, original); appendFileSync(hook, `\n${line}\n`);
       assert.ok(checkRepository(dir).some((e) => e.includes('plugin/hooks/devanity-mode.js')), `not caught: ${line}`);
     }
@@ -159,6 +159,11 @@ test('the repository copy passes; each way of pointing outside the installed plu
       writeFileSync(hook, original); appendFileSync(hook, `\n${ok}\n`);
       assert.deepEqual(checkRepository(dir), [], `false positive: ${ok}`);
     }
+    writeFileSync(hook, original);
+    // A hostile line stays linear: no pattern scans ahead from every `${`.
+    appendFileSync(hook, `\n// \${CLAUDE_PLUGIN_ROOT:-${'${'.repeat(40000)}\n`);
+    const t = Date.now(); checkRepository(dir);
+    assert.ok(Date.now() - t < 1500, `validation took ${Date.now() - t} ms`);
     writeFileSync(hook, original);
     // Every file that installs is read, whatever its extension.
     writeFileSync(join(dir, 'plugin/scripts/probe.js'), '// GUARDRAIL 12, see docs/hooks.md\n');
