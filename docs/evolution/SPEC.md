@@ -136,14 +136,14 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 ## 4. Arquitetura
 
 ```
-┌─ KERNEL  skills/devanity/SKILL.md  (~1,5k tokens; sempre ativo por hook; AGENTS.md compacto como fallback)
+┌─ KERNEL  plugin/skills/devanity/SKILL.md  (~1,5k tokens; sempre ativo por hook; AGENTS.md compacto como fallback)
 │    persona · escada de proporcionalidade · escada de ofício · limites · decisões · saída
 │
 ├─ MODOS  (sob demanda, mesma gramática do kernel)
 │    plan · architect · review · audit · improve · debt · init
 │    um arquivo por verbo; vocabulário, padrão de qualidade e baseline compartilhados em reference/
 │
-├─ GUARDAS  hooks/  (por construção; derivadas de devanity.rules.json do repositório)
+├─ GUARDAS  plugin/hooks/  (por construção; derivadas de devanity.rules.json do repositório)
 │    SessionStart/SubagentStart: injeta kernel ou contrato da fase
 │    PreToolUse: alto risco sem decisão registrada → bloqueia
 │    Stop: "verificado" sem oráculo executado contra HEAD → bloqueia
@@ -170,34 +170,38 @@ O ponytail provou que um texto de ~1,4k tokens, presente em todo turno, com uma 
 Como consolidada em C1 (decisão de 2026-09-25, PLAN "Decisões registradas"): o kernel roteia cada verbo para `modes/<verbo>.md`; cada modo declara na linha `Load:` o que carrega de `reference/`, e cada gramática vive num só arquivo que os modos citam. Este é o único layout detalhado do repositório (o `CONTRIBUTING.md` resume o nível de cima). Desde 2026-09-28 nenhum validador o confere (PLAN, "Decisões registradas"): é mantido à mão, junto da mudança que move um arquivo.
 
 ```
-skills/devanity/
-  SKILL.md                      kernel (≤1,8k tokens; cap do validador)
-  README.md                     página de instalação como skill (`npx skills`)
-  modes/
-    plan.md                     ciclo da mudança (FRAME→INSPECT→PROVE→EXECUTE→VERIFY→ASSURE), bloco devanity-contract
-    architect.md                decisão de arquitetura (A0/A1/A2, fases, pacote de decisão / ADR)
-    review.md  audit.md         o diff (e a conformidade com ADRs e invariantes); um escopo ou as superfícies de instrução pelas seis Foundations → entradas do mapa e catracas
-    improve.md                  uma unidade aprovada (um finding ou uma superfície de instrução), com devanity-proof
-    debt.md                     o motor do loop externo: ledger, deferred:, hotspots → promoções em três faixas
-    init.md                     torna o repositório operável: mapa, job de CI, catracas iniciais
-  reference/
-    vocabulary.md               Change, identidade do alvo, evidência, autoridade, [DECIDE], finding, veredictos
-    quality.md                  basis-form, dimensões, síndromes, severidade, classe do fix, escada de durabilidade
-    baseline.md                 o que é a mudança, check focado, fingerprint, Light/Deep, reconciliação
-    claude-code.md              superfícies e hooks do host, menus, passe de contexto limpo
-    adjudication.md             contrato do adjudicador de contexto limpo, passado verbatim
-    change.schema.json  rules.schema.json
-agents/
-  worker.md  verifier.md        coleta de evidência; prova independente com orçamento de sondas
-hooks/                          só na instalação como plugin; documentados em docs/hooks.md
-  hooks.json                    SessionStart · SubagentStart · UserPromptSubmit · PreToolUse · Stop
-  devanity-runtime.js           payload, caminhos, estado, kernel de fallback, detecção de sessão autônoma
-  devanity-rules.js             carrega/valida devanity.rules.json, globs
-  devanity-ledger.js            ledger em <git-common-dir>/devanity/; CLI stats · prune
-  devanity-inject.js            SessionStart + SubagentStart: kernel, regras, mudança aberta
-  devanity-mode.js              UserPromptSubmit: /devanity on|off|status|reset|pending|decide
-  devanity-guard.js             PreToolUse: caminhos high-risk, autoridade de comandos
-  devanity-oracle.js            Stop: mede o bloco devanity-proof
+plugin/                         a unidade instalável: o marketplace instala só isto (validate.mjs confere o conjunto)
+  .claude-plugin/plugin.json    manifest: nome, versão, hooks
+  LICENCE                       cópia do LICENCE da raiz (a licença acompanha o que se instala)
+  skills/devanity/
+    SKILL.md                      kernel (≤1,8k tokens; cap do validador)
+    README.md                     página de instalação como skill (`npx skills`)
+    modes/
+      plan.md                     ciclo da mudança (FRAME→INSPECT→PROVE→EXECUTE→VERIFY→ASSURE), bloco devanity-contract
+      architect.md                decisão de arquitetura (A0/A1/A2, fases, pacote de decisão / ADR)
+      review.md  audit.md         o diff (e a conformidade com ADRs e invariantes); um escopo ou as superfícies de instrução pelas seis Foundations → entradas do mapa e catracas
+      improve.md                  uma unidade aprovada (um finding ou uma superfície de instrução), com devanity-proof
+      debt.md                     o motor do loop externo: ledger, deferred:, hotspots → promoções em três faixas
+      init.md                     torna o repositório operável: mapa, job de CI, catracas iniciais
+    reference/
+      vocabulary.md               Change, identidade do alvo, evidência, autoridade, [DECIDE], finding, veredictos
+      quality.md                  basis-form, dimensões, síndromes, severidade, classe do fix, escada de durabilidade
+      baseline.md                 o que é a mudança, check focado, fingerprint, Light/Deep, reconciliação
+      claude-code.md              superfícies e hooks do host, menus, passe de contexto limpo
+      adjudication.md             contrato do adjudicador de contexto limpo, passado verbatim
+      change.schema.json  rules.schema.json
+  agents/
+    worker.md  verifier.md        coleta de evidência; prova independente com orçamento de sondas
+  hooks/                        documentados em docs/hooks.md
+    hooks.json                    SessionStart · SubagentStart · UserPromptSubmit · PreToolUse · Stop
+    devanity-runtime.js           payload, caminhos, estado, kernel de fallback, detecção de sessão autônoma
+    devanity-rules.js             carrega/valida devanity.rules.json, globs
+    devanity-ledger.js            ledger em <git-common-dir>/devanity/; CLI stats · prune
+    devanity-inject.js            SessionStart + SubagentStart: kernel, regras, mudança aberta
+    devanity-mode.js              UserPromptSubmit: /devanity on|off|status|reset|pending|decide
+    devanity-guard.js             PreToolUse: caminhos high-risk, autoridade de comandos
+    devanity-oracle.js            Stop: mede o bloco devanity-proof
+  templates/devanity-rules.yml  job de CI de referência para o repositório consumidor; o `init` o copia
 scripts/
   validate.mjs                  a skill: frontmatter, referências e rotas existentes, tabela de roteamento ≡ argument-hint ≡ arquivos, linha Load: ⊇ citações, citações de degrau, cap do kernel, orçamento; o repositório: conjunto deliberado de modos e agentes, nomes aposentados, repositório canônico, versão única, protocolo, atribuição do harness
   kernel.mjs                    invariants · build-agents · check-agents
@@ -215,10 +219,9 @@ evals/
 AGENTS.md                       kernel sem frontmatter e sem as seções de host, gerado de SKILL.md
 devanity.rules.json             as regras deste próprio repositório (dogfood)
 .claude-plugin/
-  plugin.json  marketplace.json  manifest; marketplace de um plugin (`/plugin marketplace add`)
+  marketplace.json              o marketplace de um plugin (`/plugin marketplace add`): instala `./plugin`
 .github/workflows/
   validate.yml                  o CI deste repositório
-  devanity-rules.example.yml    modelo de job para o repositório consumidor (inerte aqui)
 README.md  CONTRIBUTING.md  LICENCE  package.json  .gitignore
 ```
 
@@ -340,7 +343,7 @@ Fonte única, compilada para três superfícies: contexto por caminho injetado n
 | Evento | Script | Comportamento | Falha segura |
 |---|---|---|---|
 | `SessionStart` (startup, resume, clear, compact) | inject | kernel; depois o mapa do repositório (`rules.json` válido: envelope, estado das guardas e uma linha por caminho com `purpose`, `invariants` ou tier high-risk, high-risk primeiro, entradas inteiras em ≤1.600 chars); depois, se o ledger tem mudança aberta (contrato não fechado, declarado há ≤24 h), o resumo dela com uma linha por fase (EXECUTE: escopo, prova, proibido; VERIFY: falsificar, não escrever; demais: continuar da fase), ≤480 chars; acima de 9.500 chars descarta primeiro a mudança, depois as regras, nunca o kernel, e registra `inject_truncated` | qualquer erro → emite kernel estático |
-| `SubagentStart` | inject | `agent_type` = verifier → uma linha: seu contrato é `agents/verifier.md`, e, se há mudança aberta, o id e a prova a falsificar; = worker → nada; outros → o mesmo que `SessionStart` | igual |
+| `SubagentStart` | inject | `agent_type` = verifier → uma linha: seu contrato é `plugin/agents/verifier.md`, e, se há mudança aberta, o id e a prova a falsificar; = worker → nada; outros → o mesmo que `SessionStart` | igual |
 | `UserPromptSubmit` | mode | trata `/devanity off|on|status|pending|reset|decide …` e `stop devanity` / `normal mode`, só como mensagem inteira; os verbos de modo (`plan`, `review`…) pertencem ao skill; `decide` é o único escritor de `by: human`, `reset` só grava `ABANDONED` em contratos | silencioso |
 | `PreToolUse` (Edit, Write, MultiEdit, Bash) | guard | (a) caminho `high-risk` sem decisão humana em escopo para esse caminho (ligada à mudança aberta, ou com menos de 24 h; `no` a registra como rejeitada) → exit 2 com mensagem que nomeia a regra e como registrar a decisão; (b) Bash: comando que escreve em caminho `high-risk` (`sed -i`, `>`, `tee`, `mv`, `rm`, `git checkout --`) → mesma regra; (c) Bash: comando acima do teto de autoridade da sessão (`git commit`, `git push`, `git merge`, também com as opções globais do git antes do subcomando; `gh pr merge`; `--force`; `terraform apply`, `kubectl apply`, `npm publish`, `deploy`; lista configurável em `rules.json#commands`) → exit 2 | rules ausente/inválido → não bloqueia, anota. Detecção em Bash é heurística por padrão: é piso, e o CI de referência (§7.5) é o teto |
 | `Stop` | oracle | dispara só se a última mensagem do assistente (`last_assistant_message`, que o host entrega no payload junto com `transcript_path`; verificado em 2026-09-24) contém um bloco de certificado (§7.4). Então: worktree de HEAD em tmp **com os arquivos de teste da árvore atual sobrepostos**, roda o check que `rules.json` **em HEAD** declara para os caminhos alterados (nunca o `check:` que o agente escreveu, §0.5), exige falha; roda na árvore atual, exige sucesso; senão devolve `NOT_VERIFIED` com o motivo e bloqueia o fim do turno **uma vez** (respeita `stop_hook_active`: na segunda passagem, deixa terminar com `NOT_VERIFIED` visível). Arquivos de teste = os que casam com `rules.json#tests` (default: `test_*`, `*_test.*`, `*.test.*`, `*.spec.*`, `tests/**`) | sem git → sem ledger, nada é registrado nem bloqueado; nenhum check declarado → registrado como não medido, sem bloqueio, evento `unmeasured` para o `debt`; timeout configurável (default 120s) → `NOT_VERIFIED: timeout`. Nunca trava |

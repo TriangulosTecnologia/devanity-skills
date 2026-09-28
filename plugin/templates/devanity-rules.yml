@@ -1,10 +1,10 @@
 # devanity — reference CI job for a repository that has a devanity.rules.json (SPEC §7.5).
-# Copy this file into your repository's .github/workflows/ and pin DEVANITY_REF.
+# Copy this file to your repository's .github/workflows/devanity-rules.yml and pin DEVANITY_REF.
 #
 # What it does on every pull request: validates devanity.rules.json, checks the per-path delta
 # budgets of the diff, runs the `check` of every touched high-risk path, and requires a
 # `devanity-proof:` block in the PR body when the diff touches a normal or high-risk path.
-# The devanity repository itself dogfoods the same script in --self-check mode from validate.yml.
+# The devanity repository dogfoods the same script in --self-check mode from its validate.yml.
 
 name: devanity-rules
 
@@ -14,8 +14,6 @@ on:
 jobs:
   rules:
     runs-on: ubuntu-latest
-    # This job lives in the plugin repository as an example; remove the `if` in your copy.
-    if: github.repository != 'usedevanity/skills'
     env:
       # Pin to a full 40-character commit sha of the plugin (or a release tag, once one exists) before relying on this job.
       DEVANITY_REF: main

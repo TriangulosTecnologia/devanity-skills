@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/usedevanity/skills/blob/main/skills/devanity/reference/rules.schema.json",
+  "$id": "https://github.com/usedevanity/skills/blob/main/plugin/skills/devanity/reference/rules.schema.json",
   "title": "Devanity repository rules",
   "description": "One declaration per repository, compiled into three surfaces: the context the kernel receives per path, the PreToolUse/Stop guards, and the reference CI job (SPEC §7.1). Absent file: every path is `normal`, guards record and never block.",
   "type": "object",

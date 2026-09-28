@@ -110,14 +110,14 @@ ARMS = {
 MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-4-6", "opus": "claude-opus-4-8"}
 
 PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
-# Harness-local plugins (gitignored). devanity-released is GENERATED from the repo's skills/ + agents/
+# Harness-local plugins (gitignored). devanity-released is GENERATED from the released ref's skills/ + agents/
 # by build_plugins.py, so the arm measures the committed skills, never a stale install. devanity
 # (the candidate) lands here from phase 1.
 HARNESS_PLUGINS = Path(__file__).resolve().parent / "plugins"
 _LOCAL_PLUGINS = {
     "devanity-released": "run `python3 evals/harness/build_plugins.py` (exports the released ref)",
     "devanity-v0":       "run `python3 evals/harness/build_plugins.py` (packages arms/devanity-v0)",
-    "devanity":          "run `python3 evals/harness/build_plugins.py` (packages the working tree's skills/devanity)",
+    "devanity":          "run `python3 evals/harness/build_plugins.py` (packages the working tree's plugin/skills/devanity)",
 }
 
 def _env_key(name): return "DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_", name.upper())

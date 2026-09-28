@@ -6,16 +6,16 @@
 
 `devanity-released` is what users had before v1: the skills/ and agents/ of the released ref (default
 RELEASED_REF, the pre-v1 `main`), exported with `git archive` so a moved or edited working tree can never leak into the
-regression reference. `devanity` is the candidate: the working tree's skills/devanity + agents/ (+
-hooks/ and .claude-plugin/ once phase 1 ships them). Layout follows Claude Code's plugin contract:
-.claude-plugin/plugin.json at the root, skills/<name>/SKILL.md with its reference/ and modes/, and
-agents/*.md so the worker/verifier subagents the skills delegate to exist in the cell.
+regression reference. `devanity` is the candidate: the working tree's plugin/, the installable unit
+the marketplace ships, copied whole, so the arm measures exactly what a user installs. Layout follows
+Claude Code's plugin contract: .claude-plugin/plugin.json at the root, skills/<name>/SKILL.md with its
+reference/ and modes/, and agents/*.md so the worker/verifier subagents the skills delegate to exist.
 
 `devanity-v0` is the control (PLAN F1.1; decision G-035, 2026-09-25): a control isolates one
 variable, so v0 is LOADED the way the candidate's kernel is. It carries the candidate's SessionStart
-inject entry (same event and matcher, the same hooks/devanity-runtime.js) pointed at its own text,
+inject entry (same event and matcher, the same plugin/hooks/devanity-runtime.js) pointed at its own text,
 and the same agents. What differs from the candidate, all of it named here:
-  - the text: arms/devanity-v0/SKILL.md instead of skills/devanity (+ its reference/ and modes/);
+  - the text: arms/devanity-v0/SKILL.md instead of plugin/skills/devanity (+ its reference/ and modes/);
   - the hooks v0 does not have: SubagentStart (kernel for subagents), UserPromptSubmit (the mode
     and on/off state), PreToolUse (the guard), Stop (the proof oracle); and, inside the inject
     itself, the repository-rules and open-change (ledger) sections and the autonomous-session line.
@@ -25,6 +25,7 @@ import io, json, os, re, shutil, subprocess, sys, tarfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+UNIT = ROOT / "plugin"                                   # the installable unit (marketplace source)
 PLUGINS = Path(__file__).resolve().parent / "plugins"
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
 
@@ -61,21 +62,11 @@ def build_released(ref: str):
     return out, skills
 
 def build_candidate():
-    """The working tree's skills/devanity (+ hooks/, .claude-plugin/ when present) and agents/."""
-    src = ROOT / "skills" / "devanity"
-    if not (src / "SKILL.md").exists(): return None, []
+    """The working tree's plugin/, copied whole: what the marketplace installs is what the arm runs."""
+    if not (UNIT / "skills" / "devanity" / "SKILL.md").exists(): return None, []
     out = PLUGINS / "devanity"
     if out.exists(): shutil.rmtree(out)
-    shutil.copytree(src, out / "skills" / "devanity", ignore=IGNORE)
-    shutil.copytree(ROOT / "agents", out / "agents", ignore=IGNORE)
-    for extra in ("hooks",):
-        if (ROOT / extra).exists(): shutil.copytree(ROOT / extra, out / extra, ignore=IGNORE)
-    manifest = ROOT / ".claude-plugin" / "plugin.json"
-    if manifest.exists():                                   # phase 1 ships the real manifest; reuse it
-        (out / ".claude-plugin").mkdir(parents=True, exist_ok=True)
-        shutil.copy(manifest, out / ".claude-plugin" / "plugin.json")
-    else:
-        _manifest(out, "devanity", _frontmatter_version(src / "SKILL.md"), "Devanity candidate (working tree), packaged for the harness")
+    shutil.copytree(UNIT, out, ignore=IGNORE)
     return out, ["devanity"]
 
 def build_control(out=None):
@@ -85,13 +76,13 @@ def build_control(out=None):
     out = Path(out) if out else PLUGINS / "devanity-v0"
     if out.exists(): shutil.rmtree(out)
     shutil.copytree(src, out / "skills" / "devanity-v0", ignore=IGNORE)
-    shutil.copytree(ROOT / "agents", out / "agents", ignore=IGNORE)
+    shutil.copytree(UNIT / "agents", out / "agents", ignore=IGNORE)
     _manifest(out, "devanity-v0", "0.0.0", "Devanity v0 control arm (craft ladder only), harness-only, never released")
     # The candidate's SessionStart entry, verbatim but for the script it runs (G-035).
-    entry = json.loads((ROOT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["SessionStart"]
+    entry = json.loads((UNIT / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["SessionStart"]
     entry = json.loads(json.dumps(entry).replace("devanity-inject.js", "devanity-v0-inject.js"))
     (out / "hooks").mkdir()
-    shutil.copy(ROOT / "hooks" / "devanity-runtime.js", out / "hooks" / "devanity-runtime.js")
+    shutil.copy(UNIT / "hooks" / "devanity-runtime.js", out / "hooks" / "devanity-runtime.js")
     (out / "hooks" / "devanity-v0-inject.js").write_text(V0_INJECT, encoding="utf-8")
     (out / "hooks" / "hooks.json").write_text(json.dumps({"hooks": {"SessionStart": entry}}, indent=2) + "\n", encoding="utf-8")
     manifest = out / ".claude-plugin" / "plugin.json"

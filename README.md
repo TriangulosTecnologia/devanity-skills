@@ -71,13 +71,13 @@ You normally **do not invoke Worker or Verifier yourself**: Worker collects evid
 }
 ```
 
-With it, the guard blocks edits to high-risk paths until a human decides, and the oracle measures `VERIFIED` against the `check` you declared, never one the agent wrote. The fields (`delta`, `invariants`, `core`, `tests`, `commands`, `autonomy`) are in [`rules.schema.json`](skills/devanity/reference/rules.schema.json).
+With it, the guard blocks edits to high-risk paths until a human decides, and the oracle measures `VERIFIED` against the `check` you declared, never one the agent wrote. The fields (`delta`, `invariants`, `core`, `tests`, `commands`, `autonomy`) are in [`rules.schema.json`](plugin/skills/devanity/reference/rules.schema.json).
 
 **When the guard blocks.** The message ends with the next step. For a high-risk path, the human types `/devanity decide <id> <option> --path <glob>` as a whole message; for a command above the session's authority (`git push --force`, `gh pr merge`, `terraform apply`), the human raises `DEVANITY_AUTHORITY` or `defaults.authority` in the rules; an unattended session is capped at `commit` (`autonomy.authority`), so merge and deploy are never its to run. The guard blocks the agent's own edits to the rules and the ledger.
 
 **Turning it down or off.** `DEVANITY_GUARDS=off` makes the guard and the oracle record without blocking. `/devanity off` stops the kernel injection and the oracle, and `/devanity on` brings them back; the guard follows `DEVANITY_GUARDS` only.
 
-**Make it binding.** The hooks run with the agent's permissions; the boundary is CI. Copy [`.github/workflows/devanity-rules.example.yml`](.github/workflows/devanity-rules.example.yml), remove its `if:` and pin `DEVANITY_REF` to a commit sha: it fails a pull request whose high-risk check fails or that carries no `devanity-proof` block.
+**Make it binding.** The hooks run with the agent's permissions; the boundary is CI. Copy [`plugin/templates/devanity-rules.yml`](plugin/templates/devanity-rules.yml) to your `.github/workflows/` and pin `DEVANITY_REF` to a commit sha: it fails a pull request whose high-risk check fails or that carries no `devanity-proof` block.
 
 Everything the hooks enforce, record and cannot stop: [`docs/hooks.md`](docs/hooks.md).
 
@@ -102,12 +102,12 @@ Optional companion agents (the plugin ships them; the skill-only install needs t
 mkdir -p .claude/agents
 for agent in worker verifier; do
   curl -fsSL \
-    "https://raw.githubusercontent.com/usedevanity/skills/main/agents/${agent}.md" \
+    "https://raw.githubusercontent.com/usedevanity/skills/main/plugin/agents/${agent}.md" \
     -o ".claude/agents/${agent}.md"
 done
 ```
 
-Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific mechanics belong in `skills/devanity/reference/claude-code.md`, not in the kernel or the modes. Hosts that read an instruction file and run no hooks get the kernel from [`AGENTS.md`](AGENTS.md): copy it into your repository root (no modes, no hooks, no persistence).
+Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific mechanics belong in `plugin/skills/devanity/reference/claude-code.md`, not in the kernel or the modes. Hosts that read an instruction file and run no hooks get the kernel from [`AGENTS.md`](AGENTS.md): copy it into your repository root (no modes, no hooks, no persistence).
 
 ## Status
 

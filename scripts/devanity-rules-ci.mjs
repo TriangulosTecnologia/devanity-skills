@@ -38,7 +38,8 @@ const root = resolve(opt('--root', process.cwd()));
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 
 function findLoader() {
-  const candidates = [opt('--plugin-dir', null), process.env.DEVANITY_PLUGIN_DIR, resolve(scriptDir, '..')].filter(Boolean);
+  // The plugin is plugin/ beside scripts/ in this repository, or wherever --plugin-dir points.
+  const candidates = [opt('--plugin-dir', null), process.env.DEVANITY_PLUGIN_DIR, resolve(scriptDir, '..', 'plugin')].filter(Boolean);
   for (const dir of candidates) {
     const file = join(resolve(dir), 'hooks', 'devanity-rules.js');
     if (existsSync(file)) return file;

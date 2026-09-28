@@ -16,7 +16,7 @@ The modes hand collection and independent proof to two agents, which the plugin 
 mkdir -p .claude/agents
 for agent in worker verifier; do
   curl -fsSL \
-    "https://raw.githubusercontent.com/usedevanity/skills/main/agents/${agent}.md" \
+    "https://raw.githubusercontent.com/usedevanity/skills/main/plugin/agents/${agent}.md" \
     -o ".claude/agents/${agent}.md"
 done
 ```

@@ -11,9 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { INVARIANTS } from '../scripts/kernel.mjs';
 
-const { FALLBACK_KERNEL } = createRequire(import.meta.url)('../hooks/devanity-runtime.js');
+const { FALLBACK_KERNEL } = createRequire(import.meta.url)('../plugin/hooks/devanity-runtime.js');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const hooksDir = join(root, 'hooks');
+const hooksDir = join(root, 'plugin', 'hooks');
 const INJECT = join(hooksDir, 'devanity-inject.js');
 const MODE = join(hooksDir, 'devanity-mode.js');
 const KERNEL_MARK = 'on call for this repository';
@@ -132,7 +132,7 @@ describe('SessionStart', () => {
   // a billing rule be defaulted in the 2026-09-24 round).
   test('the compact fallback carries every kernel invariant and the kernel\'s Decisions verbatim, in order', () => {
     for (const phrase of INVARIANTS) assert.ok(FALLBACK_KERNEL.includes(phrase), `fallback lacks invariant "${phrase}"`);
-    const kernel = readFileSync(join(root, 'skills', 'devanity', 'SKILL.md'), 'utf8');
+    const kernel = readFileSync(join(root, 'plugin', 'skills', 'devanity', 'SKILL.md'), 'utf8');
     const decisions = kernel.split('## Decisions')[1].split('\n## ')[0].split('\n').filter((l) => l.startsWith('- '));
     assert.ok(decisions.length >= 3, 'kernel Decisions section not found');
     let at = -1;
@@ -336,7 +336,7 @@ describe('manifests', () => {
     const crlf = join(temp, 'crlf-plugin');
     cpSync(hooksDir, join(crlf, 'hooks'), { recursive: true });
     mkdirSync(join(crlf, 'skills', 'devanity'), { recursive: true });
-    const kernel = readFileSync(join(root, 'skills', 'devanity', 'SKILL.md'), 'utf8').replace(/\r?\n/g, '\r\n');
+    const kernel = readFileSync(join(root, 'plugin', 'skills', 'devanity', 'SKILL.md'), 'utf8').replace(/\r?\n/g, '\r\n');
     writeFileSync(join(crlf, 'skills', 'devanity', 'SKILL.md'), kernel);
     let r = await runHook(join(crlf, 'hooks', 'devanity-inject.js'), { input: sessionStart(), env: baseEnv(cfg), args: ['SessionStart'] });
     assert.equal(r.code, 0, r.stderr);
@@ -348,14 +348,14 @@ describe('manifests', () => {
   });
 
   test('plugin.json names devanity, carries the kernel version and points at hooks.json', () => {
-    const manifest = JSON.parse(readFileSync(join(root, '.claude-plugin', 'plugin.json'), 'utf8'));
-    const kernel = readFileSync(join(root, 'skills', 'devanity', 'SKILL.md'), 'utf8');
+    const manifest = JSON.parse(readFileSync(join(root, 'plugin', '.claude-plugin', 'plugin.json'), 'utf8'));
+    const kernel = readFileSync(join(root, 'plugin', 'skills', 'devanity', 'SKILL.md'), 'utf8');
     const version = /^\s*version:\s*(\S+)/m.exec(kernel)[1];
     assert.equal(manifest.name, 'devanity');
     assert.equal(manifest.version, version);
     assert.ok(manifest.description && !/claude|anthropic|openai|cursor|copilot/i.test(manifest.description), 'description: one sentence, no vendor names');
     assert.ok(manifest.author && manifest.author.name);
     assert.equal(manifest.hooks, './hooks/hooks.json');
-    assert.ok(existsSync(join(root, manifest.hooks)));
+    assert.ok(existsSync(join(root, 'plugin', manifest.hooks)), 'the manifest resolves hooks from the plugin root');
   });
 });

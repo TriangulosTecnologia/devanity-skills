@@ -10,8 +10,8 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const rules = require(join(root, 'hooks', 'devanity-rules.js'));
-const ledger = require(join(root, 'hooks', 'devanity-ledger.js'));
+const rules = require(join(root, 'plugin', 'hooks', 'devanity-rules.js'));
+const ledger = require(join(root, 'plugin', 'hooks', 'devanity-ledger.js'));
 
 let temp;
 before(() => { temp = mkdtempSync(join(tmpdir(), 'devanity-rules-')); });
@@ -64,7 +64,7 @@ describe('rules: loading', () => {
 describe('rules: the published schemas and the loader agree', () => {
   // A consumer's editor validates devanity.rules.json against the schema; the hooks validate it with
   // the loader. The same vocabulary lives in both, and a drift passes one and fails the other.
-  const schema = (name) => JSON.parse(readFileSync(join(root, 'skills', 'devanity', 'reference', name), 'utf8'));
+  const schema = (name) => JSON.parse(readFileSync(join(root, 'plugin', 'skills', 'devanity', 'reference', name), 'utf8'));
   test('tiers, the authority ladder, the unattended ceiling and the purpose limit are the same values', () => {
     const r = schema('rules.schema.json');
     assert.deepEqual(r.$defs.tier.enum, rules.TIERS);

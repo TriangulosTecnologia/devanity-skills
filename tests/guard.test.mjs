@@ -12,7 +12,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const hooksDir = join(root, 'hooks');
+const hooksDir = join(root, 'plugin', 'hooks');
 const GUARD = join(hooksDir, 'devanity-guard.js');
 const MODE = join(hooksDir, 'devanity-mode.js');
 const ledger = require(join(hooksDir, 'devanity-ledger.js'));
