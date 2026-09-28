@@ -275,7 +275,7 @@ describe('ledger CLI (F3.7)', () => {
     ledger.append(d, 'events', { kind: 'blocked', path: 'billing/x' });
     ledger.append(d, 'events', { kind: 'would_block', path: 'billing/y' });
     ledger.append(d, 'events', { kind: 'would_block', path: 'billing/z' });
-    ledger.append(d, 'deferrals', { path: 'src/a.py', ceiling: 'O(n^2)' });
+    assert.equal(ledger.append(d, 'deferrals', { path: 'src/a.py' }), false, 'no reserved kind without a writer: debt reads deferred: markers in the code');
     const dir = ledger.ledgerDir(d);
     writeFileSync(join(dir, 'events.jsonl'), JSON.stringify({ ts: new Date(Date.now() - 100 * 86400000).toISOString(), kind: 'blocked' }) + '\n', { flag: 'a' });
     let r = await run(LEDGER, { args: ['stats', '--cwd', d, '--json'] });
@@ -287,12 +287,11 @@ describe('ledger CLI (F3.7)', () => {
       decisions: { pending: 1, decided_human: 1, decided_agent_default: 1 },
       proofs: { verified: 1, not_verified: 2, false_ready: 1 },
       contracts: { open: 1, done: 1, abandoned: 1, expired: 1 },
-      deferrals: 1,
       events: { blocked: 1, would_block: 2 },
     });
     r = await run(LEDGER, { args: ['stats'], cwd: d });
     assert.equal(r.code, 0);
-    for (const topic of ['decisions', 'proofs', 'contracts', 'deferrals', 'guards']) assert.match(r.stdout, new RegExp(`^${topic}: `, 'm'), `text form lacks the ${topic} line`);
+    for (const topic of ['decisions', 'proofs', 'contracts', 'guards']) assert.match(r.stdout, new RegExp(`^${topic}: `, 'm'), `text form lacks the ${topic} line`);
     r = await run(LEDGER, { args: ['stats', '--json'], cwd: fresh() });
     assert.equal(r.stdout.trim(), 'null');
     r = await run(LEDGER, { args: ['stats'], cwd: fresh() });
