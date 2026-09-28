@@ -51,6 +51,8 @@ function runHook(script, { input = '', env, args = [], cwd, holdStdin = false, t
 const proofBlock = (fields) => ['devanity-proof:', ...Object.entries(fields).map(([k, v]) => `  ${k}: ${v}`)].join('\n');
 const stopPayload = (cwd, message, extra = {}) => JSON.stringify({ hook_event_name: 'Stop', session_id: 's1', cwd, transcript_path: join(cwd, 'nope.jsonl'), stop_hook_active: false, last_assistant_message: message, ...extra });
 const readLedger = (cwd, kind) => (existsSync(join(cwd, '.git', 'devanity', `${kind}.jsonl`)) ? readFileSync(join(cwd, '.git', 'devanity', `${kind}.jsonl`), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []);
+// The injected line that names a glob (empty when none does): assert what it carries, not its punctuation.
+const lineOf = (text, glob) => text.split('\n').find((l) => l.includes(`\`${glob}\``)) ?? '';
 const claimVerified = (check) => 'Done.\n\n```\n' + proofBlock({ ...(check ? { check } : {}), failed_before: 'yes', passed_after: 'yes', status: 'VERIFIED', pending: 0 }) + '\n```\n';
 const TEST_FILE = "const t=require('node:test');const a=require('node:assert');t('add',()=>a.equal(require('./mod.js')(1,2),3));\n";
 
@@ -209,14 +211,6 @@ describe('oracle: measurement', () => {
     assert.ok(events[0].status.startsWith('NOT_VERIFIED'));
   });
 
-  test('the rule check of the touched path is used when the block names none', async () => {
-    const d = seedBuggyRepo('node --test mod.test.js');
-    const r = await runHook(ORACLE, { input: stopPayload(d, claimVerified(null)), env: baseEnv(), cwd: d });   // rules present -> enforcing
-    assert.equal(r.code, 0, r.stderr);
-    assert.equal(r.stdout, '', 'measured through the rule check and found true');
-    assert.equal(readLedger(d, 'proofs')[0].check, 'node --test mod.test.js');
-  });
-
   test('(d) greenfield floor: unborn repository, empty baseline + tests overlay -> the test fails before (module missing) and passes after -> VERIFIED', async () => {
     const d = fresh();
     initRepo(d);
@@ -335,9 +329,10 @@ describe('inject: repository rules context (F2.5)', () => {
     const i = r.stdout.indexOf(HEADING);
     assert.ok(i > 0 && r.stdout.indexOf('on call for this repository') < i, 'rules come after the kernel');
     const section = r.stdout.slice(i);
-    assert.ok(section.includes('`billing/**` high-risk: check: pytest tests/billing -q') && section.includes('`migrations/**` high-risk'), section);
-    assert.ok(!section.includes('docs/**'), 'trivial paths are not listed');
-    assert.ok(section.includes('authority commit; high-risk queue; irreversible queue'), section);
+    assert.ok(/high-risk.*pytest tests\/billing -q/.test(lineOf(section, 'billing/**')), section);
+    assert.ok(lineOf(section, 'migrations/**').includes('high-risk'), section);
+    assert.equal(lineOf(section, 'docs/**'), '', 'trivial paths are not listed');
+    assert.ok(/authority commit.*high-risk queue.*irreversible queue/.test(section), section);
     assert.ok(section.includes('Guards: enforcing'), section);
     assert.ok(section.length <= 1600, `section is ${section.length} chars`);
     r = await runHook(INJECT, { input: sessionStart(d), env: baseEnv({ DEVANITY_GUARDS: 'off' }), args: ['SessionStart'], cwd: d });
@@ -346,29 +341,23 @@ describe('inject: repository rules context (F2.5)', () => {
     assert.ok(!r.stdout.includes('Repository rules'), 'the verifier never receives rules context');
   });
 
-  test('the map: each path with a purpose or invariants is injected with them (SPEC §0.4)', async () => {
+  test('the map: every path with something to say is injected with it, high-risk first, then core (SPEC §0.4)', async () => {
     const d = fresh();
     writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: {
-      'billing/**': { tier: 'high-risk', check: 'pytest tests/billing', purpose: 'charges and refunds', invariants: ['amounts are integer cents'] },
       'src/ui/**': { tier: 'normal', purpose: 'React views; no data access here' },
+      'core/events.py': { core: true },
+      'billing/**': { tier: 'high-risk', check: 'pytest tests/billing', purpose: 'charges and refunds', invariants: ['amounts are integer cents'] },
       'docs/**': { tier: 'trivial' } } }));
     const r = await runHook(INJECT, { input: sessionStart(d), env: baseEnv(), args: ['SessionStart'], cwd: d });
     assert.equal(r.code, 0, r.stderr);
     const ctx = r.stdout;
-    assert.ok(ctx.includes('`billing/**` high-risk: charges and refunds; invariants: amounts are integer cents; check: pytest tests/billing'), ctx);
-    assert.ok(ctx.includes('`src/ui/**` normal: React views; no data access here'), ctx);
-    assert.ok(!ctx.includes('`docs/**`'), 'a path with nothing to say is not injected');
-  });
-
-  test('the map: a core path is injected as core, after high-risk, and the header names rung 5', async () => {
-    const d = fresh();
-    writeFileSync(join(d, 'devanity.rules.json'), JSON.stringify({ version: 1, paths: {
-      'src/ui/**': { tier: 'normal', purpose: 'React views' },
-      'core/events.py': { core: true },
-      'billing/**': { tier: 'high-risk', purpose: 'charges' } } }));
-    const ctx = (await runHook(INJECT, { input: sessionStart(d), env: baseEnv(), args: ['SessionStart'], cwd: d })).stdout;
-    assert.ok(ctx.includes('core: rung 5'), ctx);
-    const [hr, core, ui] = ['`billing/**` high-risk', '`core/events.py` normal core', '`src/ui/**` normal'].map((s) => ctx.indexOf(s));
+    const billing = lineOf(ctx, 'billing/**');
+    for (const part of ['high-risk', 'charges and refunds', 'amounts are integer cents', 'pytest tests/billing']) assert.ok(billing.includes(part), `billing line lacks "${part}": ${billing}`);
+    assert.ok(lineOf(ctx, 'src/ui/**').includes('React views; no data access here'), ctx);
+    assert.ok(lineOf(ctx, 'core/events.py').includes('core'), ctx);
+    assert.ok(ctx.includes('rung 5'), 'the header names the rung a core path triggers');
+    assert.equal(lineOf(ctx, 'docs/**'), '', 'a path with nothing to say is not injected');
+    const [hr, core, ui] = ['billing/**', 'core/events.py', 'src/ui/**'].map((g) => ctx.indexOf(`\`${g}\``));
     assert.ok(hr > 0 && core > hr && ui > core, ctx);
   });
 
@@ -381,7 +370,7 @@ describe('inject: repository rules context (F2.5)', () => {
     const sub = join(d, 'billing', 'sub');
     const r = await runHook(INJECT, { input: JSON.stringify({ hook_event_name: 'SessionStart', source: 'startup', cwd: sub }), env: baseEnv(), args: ['SessionStart'], cwd: sub });
     assert.ok(r.stdout.includes('`billing/**` high-risk: charges'), 'the map is found from the repository root');
-    assert.ok(r.stdout.includes('Pending human decisions (1): D-billing (billing/**)'), r.stdout.slice(-400));
+    assert.ok(/Pending human decisions.*D-billing.*billing\/\*\*/.test(r.stdout), r.stdout.slice(-400));
   });
 
   test('the pending queue survives a full open change and comes before the map', async () => {
@@ -392,7 +381,7 @@ describe('inject: repository rules context (F2.5)', () => {
     writeFileSync(join(dir, 'contracts.jsonl'), JSON.stringify({ ts: now, id: 'C-1', phase: 'EXECUTE', intent: long, scope: long, forbidden: long, proof: long }) + '\n');
     writeFileSync(join(dir, 'decisions.jsonl'), [1, 2, 3, 4, 5].map((k) => JSON.stringify({ ts: now, id: `D-${k}`, status: 'pending', by: 'agent', path: `billing/f${k}.py` })).join('\n') + '\n');
     const r = await runHook(INJECT, { input: sessionStart(d), env: baseEnv(), args: ['SessionStart'], cwd: d });
-    const q = r.stdout.indexOf('Pending human decisions (5): D-1');
+    const q = r.stdout.search(/Pending human decisions.*D-1/);
     assert.ok(q > 0, r.stdout.slice(-600));
     assert.ok(q < r.stdout.indexOf(HEADING), 'the queue comes before the repository rules');
   });

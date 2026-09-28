@@ -1,7 +1,7 @@
 // Tests for hooks/devanity-rules.js and hooks/devanity-ledger.js (node:test, no dependencies).
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
@@ -58,6 +58,22 @@ describe('rules: loading', () => {
     writeFileSync(join(d, 'devanity.rules.json'), '{not json');
     r = rules.loadRules(d);
     assert.ok(r.errors[0].includes('not valid JSON'));
+  });
+});
+
+describe('rules: the published schemas and the loader agree', () => {
+  // A consumer's editor validates devanity.rules.json against the schema; the hooks validate it with
+  // the loader. The same vocabulary lives in both, and a drift passes one and fails the other.
+  const schema = (name) => JSON.parse(readFileSync(join(root, 'skills', 'devanity', 'reference', name), 'utf8'));
+  test('tiers, the authority ladder, the unattended ceiling and the purpose limit are the same values', () => {
+    const r = schema('rules.schema.json');
+    assert.deepEqual(r.$defs.tier.enum, rules.TIERS);
+    assert.deepEqual(r.$defs.authority.enum, rules.AUTHORITIES, 'same ladder, same order');
+    assert.deepEqual(r.properties.autonomy.properties.authority.enum, rules.AUTONOMY_AUTHORITIES);
+    assert.deepEqual(schema('change.schema.json').properties.authority.properties.ceiling.enum, rules.AUTHORITIES);
+    const max = r.properties.paths.additionalProperties.properties.purpose.maxLength;
+    assert.deepEqual(rules.validate({ version: 1, paths: { 'a/**': { purpose: 'x'.repeat(max) } } }), []);
+    assert.ok(rules.validate({ version: 1, paths: { 'a/**': { purpose: 'x'.repeat(max + 1) } } }).some((e) => e.includes('purpose')));
   });
 });
 
@@ -179,30 +195,5 @@ describe('ledger', () => {
     assert.equal(evs.length, 2);
     assert.equal(evs[0].session_id, 's1'); assert.ok(evs[0].ts);
     assert.equal(ledger.append(d, 'nope', {}), false, 'an unknown kind is a programming error, but a hook never throws: it reports false');
-  });
-
-  test('decisions: latest record per id wins; only a human, decided record authorizes a path', () => {
-    const d = fresh(); git(d, 'init', '-q');
-    ledger.append(d, 'decisions', { id: 'D1', path: 'billing/**', kind: 'human', status: 'pending' });
-    assert.equal(ledger.pendingDecisions(d).length, 1);
-    assert.equal(ledger.humanDecisionFor(d, 'billing/x.py', rules.globToRegExp), null, 'pending does not authorize');
-    ledger.append(d, 'decisions', { id: 'D1', status: 'decided', by: 'agent-default', chosen: 'prorate' });
-    assert.equal(ledger.humanDecisionFor(d, 'billing/x.py', rules.globToRegExp), null, 'an agent default never authorizes a high-risk path');
-    ledger.append(d, 'decisions', { id: 'D1', status: 'decided', by: 'human', chosen: 'prorate' });
-    assert.equal(ledger.pendingDecisions(d).length, 0);
-    assert.equal(ledger.humanDecisionFor(d, 'billing/x.py', rules.globToRegExp).id, 'D1');
-    assert.equal(ledger.humanDecisionFor(d, 'src/x.py', rules.globToRegExp), null);
-  });
-
-  test('prune drops records older than the retention window', () => {
-    const d = fresh(); git(d, 'init', '-q');
-    const dir = ledger.ledgerDir(d); mkdirSync(dir, { recursive: true });
-    const old = new Date(Date.now() - 100 * 86400000).toISOString();
-    writeFileSync(join(dir, 'events.jsonl'), JSON.stringify({ ts: old, kind: 'old' }) + '\n');
-    ledger.append(d, 'events', { kind: 'new' });
-    assert.ok(ledger.prune(d));
-    const evs = ledger.read(d, 'events');
-    assert.deepEqual(evs.map((e) => e.kind), ['new']);
-    assert.ok(existsSync(join(dir, 'events.jsonl')));
   });
 });

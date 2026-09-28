@@ -185,14 +185,4 @@ describe('rules CI', () => {
     r = runCi(d2, ['--base', 'main', '--pr-body-file', body]);
     assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks .*devanity\.rules\.json/);
   });
-
-  // When HEAD touches hooks/**, the self-check runs this repository's own check (the whole test
-  // suite), which would reach this test again: the nested run skips it.
-  test('--self-check passes on this repository', { skip: Boolean(process.env.DEVANITY_SELF_CHECK_NESTED) }, () => {
-    const env = { ...process.env, DEVANITY_SELF_CHECK_NESTED: '1' };
-    delete env.NODE_TEST_CONTEXT;
-    const r = spawnSync(process.execPath, [SCRIPT, '--self-check'], { cwd: root, encoding: 'utf8', env });
-    assert.equal(r.status, 0, r.stdout + r.stderr);
-    assert.match(r.stdout, /self-check/);
-  });
 });

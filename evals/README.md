@@ -1,6 +1,6 @@
 # Devanity evals
 
-What the harness measures, why, and against whom. One row per axis of the registry, `AXES` in [`harness/tasks.py`](harness/tasks.py); `scripts/validate-open.mjs` fails when a task has no axis, when an axis has no row here or its row does not list exactly its tasks, or when a [SPEC §13](../docs/evolution/SPEC.md) criterion is served by nothing. The criterion column is written for people; the registry's `criterion` field is the one checked against the SPEC text. How to run it: [`harness/README.md`](harness/README.md).
+What the harness measures, why, and against whom. One row per axis of the registry, `AXES` in [`harness/tasks.py`](harness/tasks.py); `--selftest` fails when a task has no axis or an axis names a task that does not exist. The criterion column is written for people; the registry's `criterion` field quotes the [SPEC §13](../docs/evolution/SPEC.md) line it serves. How to run it: [`harness/README.md`](harness/README.md).
 
 ## Axes
 
