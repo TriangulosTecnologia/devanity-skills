@@ -201,11 +201,11 @@ plugin/                         a unidade instalável: o marketplace instala só
     devanity-mode.js              UserPromptSubmit: /devanity on|off|status|reset|pending|decide
     devanity-guard.js             PreToolUse: caminhos high-risk, autoridade de comandos
     devanity-oracle.js            Stop: mede o bloco devanity-proof
-  templates/devanity-rules.yml  job de CI de referência para o repositório consumidor; o `init` o copia
+  scripts/devanity-rules-ci.mjs o job de CI de referência (o teto do guard); os modos o rodam; --self-check neste repositório
+  templates/devanity-rules.yml  o workflow que o consumidor copia; o `init` o propõe
 scripts/
   validate.mjs                  a skill: frontmatter, referências e rotas existentes, tabela de roteamento ≡ argument-hint ≡ arquivos, linha Load: ⊇ citações, citações de degrau, cap do kernel, orçamento; o repositório: conjunto deliberado de modos e agentes, nomes aposentados, repositório canônico, versão única, protocolo, atribuição do harness
   kernel.mjs                    invariants · build-agents · check-agents
-  devanity-rules-ci.mjs         job de CI de referência (o teto do guard); --self-check neste repositório
 tests/                          node:test de hooks, scripts e kernel; `npm test` roda todos
 docs/
   hooks.md                      o que cada hook aplica e registra

@@ -377,10 +377,20 @@ export function checkRepository(root) {
   // session runs or the init mode copies, carries the licence, and reaches nothing outside itself.
   const market = parseJson('.claude-plugin/marketplace.json');
   if (market && (market.plugins ?? []).map((p) => p.source).join(',') !== './plugin') fail('.claude-plugin/marketplace.json must install ./plugin, the one installable unit');
-  const unit = ['.claude-plugin', 'LICENCE', 'agents', 'hooks', 'skills', 'templates'];
+  const unit = ['.claude-plugin', 'LICENCE', 'agents', 'hooks', 'scripts', 'skills', 'templates'];
   const shipped = existsSync(join(root, 'plugin')) ? readdirSync(join(root, 'plugin')).sort() : [];
   if (shipped.join(',') !== unit.join(',')) fail(`plugin/ must hold exactly ${unit.join(', ')} (what installs is what runs); found: ${shipped.join(', ')}`);
   if (existsSync(join(root, 'plugin/LICENCE')) && read('plugin/LICENCE') !== read('LICENCE')) fail('plugin/LICENCE must be a copy of LICENCE: the licence travels with what installs');
+  // Every ${CLAUDE_PLUGIN_ROOT}/<path> the plugin names resolves inside it: that variable is the
+  // installed copy's root, so a path outside plugin/ is a command that fails on the user's machine.
+  for (const file of textFiles.concat(existsSync(join(root, 'plugin/hooks')) ? readdirSync(join(root, 'plugin/hooks')).map((n) => join(root, 'plugin/hooks', n)) : [])) {
+    const rel = file.slice(root.length + 1);
+    if (!rel.startsWith('plugin/')) continue;
+    for (const m of readFileSync(file, 'utf8').matchAll(/\$\{CLAUDE_PLUGIN_ROOT\}\/([A-Za-z0-9_./-]+)/g)) {
+      if (!existsSync(join(root, 'plugin', m[1]))) fail(`${rel} runs \${CLAUDE_PLUGIN_ROOT}/${m[1]}, which is not in plugin/: an installed copy has no such file`);
+    }
+  }
+
   // What installs cites nothing that does not install with it: the maintainer's SPEC and PLAN stay in
   // the repository, so a pointer to them from plugin/ is a pointer an installed copy cannot follow.
   const outside = /\bSPEC\b|\bPLAN\b[ ,]|\bF[0-9]+\.[0-9]+\b|\bguardrail [0-9]+/;

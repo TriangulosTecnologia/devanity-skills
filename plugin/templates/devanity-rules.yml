@@ -35,4 +35,4 @@ jobs:
           git -C "$dir" checkout -q FETCH_HEAD
       - name: devanity rules
         # The PR body is read from the event payload (GITHUB_EVENT_PATH); no extra input needed.
-        run: node "$RUNNER_TEMP/devanity/scripts/devanity-rules-ci.mjs" --base "origin/${{ github.base_ref }}"
+        run: node "$RUNNER_TEMP/devanity/plugin/scripts/devanity-rules-ci.mjs" --base "origin/${{ github.base_ref }}"

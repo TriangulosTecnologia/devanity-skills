@@ -1,4 +1,4 @@
-// Tests for scripts/devanity-rules-ci.mjs (the reference CI job, F2.8). node:test, no dependencies.
+// Tests for plugin/scripts/devanity-rules-ci.mjs (the reference CI job, F2.8). node:test, no dependencies.
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -8,7 +8,7 @@ import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SCRIPT = join(root, 'scripts', 'devanity-rules-ci.mjs');
+const SCRIPT = join(root, 'plugin', 'scripts', 'devanity-rules-ci.mjs');
 
 let temp;
 before(() => { temp = mkdtempSync(join(tmpdir(), 'devanity-ci-test-')); });

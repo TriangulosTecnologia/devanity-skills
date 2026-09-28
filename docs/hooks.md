@@ -2,7 +2,7 @@
 
 The hooks run only when devanity is installed as a Claude Code plugin (`plugin/hooks/hooks.json`); an `AGENTS.md`-only host gets the kernel and nothing below. Four entry points share three libraries: `devanity-runtime.js` (payload, kernel, fallbacks), `devanity-rules.js` (the `devanity.rules.json` loader and globs) and `devanity-ledger.js` (the state every hook reads). None of them asks the model anything, and every failure path allows and leaves a trace.
 
-The hooks stop the agent that errs or races for a green check, and they measure; they run with the agent's own permissions, so they are not a boundary against one that sets out to get around them. That boundary is the [reference CI job](#reference-ci-job-scriptsdevanity-rules-cimjs) with branch protection and `CODEOWNERS`; what each hook does not stop is under the guard's [Limits](#limits) and the oracle's [What it cannot prove](#what-it-cannot-prove).
+The hooks stop the agent that errs or races for a green check, and they measure; they run with the agent's own permissions, so they are not a boundary against one that sets out to get around them. That boundary is the [reference CI job](#reference-ci-job-pluginscriptsdevanity-rules-cimjs) with branch protection and `CODEOWNERS`; what each hook does not stop is under the guard's [Limits](#limits) and the oracle's [What it cannot prove](#what-it-cannot-prove).
 
 **Blocked?** Read the `Next step` line of the message ([examples](#the-messages-a-developer-sees)): a high-risk path needs a human to type `/devanity decide <id> <option> --path <glob>`; a command above the session's authority needs a human to raise `DEVANITY_AUTHORITY` or `devanity.rules.json#defaults.authority` (an unattended session is capped at `commit` by `#autonomy.authority`; merge and deploy are never its to run). To stop blocking, set `DEVANITY_GUARDS=off` ([defaults](#defaults-by-install-origin-spec-76)); `/devanity off` stops the injection and the oracle, not the guard.
 
@@ -12,7 +12,7 @@ The hooks stop the agent that errs or races for a green check, and they measure;
 | `UserPromptSubmit` | `devanity-mode.js` | the whole-message commands a human types: `on`, `off`, `status`, `reset`, `pending`, `decide` ([Commands](#commands-devanity-modejs)) |
 | `Stop` | `devanity-oracle.js` | measure the `devanity-proof` block the agent wrote ([Oracle](#oracle-devanity-oraclejs)) |
 | `SessionStart`, `SubagentStart` | `devanity-inject.js` | kernel, repository rules and the open change into context ([Injection](#injection-devanity-injectjs)) |
-| CI | `scripts/devanity-rules-ci.mjs` | the ceiling of the guard: the whole diff of a pull request ([Reference CI job](#reference-ci-job-scriptsdevanity-rules-cimjs)) |
+| CI | `plugin/scripts/devanity-rules-ci.mjs` | the ceiling of the guard: the whole diff of a pull request ([Reference CI job](#reference-ci-job-pluginscriptsdevanity-rules-cimjs)) |
 | — | `devanity-ledger.js` | the local state all of them read and write ([Ledger](#ledger-devanity-ledgerjs)) |
 
 ## Guard (`devanity-guard.js`)
@@ -204,15 +204,15 @@ Map (high-risk: rung 4, propose and stop; core: rung 5, its invariants survive p
 
 This is the **repository map** (SPEC §0.4): one line per path that declares a `purpose`, `invariants`, `core` or the high-risk tier, high-risk first, then core. Hard cap: 1,600 characters (about 400 tokens). The fixed lines always fit; entries are added whole while they fit, and the rest is named (`… N more path(s) in devanity.rules.json`), never cut mid-line. No rules file, or an invalid one, adds nothing.
 
-## Reference CI job (`scripts/devanity-rules-ci.mjs`)
+## Reference CI job (`plugin/scripts/devanity-rules-ci.mjs`)
 
 The ceiling of what the `PreToolUse` guard can only estimate from a Bash command: in CI the whole diff is known.
 
 ```
-node scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-proof-required] [--root <dir>] [--plugin-dir <dir>] [--self-check]
+node plugin/scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-proof-required] [--root <dir>] [--plugin-dir <dir>] [--self-check]
 ```
 
-1. Validates `<root>/devanity.rules.json` with the plugin's loader (`plugin/hooks/devanity-rules.js`: `plugin/` beside `scripts/`, or `--plugin-dir` / `DEVANITY_PLUGIN_DIR`).
+1. Validates `<root>/devanity.rules.json` with the plugin's loader (`hooks/devanity-rules.js` of the plugin the script ships in, or `--plugin-dir` / `DEVANITY_PLUGIN_DIR`).
 2. Changed files: `git diff --numstat` from the merge base of `--base` (default `origin/main`, then `main`) to `HEAD`.
 3. The map stays alive: every `paths` glob must match a tracked file (`git ls-files`), or the job fails naming the dead entry.
 4. Per touched path: `delta` budgets (files and added lines per glob); the distinct `check` of every touched high-risk path is run in the repository root, and when the diff changes `devanity.rules.json` every check it declares is run too, so a check that does not pass cannot enter the map; a `devanity-proof:` block with a `status:` line is required in the PR body (`--pr-body-file`, else `GITHUB_EVENT_PATH` `pull_request.body`) when any touched path is tier normal or high-risk, unless `--no-proof-required`. Without any PR context (a push), the requirement is reported, not failed.

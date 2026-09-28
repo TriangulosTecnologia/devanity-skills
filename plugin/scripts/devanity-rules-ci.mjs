@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// devanity — reference CI job (SPEC §7.5, PLAN F2.8). The ceiling of what the PreToolUse guard can
+// devanity — reference CI job. The ceiling of what the PreToolUse guard can
 // only estimate from Bash: it sees the whole diff of a pull request.
 //
-//   node scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-proof-required]
+//   node plugin/scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>] [--no-proof-required]
 //                                     [--root <dir>] [--plugin-dir <dir>] [--self-check]
 //
 // 1. validates <root>/devanity.rules.json with the plugin's own loader (hooks/devanity-rules.js,
@@ -38,8 +38,8 @@ const root = resolve(opt('--root', process.cwd()));
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 
 function findLoader() {
-  // The plugin is plugin/ beside scripts/ in this repository, or wherever --plugin-dir points.
-  const candidates = [opt('--plugin-dir', null), process.env.DEVANITY_PLUGIN_DIR, resolve(scriptDir, '..', 'plugin')].filter(Boolean);
+  // The plugin this script ships in (its hooks/ sit one level up), or wherever --plugin-dir points.
+  const candidates = [opt('--plugin-dir', null), process.env.DEVANITY_PLUGIN_DIR, resolve(scriptDir, '..')].filter(Boolean);
   for (const dir of candidates) {
     const file = join(resolve(dir), 'hooks', 'devanity-rules.js');
     if (existsSync(file)) return file;
@@ -147,7 +147,7 @@ if (base && rulesMod && !loaded.errors.length) {
     if (g.delta.lines !== undefined && g.lines > g.delta.lines) fail(`delta budget exceeded for ${glob}: ${g.lines} lines added, budget ${g.delta.lines}`);
   }
 
-  // the map stays alive (SPEC §0.4): every declared path matches a tracked file
+  // the map stays alive: every declared path matches a tracked file
   const tracked = git('ls-files').out.split('\n').filter(Boolean);
   for (const p of rules.paths) if (!tracked.some((f) => p.re.test(f))) fail(`devanity.rules.json: ${p.glob} matches no tracked file (a map entry for a path that is gone)`);
 
@@ -163,7 +163,7 @@ if (base && rulesMod && !loaded.errors.length) {
     if (!checkPassed.get(c)) fail(highRisk.includes(c) ? `check failed: ${c}` : `declared check does not pass: ${c} (the rules file changed; every check it declares must run green)`);
   }
 
-  // verifier sovereignty (SPEC §0.2): a diff that removes or rewrites lines of existing tests
+  // verifier sovereignty: a diff that removes or rewrites lines of existing tests
   // together with code is reviewed as a verifier change, declared in the PR body
   const verifierEdits = touched.filter((t) => t.deleted > 0 && rulesMod.isTestPath(rules, t.path)).map((t) => t.path);
   // The rules file is a verifier too: a changed `check`, `tier`, `delta` or `tests` is a change to what

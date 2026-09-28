@@ -39,9 +39,10 @@ plugin/              the installable unit, and all the marketplace ships:
   skills/devanity/   the skill: SKILL.md (kernel), modes/ (one file per verb), reference/
   agents/            worker (evidence) and verifier (independent proof)
   hooks/             kernel injection, commands, guard, proof oracle, ledger
-  templates/         the reference CI job a consumer copies (init proposes it)
+  scripts/           the reference CI job, which the modes and the consumer's workflow run
+  templates/         the workflow a consumer copies (init proposes it)
   .claude-plugin/    the plugin manifest; LICENCE, a copy of the root one
-scripts/             the validator, AGENTS.md generator, reference CI job
+scripts/             the repository validator and the AGENTS.md generator
 tests/               node:test suites (npm test)
 docs/                hooks reference, evolution spec and plan
 evals/               the measured axes, the runbook, the harness, dated results
