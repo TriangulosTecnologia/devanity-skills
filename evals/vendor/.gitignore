@@ -1,0 +1,2 @@
+# bytecode from importing a vendored module (evals/harness/tasks.py reads ponytail's tasks.py); never part of a tree
+__pycache__/

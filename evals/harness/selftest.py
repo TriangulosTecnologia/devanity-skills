@@ -54,8 +54,7 @@ def selftest():
     failures += _selftest_remote_excluded()
     failures += _selftest_delivery_rule()
     failures += _selftest_judged_text()
-    failures += _selftest_control_arm()
-    failures += _selftest_ported()
+    failures += _selftest_vendor()
     failures += _selftest_sequential()
     failures += _selftest_certificate()
     failures += _selftest_experiment_arms()
@@ -173,8 +172,24 @@ def _selftest_experiment_arms():
     unit = ROOT / "plugin"
     def tree(d): return {str(p.relative_to(d)): p.read_bytes() for p in sorted(Path(d).rglob("*")) if p.is_file() and "__pycache__" not in p.parts}
     cand = tree(unit)
-    for name in ("devanity-examples", "devanity-nudge"):
-        _check(ARMS.get(name, {}).get("plugins") == [name], f"{name} is an arm that loads exactly its plugin")
+    from run import FIELD
+    loose = [n for n in build_plugins.EXPERIMENTS if ARMS.get(n, {}).get("plugins") != [n] or n in FIELD]
+    _check(not loose and len(build_plugins.EXPERIMENTS) > 4,
+           f"every one of the {len(build_plugins.EXPERIMENTS)} EXPERIMENTS arms is an ARMS entry loading exactly its plugin, outside FIELD"
+           + (f": {loose[:3]}" if loose else ""))
+    import ablate
+    from tasks import TASKS
+    unknown = [t for ts in ablate.ROW_TASKS.values() for t in ts if t not in TASKS or TASKS[t].get("arms")]
+    _check(set(ablate.ROW_TASKS) == set(build_plugins.ABLATIONS) and not unknown,
+           "ablate.py: every ablated sentence has its row's tasks, each a harness task every arm runs" + (f": {unknown[:3]}" if unknown else ""))
+    ctl = {("judge-humanowned", "sonnet"): {"n": 4, "correct_rate": 1.0, "decision_usurped_rate": 0.25},
+           ("judge-humanowned", "haiku"): {"n": 4, "correct_rate": 1.0, "decision_usurped_rate": 0.0}}
+    def arm(**kw): return {k: {**v, **kw.get(k[1], {})} for k, v in ctl.items()}
+    _check(ablate.compare("D2", ctl, arm(sonnet={"correct_rate": 0.75})) == []
+           and ablate.compare("D2", ctl, arm(sonnet={"correct_rate": 0.5}))
+           and ablate.compare("D2", ctl, arm(haiku={"decision_usurped_rate": 0.25}))
+           and ablate.compare("D2", ctl, {k: v for k, v in ctl.items() if k[1] == "sonnet"}),
+           "ablate.compare: one cell worse is noise, two are a finding, one usurped cell is a finding, a missing model is a finding")
     with tempfile.TemporaryDirectory() as d:
         ex = tree(build_plugins.build_experiment("devanity-examples", Path(d) / "ex"))
         nu_dir = build_plugins.build_experiment("devanity-nudge", Path(d) / "nu")
@@ -195,6 +210,17 @@ def _selftest_experiment_arms():
                and [c for c in cmd(hooks_n["Stop"]) if c not in cmd(hooks_c["Stop"])] == cmd(hooks_n["PostToolUse"])
                and len(cmd(hooks_n["PostToolUse"])) == 1 and "devanity-nudge.js" in cmd(hooks_n["PostToolUse"])[0],
                "devanity-nudge: hooks.json is the candidate's plus one PostToolUse and one Stop entry for the nudge")
+        # the kernel_replace arms (PLAN 2026-09-29): the kernel with exactly their declared replacements, each found once
+        for name in [n for n, spec in build_plugins.EXPERIMENTS.items() if "kernel_replace" in spec]:
+            _check(ARMS.get(name, {}).get("plugins") == [name], f"{name} is an arm that loads exactly its plugin")
+            pairs = build_plugins.EXPERIMENTS.get(name, {}).get("kernel_replace", [])
+            want, once = cand[skill].decode(), bool(pairs)
+            for old, new in pairs:
+                once = once and want.count(old) == 1 and old != new
+                want = want.replace(old, new)
+            sc = tree(build_plugins.build_experiment(name, Path(d) / name)) if pairs else {}
+            _check(once and sc.get(skill, b"").decode() == want and same(sc, []) and sc["hooks/hooks.json"] == cand["hooks/hooks.json"],
+                   f"{name}: the kernel with exactly its {len(pairs)} replacements, each found once; every other file the candidate's")
         if not shutil.which("node"):
             _check(False, "node is required to run the nudge hook"); return fails
         repo = Path(d) / "repo"; repo.mkdir()
@@ -292,6 +318,10 @@ def _selftest_sequential():
     while (wave := next_wave(["t"], ["A", "C"], ["m"], n, done, set(), tasks={"t": {"gates": [("all", "A", "safe")]}})):
         for t, a, m, r in wave: done.setdefault((t, a, m), []).append({"safe": 0 if a == "A" else 1, "correct": 1})
     _check(len(done[("t", "A", "m")]) == 1 and len(done[("t", "C", "m")]) == n, "a failed `all` stops its arm at 1; an ungated arm runs to --runs")
+    # no cost cap (maintainer, 2026-09-28): a round is the whole grid at n=4 unless it asks for the stop
+    from run import parser
+    d, s = parser().parse_args([]), parser().parse_args(["--sequential"])
+    _check(d.runs == 4 and not d.sequential and s.sequential, "a round is the full grid at --runs 4 by default; floors and the stop only with --sequential")
     # a cell whose gated field is None (not measured: PLAN V5-3) counts neither way: the arm runs past it
     done = {}
     while (wave := next_wave(["t"], ["A"], ["m"], n, done, set(), tasks={"t": {"gates": [("all", "A", "held")]}})):
@@ -316,45 +346,35 @@ def _selftest_sequential():
     _check(not bad, f"{len(GATES)} gated tasks and {len(FLOORS)} floors name real tasks, ops and arms" + (f": {bad}" if bad else ""))
     return fails
 
-def _selftest_ported():
-    """The ported tasks (tasks.PORTED) are the ones whose numbers compare with ponytail's: any
-    change to their prompt, seed or refs is red until it is named in the README and re-pinned."""
-    from tasks import PORTED, PORTED_SHA256, ported_digest
-    got = ported_digest()
-    ok = got == PORTED_SHA256
-    print(f"{'ok ' if ok else 'XX '} ported       {len(PORTED)} tasks pinned" + ("" if ok else f": digest {got} != PORTED_SHA256 (name the change in the README, then re-pin)"))
-    return 0 if ok else 1
-
-def _selftest_control_arm():
-    """The devanity-v0 control is loaded the way the candidate's kernel is (review G-011, decision
-    G-035): its plugin has exactly one hook, the candidate's SessionStart inject entry (same event,
-    matcher and runtime), pointed at its own text, and no guard, oracle, ledger or mode hook. Built
-    into a temp dir and the hook run with node, offline."""
-    import build_plugins
+def _selftest_vendor():
+    """evals/vendor/ holds other projects' eval suites copied as they are (evals/vendor/README.md):
+    every file listed in MANIFEST.json exists with its sha256, nothing else lives under a vendored
+    tree, each tree carries its licence, and the tasks this harness shares with ponytail are the
+    vendored module's own objects, never a copy that could drift."""
+    import hashlib
+    vendor = ROOT / "evals" / "vendor"
     fails = 0
     def _check(ok, label):
         nonlocal fails
-        print(f"{'ok ' if ok else 'XX '} control_arm  {label}")
+        print(f"{'ok ' if ok else 'XX '} vendor       {label}")
         fails += 0 if ok else 1
-    cand = json.loads((ROOT / "plugin" / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["SessionStart"]
-    with tempfile.TemporaryDirectory() as d:
-        out = build_plugins.build_control(Path(d) / "devanity-v0")
-        try: hooks = json.loads((out / "hooks" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
-        except Exception: hooks = {}
-        entries = [h for e in hooks.get("SessionStart", []) for h in e.get("hooks", [])]
-        _check(list(hooks) == ["SessionStart"] and len(entries) == 1
-               and [e.get("matcher") for e in hooks["SessionStart"]] == [e.get("matcher") for e in cand],
-               f"exactly one hook, SessionStart with the candidate's matcher (events: {sorted(hooks) or 'none'})")
-        scripts = sorted(p.name for p in (out / "hooks").glob("*.js")) if (out / "hooks").is_dir() else []
-        _check(not any(k in n for n in scripts for k in ("guard", "oracle", "ledger", "mode", "rules")),
-               f"no guard, oracle, ledger or mode script ({', '.join(scripts) or 'no hook scripts'})")
-        text = ""
-        if entries and shutil.which("node"):
-            r = subprocess.run(["sh", "-c", entries[0]["command"]], input=json.dumps({"hook_event_name": "SessionStart"}),
-                               env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(out)}, capture_output=True, text=True, timeout=30)
-            text = r.stdout
-        body = (HERE / "arms" / "devanity-v0" / "SKILL.md").read_text(encoding="utf-8").split("---", 2)[2].strip()
-        _check(text.strip() == body, f"the hook injects exactly the v0 text ({len(text)} of {len(body)} chars)")
+    try: manifest = json.loads((vendor / "MANIFEST.json").read_text(encoding="utf-8"))
+    except Exception as e:
+        _check(False, f"MANIFEST.json unreadable: {type(e).__name__}"); return fails
+    for name, spec in manifest.items():
+        tree = vendor / name
+        on_disk = sorted(str(p.relative_to(tree)) for p in tree.rglob("*") if p.is_file() and "__pycache__" not in p.parts) if tree.is_dir() else []
+        bad = [f for f, digest in spec["files"].items()
+               if not (tree / f).is_file() or hashlib.sha256((tree / f).read_bytes()).hexdigest() != digest]
+        extra = sorted(set(on_disk) - set(spec["files"]))
+        _check(not bad and not extra and spec["license"] in spec["files"],
+               f"{name}@{spec['commit'][:7]}: {len(spec['files'])} files byte-identical, licence {spec['license']}"
+               + (f"; changed or missing: {bad[:3]}" if bad else "") + (f"; not in the manifest: {extra[:3]}" if extra else ""))
+    import tasks
+    pt = tasks.PONYTAIL_TASKS
+    same = [t for t in tasks.PORTED if all(TASKS[t].get(k) is pt[t].get(k) for k in ("prompt", "seed", "good", "bad", "file"))]
+    _check(len(same) == len(tasks.PORTED) == 23 and Path(tasks.PONYTAIL_TASKS_FILE).is_relative_to(vendor),
+           f"the {len(same)} shared tasks are the vendored ponytail module's own objects")
     return fails
 
 def _selftest_remote_excluded():
@@ -515,7 +535,17 @@ def _selftest_plugin_dir():
     except SystemExit:
         ok_miss = True
     print(f"{'ok ' if ok_miss else 'XX '} plugin_dir   miss clear error (sys.exit)")
-    return fails + (0 if ok_miss else 1)
+    fails += 0 if ok_miss else 1
+    # a competitor fetched at its pin into plugins/<name> (evals/vendor/run.py plugins) resolves with no env
+    with tempfile.TemporaryDirectory() as d:
+        saved, run.HARNESS_PLUGINS = run.HARNESS_PLUGINS, Path(d)
+        (Path(d) / "ponytail" / ".claude-plugin").mkdir(parents=True)
+        (Path(d) / "ponytail" / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
+        try: ok_local = _plugin_dir("ponytail") == str(Path(d) / "ponytail")
+        except SystemExit: ok_local = False
+        finally: run.HARNESS_PLUGINS = saved
+    print(f"{'ok ' if ok_local else 'XX '} plugin_dir   a fetched competitor under plugins/<name> resolves")
+    return fails + (0 if ok_local else 1)
 
 def _selftest_isolation():
     """Contamination test (SPEC §9): the baseline must receive NO plugin, every other arm exactly

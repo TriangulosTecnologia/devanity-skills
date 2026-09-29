@@ -85,7 +85,7 @@ A rodada de referência (`evals/RUNBOOK.md`) roda sobre a versão da fase V, nã
 
 **A pauta da sessão da V5 (decidida em 2026-09-28, executada no mesmo dia; decisões no PLAN):**
 
-- **Custo por tarefa.** A tarefa que não discriminou (todos os braços iguais em Sonnet, n=4, na rodada de 2026-09-24) vira **piso de regressão**: uma célula por braço, e uma célula que falha escala a tarefa a `--runs` em todos os braços. A que discrimina roda com **parada sequencial** por curtailment determinístico: cada linha da §13 com campo 0/1 por célula é um gate, e um braço para quando todo gate que o lê está decidido, que é o veredito que `--runs` células dariam (o `--selftest` prova em toda sequência). Critério numérico e braço que nenhum gate lê rodam até `--runs`.
+- **Custo por tarefa.** A tarefa que não discriminou (todos os braços iguais em Sonnet, n=4, na rodada de 2026-09-24) vira **piso de regressão**: uma célula por braço, e uma célula que falha escala a tarefa a `--runs` em todos os braços. A que discrimina roda com **parada sequencial** por curtailment determinístico: cada linha da §13 com campo 0/1 por célula é um gate, e um braço para quando todo gate que o lê está decidido, que é o veredito que `--runs` células dariam (o `--selftest` prova em toda sequência). Critério numérico e braço que nenhum gate lê rodam até `--runs`. Sem teto de custo (mantenedor, 2026-09-28), a rodada padrão é a grade inteira em n=4; piso e parada ficam atrás de `--sequential`.
 - **Legibilidade de partida a frio**, a métrica do loop externo: `cold-bare` e `cold-mapped` (§9.1c), diagnóstica até uma rodada mostrar sinal.
 - **Braços de experimento**, o candidato mais uma diferença declarada: `devanity-nudge` (lembretes de uma linha no gatilho: teste editado junto com código, arquivo de instrução editado, `Stop` sem prova num caminho com check) e `devanity-examples` (uma frase do kernel: exemplos de aceitação em linguagem simples para vibe coding). Fora do campo; lidos só contra `devanity`.
 - **Taxa do certificado de dominância observado**, medida no laboratório por um mapa contrafactual por tarefa (`certified`, `certified_unsafe`). O `certify` por caminho fica só observado (PLAN V5-1, decidido): reabre quando cada invariante do caminho tiver um check declarado que falha ao quebrá-lo e `certified_unsafe` = 0 em n ≥ 4 no laboratório e num período de campo que o mantenedor fixe.
@@ -222,7 +222,8 @@ evals/
   README.md                     os eixos medidos (renderiza AXES; validado)
   RUNBOOK.md                    a rodada de referência F1.13: ordem e regras de parada
   kernel-sentences.md           tabela viva frase do kernel → métrica
-  harness/                      run.py · selftest.py · tasks.py (tarefas e o registro AXES) · judge.py · complete.py · fixture.py · build_plugins.py · container.sh + container/ (a imagem) · arms/devanity-v0/ · LICENSE-ponytail
+  harness/                      run.py · selftest.py · tasks.py (tarefas e o registro AXES) · judge.py · complete.py · fixture.py · build_plugins.py · container.sh + container/ (a imagem) · LICENSE-ponytail
+  vendor/                       as suítes de eval do campo copiadas como são (ponytail, caveman; MANIFEST.json com o sha256 de cada arquivo) · run.py, que as roda com o braço devanity
   results/                      writeups datados, commitados
 AGENTS.md                       kernel sem frontmatter e sem as seções de host, gerado de SKILL.md
 devanity.rules.json             as regras deste próprio repositório (dogfood)
@@ -424,7 +425,7 @@ Estrutura e método herdados do `benchmarks/agentic/` do ponytail; tudo abaixo �
   - Pontuar também executa o código entregue, em todo tier menos o `git diff` das 12 `tmpl-*`: o scorer (célula ao vivo ou `--rescore`) só roda no container, e o harness recusa fora dele. O `git diff` roda no `.git` da célula, que o agente pode escrever, e o git executa comandos que a config nomeia: ele só lê uma célula cuja `.git/config` é a que o `git init` escreveu, com `core.fsmonitor`, diff externo e `textconv` desligados; qualquer outra é recusada. Nunca rodar código do agente na máquina do desenvolvedor sem isolamento.
 - **Fixture:** `fastapi/full-stack-fastapi-template @ cd83fc1` (mesmo do ponytail, para comparabilidade) + fixtures sintéticas por armadilha.
 - **Braços (o campo):** `baseline` · concorrentes, cada um o plugin real: `ponytail` (ofício), `superpowers` (TDD, causa raiz, verificar antes de "pronto": o concorrente direto no eixo de julgamento), `caveman` (prosa terse: controle de brevidade), `feature-dev` (oficial, workflow em fases: contraparte dos modos), `security-guidance` (oficial, hook de segurança sempre ativo: contraparte das guardas) · controle `senior-oneliner` (uma frase via system prompt: se ela iguala o kernel, o kernel não vale seus tokens) · `devanity-released` (a versão lançada, só para regressão, nunca no writeup) · `devanity` (a candidata). Um vencedor só significa algo contra o campo que um mantenedor escolheria; não existe braço de composição do devanity com um concorrente.
-- **Isolamento:** cópia fresca do repo por célula; `n ≥ 4`, salvo piso e parada sequencial (§0.7: o piso roda uma célula por braço enquanto nenhuma falha; o braço parado tem o veredito de n=4 no seu gate); um processo por célula. O teste de contaminação do ponytail (hook do plugin vazando para o baseline) faz parte do `--selftest`.
+- **Isolamento:** cópia fresca do repo por célula; `n ≥ 4` em toda célula (piso e parada sequencial só com `--sequential`, §0.7); um processo por célula. O teste de contaminação do ponytail (hook do plugin vazando para o baseline) faz parte do `--selftest`.
 - **Referências good/bad:** toda armadilha tem versão correta e versão errada-plausível; `--selftest` prova que o scorer aceita uma e rejeita a outra antes de qualquer chamada de API.
 - **Juízes:** over-engineering e completude (modelo fixo, temperatura 0, rubrica publicada, `--selftest` exige ordenar referência ruim acima da boa).
 - **Rescore offline:** workspaces preservados em `runs/<stamp>/`; nenhuma métrica exige pagar API duas vezes.
@@ -466,11 +467,11 @@ Scorers por `ast` e execução, sem juiz nem palavra; o teto de cada um está na
 
 Por braço, por modelo: LOC (`git diff` adicionado, testes separados) · tokens · custo · tempo · `safe` (adversarial, determinístico) · `correct` · `complete` (juiz) · `over_engineering` (juiz) · **`false_ready`** (certificado do agente ≠ medição do hook) · **`questions_avoidable`** · **`decisions_usurped`** · `root_cause_rate` · `nochange_rate` · `drift` (taxa de causa raiz do `trace-transfer` isolado − a do 3º ticket de `long-*`; positivo = decaiu na sessão) · `queue_correct` (decisões que foram para a fila e deviam ir) · `loosened` (`judge-loosen`) · `propagated` (`twin-*`) · `entropy_delta` (`long-entropy`, agregado como média) · `legibility` (`cold-*`, média) · `certified` e `certified_unsafe` (o certificado de dominância observado sobre o mapa contrafactual da tarefa, em `core-pivot` e `judge-loosen`; taxas sobre as células que tocaram um caminho high-risk, `certify_n`) · `nudges` (disparos do braço `devanity-nudge`, média). `questions_avoidable` fica como diagnóstico: o gate de "ler antes de perguntar" é `correct` em `judge-askable` (§13).
 
-**Orçamento:** uma rodada completa (9 braços × ~27 tarefas × n=4, Sonnet) custa na faixa de US$200–300 e 3–5 h com 6 workers. Cada fase declara quantas rodadas cabe; iterar o kernel usa subconjuntos (as armadilhas afetadas + `safe`), nunca a rodada completa a cada edição.
+**Custo:** sem teto (mantenedor, 2026-09-28). Referência de tamanho: uma rodada completa (10 braços × 45 tarefas × n=4, Sonnet) passa de 1 800 células; a de 2026-09-24 custou US$0,10–0,15 por célula cirúrgica e até US$0,56 por célula greenfield.
 
 ### 9.3 Modelos
 
-Sonnet como modelo de decisão; Haiku e Opus como sensibilidade. Um resultado só vale se replicado em Sonnet com `n ≥ 4`, ou decidido pelo seu gate na parada sequencial (§0.7), que dá o mesmo veredito.
+Sonnet como modelo de decisão; Haiku e Opus como sensibilidade. Um resultado só vale se replicado em Sonnet com `n ≥ 4`.
 
 ## 10. Guardrails de implementação
 
@@ -529,7 +530,7 @@ Válidos para toda PR desta evolução. Cada um existe porque um dos dois projet
 
 ## 13. Critérios de sucesso da v1 (fim da fase 3)
 
-Em Sonnet, `n ≥ 4` (um piso sem falha, uma célula por braço; um braço parado pelo seu gate, o veredito de n=4: §0.7), contra os braços de referência:
+Em Sonnet, `n ≥ 4`, contra os braços de referência:
 
 - `safe` = 100%.
 - LOC nas 12 tarefas do ponytail ≤ ponytail ± 10%.

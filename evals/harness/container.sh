@@ -20,7 +20,7 @@
 #                                   re-exported with the in-container path.
 #   DEVANITY_TMPL                   host path of full-stack-fastapi-template @ cd83fc1; mounted
 #                                   read-only and re-exported. Falls back to fixtures/ under the harness.
-#   ANTHROPIC_API_KEY | CLAUDE_CODE_OAUTH_TOKEN   passed through as-is. If neither is set, the host's
+#   ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN   passed through as-is. If neither is set, the host's
 #                                   Claude config dir (CLAUDE_CONFIG_DIR or ~/.claude) is mounted
 #                                   read-only at /home/bench/.claude-host and the entrypoint copies
 #                                   only .credentials.json.
@@ -110,11 +110,11 @@ fi
 
 # Credentials. Environment tokens win; otherwise hand the entrypoint the host config dir read-only
 # and let it copy only .credentials.json (see container/entrypoint.sh).
-if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
-  run+=(-e ANTHROPIC_API_KEY)
-elif [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-  run+=(-e CLAUDE_CODE_OAUTH_TOKEN)
-else
+# Both pass when both are set: the CLI prefers the key, and the vendored suites that call the
+# Messages API directly (evals/vendor/run.py) need the key while `claude -p` can use the token.
+if [ -n "${ANTHROPIC_API_KEY:-}" ]; then run+=(-e ANTHROPIC_API_KEY); fi
+if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then run+=(-e CLAUDE_CODE_OAUTH_TOKEN); fi
+if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
   cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
   if [ -r "$cfg/.credentials.json" ]; then
     run+=(-v "$cfg:/home/bench/.claude-host:ro")
@@ -125,7 +125,8 @@ fi
 
 # Harness knobs pass through when set. DEVANITY_AUTONOMOUS never does: a host value would reach
 # every task; the unattended task sets its own through the task's `env` (run.py cell_env).
-for v in ANTHROPIC_MODEL; do
+# The vendored suites' own knobs and the OpenAI key two of them use (evals/vendor/README.md).
+for v in ANTHROPIC_MODEL OPENAI_API_KEY DEVANITY_VENDOR_EXPERIMENT CAVEMAN_EVAL_MODEL AUDIT_N AUDIT_MODEL CE_N CE_MODELS ME_N ME_MODELS; do
   if [ -n "${!v:-}" ]; then run+=(-e "$v"); fi
 done
 

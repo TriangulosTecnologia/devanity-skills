@@ -41,7 +41,7 @@ from pathlib import Path
 
 from tasks import (TASKS, SELFCHECK_DEFS, SKIP_DIFF, is_delivery, is_test_file, proof_fields,
                    fixture_git_refusal, _fail, _git)
-import fixture
+import build_plugins, fixture
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -100,19 +100,17 @@ ARMS = {
     "security-guidance": {"plugins": ["security-guidance"]},   # official always-on security hook (devanity-guard's counterpart)
     # control
     "senior-oneliner":   {"plugins": [], "append": SENIOR_ONELINER},
-    # ours: released (regression reference, never in the public writeup), the v0 control (F1.1: the
-    # craft ladder alone, harness-only, never released; separates "the ladder works" from "our
-    # wording works") and the candidate
+    # ours: released (regression reference, never in the public writeup) and the candidate
     "devanity-released": {"plugins": ["devanity-released"], "prompt_prefix": "/devanity-released:maestro "},
-    "devanity-v0":       {"plugins": ["devanity-v0"]},
     "devanity":          {"plugins": ["devanity"]},
     # V5 experiment arms (PLAN agenda, 2026-09-28): the candidate plus one declared difference each
     # (build_plugins.EXPERIMENTS), harness-only; run them with --arms, they are not the field
-    "devanity-examples": {"plugins": ["devanity-examples"]},
-    "devanity-nudge":    {"plugins": ["devanity-nudge"]},
 }
-FIELD = [a for a in ARMS if a not in ("devanity-examples", "devanity-nudge")]   # the default --arms
-MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-4-6", "opus": "claude-opus-4-8"}
+FIELD = list(ARMS)   # the default --arms; the experiment arms below run only when named
+# The experiment arms (build_plugins.EXPERIMENTS: the candidate plus one declared difference each, and the
+# ablation arms) are harness-only and derived from that one table, never listed here by hand.
+ARMS.update({name: {"plugins": [name]} for name in build_plugins.EXPERIMENTS})
+MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}   # current as of 2026-09-28; the 2026-09-24 round ran sonnet-4-6
 
 PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
 # Harness-local plugins (gitignored). devanity-released is GENERATED from the released ref's skills/ + agents/
@@ -121,24 +119,24 @@ PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
 HARNESS_PLUGINS = Path(__file__).resolve().parent / "plugins"
 _LOCAL_PLUGINS = {
     "devanity-released": "run `python3 evals/harness/build_plugins.py` (exports the released ref)",
-    "devanity-v0":       "run `python3 evals/harness/build_plugins.py` (packages arms/devanity-v0)",
     "devanity":          "run `python3 evals/harness/build_plugins.py` (packages the working tree's plugin/skills/devanity)",
-    "devanity-examples": "run `python3 evals/harness/build_plugins.py` (the candidate plus one kernel sentence)",
-    "devanity-nudge":    "run `python3 evals/harness/build_plugins.py` (the candidate plus the nudge hook)",
 }
+_LOCAL_PLUGINS.update({name: f"run `python3 evals/harness/build_plugins.py` ({spec['description']})"
+                       for name, spec in build_plugins.EXPERIMENTS.items()})
 
 def _env_key(name): return "DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_", name.upper())
 
 def _plugin_dir(name):
     """Resolve a plugin directory portably. Order: DEVANITY_HARNESS_PLUGIN_<NAME> env override ->
-    harness-local plugins/<name> for the devanity components -> latest version dir under
+    harness-local plugins/<name> (the devanity components, which must be there, and the competitors
+    evals/vendor/run.py fetches at their pins) -> latest version dir under
     ~/.claude/plugins/cache/<name>/<name> -> clear error (sys.exit).
     Never guess: passing a non-existent path to --plugin-dir would silently run the baseline."""
     env = os.environ.get(_env_key(name))
     if env: return env
+    local = HARNESS_PLUGINS / name
+    if (local / ".claude-plugin" / "plugin.json").exists(): return str(local)
     if name in _LOCAL_PLUGINS:
-        local = HARNESS_PLUGINS / name
-        if (local / ".claude-plugin" / "plugin.json").exists(): return str(local)
         sys.exit(f"plugin dir for arm component '{name}' not found at {local}: {_LOCAL_PLUGINS[name]}; "
                  f"or set {_env_key(name)}")
     # ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>: the marketplace differs per plugin
@@ -826,7 +824,7 @@ def _claude_version():
     try: return subprocess.run([shutil.which("claude"), "--version"], capture_output=True, text=True).stdout.strip()
     except Exception: return "unknown"
 
-def main():
+def parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--rescore", help="recompute metrics from a kept run dir (no API)")
@@ -835,13 +833,16 @@ def main():
     ap.add_argument("--arms", default=",".join(FIELD), help="default: the field; the experiment arms run only when named")
     ap.add_argument("--model", help="single model (shorthand for --models)")
     ap.add_argument("--models", default="haiku", help="comma list: haiku,sonnet,opus")
-    ap.add_argument("--runs", type=int, default=1, help="cells per (task, arm, model), the most a sequential run spends")
-    ap.add_argument("--full", action="store_true", help="every cell --runs times: no floor, no sequential stop (tasks.FLOORS, tasks.GATES)")
+    ap.add_argument("--runs", type=int, default=4, help="cells per (task, arm, model); SPEC §9's n=4 by default")
+    ap.add_argument("--sequential", action="store_true", help="floors and the sequential stop (tasks.FLOORS, tasks.GATES): --runs becomes the most a (task, arm, model) spends")
     ap.add_argument("--workers", type=int, default=4, help="cells to run concurrently (default 4; cells are fully isolated)")
     ap.add_argument("--fill", help="re-run the cells of a kept run dir that ended in an error (limit, empty output) into a new stamp; failed workspaces move to <dir>/_failed/")
     ap.add_argument("--smoke", metavar="ARM", choices=list(ARMS),
                     help="live one-prompt check that ARM's plugins are visible (tiny API spend; manual, not a gate)")
-    args = ap.parse_args()
+    return ap
+
+def main():
+    args = parser().parse_args()
     from selftest import selftest            # lazy: selftest.py imports from run
 
     if args.selftest:
@@ -921,15 +922,15 @@ def main():
         skipped = sorted({(t, a) for t in task_ids for a in arms} - {(c[0], c[1]) for c in cells})
         if skipped: print(f"skipping {len(skipped)} (task, arm) pairs outside a task's `arms`: "
                           + ", ".join(f"{t}/{a}" for t, a in skipped[:6]) + (" ..." if len(skipped) > 6 else ""))
-        if args.full:
-            run_cells(cells, " (--full: every cell --runs times)")
+        if not args.sequential:
+            run_cells(cells, " (every cell --runs times)")
         else:                                        # floors and gates decide each next wave (next_wave)
             wave_no = 0
             while (wave := next_wave(task_ids, arms, models, args.runs, scored, stalled)):
                 wave_no += 1
                 run_cells(wave, f" (wave {wave_no})")
             spent = sum(len(v) for v in scored.values())
-            print(f"sequential: {spent} scored cells of the {len(cells)} a --full run would spend"
+            print(f"sequential: {spent} scored cells of the {len(cells)} the full grid would spend"
                   + (f"; {len(stalled)} stalled pair(s), re-run with --fill" if stalled else ""), flush=True)
 
     rows = aggregate(results)
