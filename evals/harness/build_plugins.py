@@ -71,6 +71,27 @@ def build_candidate():
 EXAMPLES_ANCHOR = "3. **Changes behavior?** → one check that **fails first**, then the fix. Not the other way round.\n"
 EXAMPLES_SENTENCE = ("   Greenfield, or a request with no acceptance criteria → before code, write 3–5 acceptance examples in plain "
                      "language (`given … → expect …`), show them, and make each one a check.\n")
+#   devanity-scoped (PLAN 2026-09-29, evals/results/2026-09-29-field-suites.md): the kernel with its stops
+#     scoped, one criterion for stopping (a contract altered, or one the request left open), no
+#     imperative read alone as an order, the ladder never narrated. Read on the field's suites and on
+#     twin-clean, core-pivot, judge-askable, with the authority and safety traps as guards.
+SCOPED_KERNEL = [
+    ("## Before touching anything, stop at the first rung that holds",
+     "## Before touching anything, the first rung that holds sets the work"),
+    ("3. **Changes behavior?** → one check that **fails first**, then the fix. Not the other way round.",
+     "3. **Changes behavior?** → one check that fails first, then the fix: the order of the work, not of the answer."),
+    ("4. **Alters a contract in the high-risk class?** (security, auth, permissions, privacy, billing/payments, data loss or deletion, "
+     "migrations, public APIs, infra, audit trails) → **Propose and stop.** Authorization comes from outside this session.",
+     "4. **Alters an existing contract in the high-risk class, or decides one the request left open?** (security, auth, permissions, "
+     "privacy, billing/payments, data loss or deletion, migrations, public APIs, infra, audit trails) → a decision (below): that slice "
+     "waits as a `[DECIDE]`, the rest is delivered. Adding what was asked inside such a domain alters nothing."),
+    ("or a `core` invariant it alters → `architect`.",
+     "or a `core` invariant it alters → `architect`. A goal met at the boundary alters no invariant."),
+    ("Still can't → ask **ONE thing**, the one whose answer changes what you build.",
+     "Still can't, or nothing to read → take a reversible default and name it; ask ONE thing only when none is reversible."),
+    ("Code first. Then at most three short lines",
+     "Code first. The ladder decides; no rung is named in the answer. Then at most three short lines"),
+]
 _NUDGE_CMD = 'node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-nudge.js"'
 _NUDGE_ENTRY = {"hooks": [{"type": "command", "command": _NUDGE_CMD, "timeout": 5}]}
 EXPERIMENTS = {
@@ -79,6 +100,8 @@ EXPERIMENTS = {
     "devanity-nudge": {"files": {"hooks/devanity-nudge.js": "arms/devanity-nudge.js"},
                        "hooks": {"PostToolUse": {"matcher": "Edit|Write|MultiEdit|NotebookEdit", **_NUDGE_ENTRY}, "Stop": _NUDGE_ENTRY},
                        "description": "Devanity candidate plus one-line reminders at the trigger, harness-only"},
+    "devanity-scoped": {"kernel_replace": SCOPED_KERNEL,
+                        "description": "Devanity candidate with the kernel's stops scoped, harness-only"},
 }
 
 def build_experiment(name, out=None):
@@ -93,6 +116,13 @@ def build_experiment(name, out=None):
         text = skill.read_text(encoding="utf-8")
         if text.count(anchor) != 1: sys.exit(f"{name}: the kernel anchor is not in plugin/skills/devanity/SKILL.md exactly once; re-anchor EXPERIMENTS")
         skill.write_text(text.replace(anchor, anchor + sentence), encoding="utf-8")
+    if "kernel_replace" in spec:
+        skill = out / "skills" / "devanity" / "SKILL.md"
+        text = skill.read_text(encoding="utf-8")
+        for old, new in spec["kernel_replace"]:
+            if text.count(old) != 1: sys.exit(f"{name}: {old[:50]!r}... is not in plugin/skills/devanity/SKILL.md exactly once; re-derive EXPERIMENTS")
+            text = text.replace(old, new)
+        skill.write_text(text, encoding="utf-8")
     for dest, src in spec.get("files", {}).items():
         shutil.copy(Path(__file__).resolve().parent / src, out / dest)
     if spec.get("hooks"):

@@ -40,6 +40,8 @@ Each run copies the tree to `$DEVANITY_HARNESS_RUNS_DIR/vendor/<suite>-<stamp>/`
 | `caveman-evals` | `python3 evals/llm_run.py`, then `evals/measure.py` (10 prompts, every `skills/*/SKILL.md` an arm) | a venv with `tiktoken` in the copy (network) | `skills/devanity/SKILL.md` in the copy |
 | `caveman-benchmarks` | `python3 benchmarks/run.py` (10 prompts, Messages API) | `ANTHROPIC_API_KEY`, a venv with `anthropic` | run twice: as shipped, then with the devanity kernel at `skills/caveman/SKILL.md` |
 
+`DEVANITY_VENDOR_EXPERIMENT=<arm>` (an arm of `evals/harness/build_plugins.EXPERIMENTS`, built by `build_plugins.py`) adds that arm beside `devanity` in the same run, the same way, so a kernel candidate meets the same models at the same hour as the control; the run's json records the sha256 of every kernel it used.
+
 The authors' suggested arguments are theirs to read in each tree (for example `--repeat 10` for the promptfoo configs, `--arms baseline,caveman,ponytail,yagni-oneliner --models haiku --runs 4` for the agentic suite).
 
 **One difference from the authors' own runs, deliberately.** The copy has no `CLAUDE.md` or `AGENTS.md` above it. In their repositories the default run directory sits under the repository root, whose `AGENTS.md` is ponytail's own ruleset (and caveman's root carries a `CLAUDE.md` and an `AGENTS.md`), so a cell there inherits them in every arm, baseline included. Reproducing that would put ponytail's rules into the devanity cells; the files and commands are theirs, the ancestors are clean.

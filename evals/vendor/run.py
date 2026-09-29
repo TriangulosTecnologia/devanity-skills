@@ -4,6 +4,7 @@
   python3 evals/vendor/run.py plugins                  # the competitor plugins at their pins -> evals/harness/plugins/
   ./container.sh python3 ../vendor/run.py <suite> [-- <the suite's own arguments>]
   python3 evals/vendor/run.py --list
+  DEVANITY_VENDOR_EXPERIMENT=<arm> ...        # also run a harness experiment arm (build_plugins.EXPERIMENTS) beside devanity
 
 The vendored trees (evals/vendor/<name>/, byte-identical: MANIFEST.json) are never edited and never
 run in place: each run copies the tree to $DEVANITY_HARNESS_RUNS_DIR/vendor/<suite>-<stamp>/, which has
@@ -20,7 +21,7 @@ How the devanity arm is added, per shape of harness:
     benchmarks/run.py): the script runs twice, once as shipped and once with the devanity kernel at that
     path in its own copy. The skill arm of the second run is devanity; the rest of the run is identical.
 """
-import argparse, datetime, json, os, shutil, subprocess, sys
+import argparse, datetime, hashlib, json, os, shutil, subprocess, sys
 from pathlib import Path
 
 VENDOR = Path(__file__).resolve().parent
@@ -70,29 +71,45 @@ def _plugin(name):
     return str(p)
 
 # --- the devanity arm, per suite -------------------------------------------------------------------
-def _put_kernel(copy, rel):
-    """The devanity kernel as the file an arm reads, byte for byte (the arms read theirs whole)."""
+def _arms():
+    """The devanity arms a run adds: the candidate, and DEVANITY_VENDOR_EXPERIMENT (a harness experiment
+    arm, evals/harness/build_plugins.EXPERIMENTS) beside it in the same run, so both meet the same models
+    at the same hour. name -> (plugin dir, kernel file)."""
+    arms = {"devanity": (PLUGINS / "devanity", KERNEL)}
+    exp = os.environ.get("DEVANITY_VENDOR_EXPERIMENT")
+    if exp:
+        arms[exp] = (PLUGINS / exp, PLUGINS / exp / "skills" / "devanity" / "SKILL.md")
+        if not arms[exp][1].is_file(): sys.exit(f"experiment arm {exp} not built: run `python3 evals/harness/build_plugins.py`")
+    return arms
+
+def _put_kernel(copy, rel, kernel=KERNEL):
+    """A devanity kernel as the file an arm reads, byte for byte (the arms read theirs whole)."""
     (copy / rel).parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(KERNEL, copy / rel)
+    shutil.copyfile(kernel, copy / rel)
 
 def _promptfoo_arm(copy, config):
-    """ponytail's arms/ponytail.js with the skill path swapped, and the config with one more prompt."""
-    arms = copy / "benchmarks" / "arms"
-    js = (arms / "ponytail.js").read_text(encoding="utf-8")
+    """ponytail's arms/ponytail.js with the skill path swapped, per devanity arm, and the config with
+    one more prompt per arm."""
+    dirs = copy / "benchmarks" / "arms"
+    js = (dirs / "ponytail.js").read_text(encoding="utf-8")
     if js.count("'skills', 'ponytail', 'SKILL.md'") != 1: sys.exit("arms/ponytail.js changed shape; re-derive the devanity arm")
-    (arms / "devanity.js").write_text(js.replace("// Ponytail arm", "// Devanity arm (added by evals/vendor/run.py)")
-                                        .replace("'skills', 'ponytail', 'SKILL.md'", "'skills', 'devanity', 'SKILL.md'"), encoding="utf-8")
-    _put_kernel(copy, "skills/devanity/SKILL.md")
     text = (copy / "benchmarks" / config).read_text(encoding="utf-8")
     entry = "  - id: file://arms/ponytail.js\n    label: ponytail\n"
     if text.count(entry) != 1: sys.exit(f"{config} changed shape; re-derive the devanity arm")
+    added = ""
+    for name, (_, kernel) in _arms().items():
+        (dirs / f"{name}.js").write_text(js.replace("// Ponytail arm", f"// {name} arm (added by evals/vendor/run.py)")
+                                           .replace("'skills', 'ponytail', 'SKILL.md'", f"'skills', '{name}', 'SKILL.md'"), encoding="utf-8")
+        _put_kernel(copy, f"skills/{name}/SKILL.md", kernel)
+        added += f"  - id: file://arms/{name}.js\n    label: {name}\n"
     out = config.replace(".yaml", ".devanity.yaml")
-    (copy / "benchmarks" / out).write_text(text.replace(entry, entry + "  - id: file://arms/devanity.js\n    label: devanity\n"), encoding="utf-8")
+    (copy / "benchmarks" / out).write_text(text.replace(entry, entry + added), encoding="utf-8")
     return out
 
 def _agentic(copy, args):
     env = {"PONYTAIL_PLUGIN_DIR": _plugin("ponytail"), "CAVEMAN_PLUGIN_DIR": _plugin("caveman"),
-           "DEVANITY_PLUGIN_DIR": _plugin("devanity")}
+           "DEVANITY_VENDOR_ARMS": ",".join(_arms())}
+    for name in _arms(): env[f"{name.upper()}_PLUGIN_DIR"] = _plugin(name)      # ponytail's _plugin_dir reads <NAME>_PLUGIN_DIR
     tmpl = HARNESS / "fixtures" / "full-stack-fastapi-template"
     if tmpl.is_dir(): env["PONYTAIL_TMPL"] = str(tmpl)
     return [(copy, [sys.executable, str(Path(__file__).resolve()), "_agentic-main", str(copy), *args])], env
@@ -105,8 +122,9 @@ def agentic_main(copy, args):
     sys.path.insert(0, str(copy / "benchmarks" / "agentic"))
     sys.argv = ["run.py", *args]
     import run as pt
-    pt.ARMS["devanity"] = lambda: None
-    pt.PLUGIN_ARMS = (*pt.PLUGIN_ARMS, "devanity")
+    for name in os.environ.get("DEVANITY_VENDOR_ARMS", "devanity").split(","):
+        pt.ARMS[name] = lambda: None
+        pt.PLUGIN_ARMS = (*pt.PLUGIN_ARMS, name)
     shipped = pt.selftest
     def selftest():
         saved = os.environ.get("PONYTAIL_PLUGIN_DIR")
@@ -124,12 +142,16 @@ def _promptfoo(config):
     return build
 
 def _twice(script, skill_rel, runner):
-    """Run as shipped, then with the devanity kernel at the script's one skill path (in its own copy)."""
+    """Run as shipped, then once per devanity arm with its kernel at the script's one skill path, each in
+    its own copy (<copy>-<arm>)."""
     def build(copy, args):
-        ours = copy.with_name(copy.name + "-devanity")
-        shutil.copytree(copy, ours)
-        _put_kernel(ours, skill_rel)
-        return [(c, [*runner(c), script, *args]) for c in (copy, ours)], {}
+        copies = [copy]
+        for name, (_, kernel) in _arms().items():
+            ours = copy.with_name(f"{copy.name}-{name}")
+            shutil.copytree(copy, ours)
+            _put_kernel(ours, skill_rel, kernel)
+            copies.append(ours)
+        return [(c, [*runner(c), script, *args]) for c in copies], {}
     return build
 
 def _venv(copy, *pkgs):
@@ -138,7 +160,8 @@ def _venv(copy, *pkgs):
     return str(copy / ".venv" / "bin" / "python")
 
 def _caveman_evals(copy, args):
-    _put_kernel(copy, "skills/devanity/SKILL.md")          # llm_run.py runs every skills/*/SKILL.md as an arm
+    for name, (_, kernel) in _arms().items():                 # llm_run.py runs every skills/*/SKILL.md as an arm
+        _put_kernel(copy, f"skills/{name}/SKILL.md", kernel)
     return [(copy, [sys.executable, "evals/llm_run.py", *args]), (copy, [_venv(copy, "tiktoken"), "evals/measure.py"])], {}
 
 def _caveman_benchmarks(copy, args):
@@ -178,7 +201,8 @@ def run_suite(suite, args):
     shutil.copytree(VENDOR / tree, copy)
     cmds, env = build(copy, args)
     commit = json.loads((VENDOR / "MANIFEST.json").read_text(encoding="utf-8"))[tree]["commit"]
-    (copy.parent / f"{copy.name}.json").write_text(json.dumps({"suite": suite, "tree": tree, "commit": commit,
+    kernels = {n: hashlib.sha256(k.read_bytes()).hexdigest() for n, (_, k) in _arms().items()}
+    (copy.parent / f"{copy.name}.json").write_text(json.dumps({"suite": suite, "tree": tree, "commit": commit, "kernels": kernels,
                                                               "commands": [[str(c), cmd] for c, cmd in cmds]}, indent=2), encoding="utf-8")
     for cwd, cmd in cmds:
         print(f"\n$ ({cwd}) {' '.join(cmd)}", flush=True)
