@@ -41,7 +41,7 @@ from pathlib import Path
 
 from tasks import (TASKS, SELFCHECK_DEFS, SKIP_DIFF, is_delivery, is_test_file, proof_fields,
                    fixture_git_refusal, _fail, _git)
-import fixture
+import build_plugins, fixture
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -105,12 +105,11 @@ ARMS = {
     "devanity":          {"plugins": ["devanity"]},
     # V5 experiment arms (PLAN agenda, 2026-09-28): the candidate plus one declared difference each
     # (build_plugins.EXPERIMENTS), harness-only; run them with --arms, they are not the field
-    "devanity-examples": {"plugins": ["devanity-examples"]},
-    "devanity-nudge":    {"plugins": ["devanity-nudge"]},
-    "devanity-form":     {"plugins": ["devanity-form"]},
-    "devanity-premise":  {"plugins": ["devanity-premise"]},
 }
-FIELD = [a for a in ARMS if a not in ("devanity-examples", "devanity-nudge", "devanity-form", "devanity-premise")]   # the default --arms
+FIELD = list(ARMS)   # the default --arms; the experiment arms below run only when named
+# The experiment arms (build_plugins.EXPERIMENTS: the candidate plus one declared difference each, and the
+# ablation arms) are harness-only and derived from that one table, never listed here by hand.
+ARMS.update({name: {"plugins": [name]} for name in build_plugins.EXPERIMENTS})
 MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}   # current as of 2026-09-28; the 2026-09-24 round ran sonnet-4-6
 
 PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
@@ -121,11 +120,9 @@ HARNESS_PLUGINS = Path(__file__).resolve().parent / "plugins"
 _LOCAL_PLUGINS = {
     "devanity-released": "run `python3 evals/harness/build_plugins.py` (exports the released ref)",
     "devanity":          "run `python3 evals/harness/build_plugins.py` (packages the working tree's plugin/skills/devanity)",
-    "devanity-examples": "run `python3 evals/harness/build_plugins.py` (the candidate plus one kernel sentence)",
-    "devanity-nudge":    "run `python3 evals/harness/build_plugins.py` (the candidate plus the nudge hook)",
-    "devanity-form":     "run `python3 evals/harness/build_plugins.py` (the candidate with the kernel's form fixed)",
-    "devanity-premise":  "run `python3 evals/harness/build_plugins.py` (the workspace premise made conditional)",
 }
+_LOCAL_PLUGINS.update({name: f"run `python3 evals/harness/build_plugins.py` ({spec['description']})"
+                       for name, spec in build_plugins.EXPERIMENTS.items()})
 
 def _env_key(name): return "DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_", name.upper())
 

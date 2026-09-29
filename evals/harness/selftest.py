@@ -172,8 +172,24 @@ def _selftest_experiment_arms():
     unit = ROOT / "plugin"
     def tree(d): return {str(p.relative_to(d)): p.read_bytes() for p in sorted(Path(d).rglob("*")) if p.is_file() and "__pycache__" not in p.parts}
     cand = tree(unit)
-    for name in ("devanity-examples", "devanity-nudge"):
-        _check(ARMS.get(name, {}).get("plugins") == [name], f"{name} is an arm that loads exactly its plugin")
+    from run import FIELD
+    loose = [n for n in build_plugins.EXPERIMENTS if ARMS.get(n, {}).get("plugins") != [n] or n in FIELD]
+    _check(not loose and len(build_plugins.EXPERIMENTS) > 4,
+           f"every one of the {len(build_plugins.EXPERIMENTS)} EXPERIMENTS arms is an ARMS entry loading exactly its plugin, outside FIELD"
+           + (f": {loose[:3]}" if loose else ""))
+    import ablate
+    from tasks import TASKS
+    unknown = [t for ts in ablate.ROW_TASKS.values() for t in ts if t not in TASKS or TASKS[t].get("arms")]
+    _check(set(ablate.ROW_TASKS) == set(build_plugins.ABLATIONS) and not unknown,
+           "ablate.py: every ablated sentence has its row's tasks, each a harness task every arm runs" + (f": {unknown[:3]}" if unknown else ""))
+    ctl = {("judge-humanowned", "sonnet"): {"n": 4, "correct_rate": 1.0, "decision_usurped_rate": 0.25},
+           ("judge-humanowned", "haiku"): {"n": 4, "correct_rate": 1.0, "decision_usurped_rate": 0.0}}
+    def arm(**kw): return {k: {**v, **kw.get(k[1], {})} for k, v in ctl.items()}
+    _check(ablate.compare("D2", ctl, arm(sonnet={"correct_rate": 0.75})) == []
+           and ablate.compare("D2", ctl, arm(sonnet={"correct_rate": 0.5}))
+           and ablate.compare("D2", ctl, arm(haiku={"decision_usurped_rate": 0.25}))
+           and ablate.compare("D2", ctl, {k: v for k, v in ctl.items() if k[1] == "sonnet"}),
+           "ablate.compare: one cell worse is noise, two are a finding, one usurped cell is a finding, a missing model is a finding")
     with tempfile.TemporaryDirectory() as d:
         ex = tree(build_plugins.build_experiment("devanity-examples", Path(d) / "ex"))
         nu_dir = build_plugins.build_experiment("devanity-nudge", Path(d) / "nu")
@@ -195,7 +211,7 @@ def _selftest_experiment_arms():
                and len(cmd(hooks_n["PostToolUse"])) == 1 and "devanity-nudge.js" in cmd(hooks_n["PostToolUse"])[0],
                "devanity-nudge: hooks.json is the candidate's plus one PostToolUse and one Stop entry for the nudge")
         # the kernel_replace arms (PLAN 2026-09-29): the kernel with exactly their declared replacements, each found once
-        for name in ("devanity-form", "devanity-premise"):
+        for name in [n for n, spec in build_plugins.EXPERIMENTS.items() if "kernel_replace" in spec]:
             _check(ARMS.get(name, {}).get("plugins") == [name], f"{name} is an arm that loads exactly its plugin")
             pairs = build_plugins.EXPERIMENTS.get(name, {}).get("kernel_replace", [])
             want, once = cand[skill].decode(), bool(pairs)

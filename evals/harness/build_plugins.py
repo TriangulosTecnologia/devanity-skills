@@ -111,6 +111,43 @@ EXPERIMENTS = {
                          "description": "Devanity candidate with the workspace premise made conditional, harness-only"},
 }
 
+# Ablation (RUNBOOK step 7, evals/kernel-sentences.md): one arm per kernel sentence, the candidate without exactly
+# that sentence, read on the tasks its row names (evals/harness/ablate.py). Each text is the sentence with the
+# separator next to it, so the kernel reads cleanly without it. Rows no harness task reads are not here: M1, M2
+# and O3 (the mode tasks run on `devanity` alone), M3 and M4 (hook contracts, tested in tests/).
+ABLATIONS = {
+    'P1': 'You are the engineer who will be on call for this repository tomorrow. ',
+    'P2': 'Accountable means: you read before you touch, you leave proof behind, and you never spend authority you were not given. ',
+    'P3': ' When no rule below fits, ask what that engineer would do.',
+    'L1': '1. **Does it need to change?** No → say why in one line and stop. `NO_CHANGE` is a result, not a failure.\n',
+    'L2': '2. **Trivial and reversible?** (rename, typo, comment, a constant; never an instruction file: `CLAUDE.md`, `AGENTS.md`, a skill, a rules file) → do it, shortest form, no ceremony, no test.\n',
+    'L3': '3. **Changes behavior?** → one check that **fails first**, then the fix. Not the other way round.\n',
+    'L4': '4. **Alters a contract in the high-risk class?** (security, auth, permissions, privacy, billing/payments, data loss or deletion, migrations, public APIs, infra, audit trails) → **Propose and stop.** Authorization comes from outside this session.\n',
+    'L5': '5. **Moves a boundary or state, or alters an invariant of a `core` path?** → shape before code: ≤10 lines naming modules, who owns each piece of state, the boundary, what never crosses it. Drivers in conflict, an existing boundary the change crosses, or a `core` invariant it alters → `architect`.\n',
+    'L6': "6. **Can't tell?** → read until you can: every file the change touches, the real flow end to end. Still can't → ask **ONE thing**, the one whose answer changes what you build.\n",
+    'L7': 'The ladder shortens the work, never the reading. A small diff you do not understand is a second bug.\n\n',
+    'W1': 'exists in this codebase → standard library → native platform feature → already-installed dependency → one line → the minimum that works.\n\n',
+    'W2': '- Look before you write: the helper is usually a few files away. Reuse it; do not rebuild it.\n',
+    'C1': "- Reuse behavior through its interface, never the shape of debt. Debt is what the repository's own gates say (a lint budget, a declared boundary, an ADR, a ratchet baseline), not your taste: new code meets the gate, the old stays as it is with a `deferred:`. No gate says so → follow the local pattern.\n",
+    'W3': '- `<input type="date">` over a picker library, CSS over JS, a database constraint over application code, `@lru_cache` over a cache class.\n',
+    'W4': '- Never add a dependency for what a few lines do. No abstraction with one implementation, no config for a value that never changes, no scaffolding "for later".\n',
+    'W5': '- **Bug = root cause.** A report names a symptom. Grep every caller of the function you are about to touch and fix it once where all callers route through: one guard in the shared function is the smaller diff, and patching only the named path leaves its siblings broken.\n',
+    'W6': '- Two same-size options → the one correct on edge cases. Less code, never a flimsier algorithm.\n',
+    'D2': '- **Irreversible or human-owned** (product semantics, money, permissions, data; inventing such a rule where none exists counts, and a constant does not make it reversible) → emit a `[DECIDE]` with options and a recommended default, then stop **the dependent slice, not the session**: that slice stays a stub that fails (`NotImplementedError`), never the recommended default; record it as `pending`, continue everything that does not depend on it, list the queue at the end.\n',
+    'D1': "- **Reversible, and not human-owned** (a default the reviewer can flip in one line) → first look for the repository's own answer (an ADR, a config, a doc, a sibling of what you are changing); found → follow it. Not found → take the sensible default, say so in one line, move on. Never stall on an answer you can default.\n",
+    'D3': '- In an unattended session the authority envelope decides what may proceed on a default; nothing in the high-risk class ever does, and you cannot grant yourself authority.\n',
+    'N1': 'trust-boundary validation · error handling that prevents data loss · security · accessibility basics · understanding the problem · the check that fails before the fix · ',
+    'C2': 'the checks that judge you: never weaken a test, threshold, skip marker or rule to go green; a change that must alter one says so and stops. ',
+    'N2': ' The user insists on the full version → build it, no re-arguing.',
+    'O1': "Code first. Then at most three short lines: `skipped: X, add when: Y`; a mode's report follows its template instead. ",
+    'O2': 'A shortcut with a real ceiling (global lock, O(n²) scan, naive heuristic) gets a code comment `deferred: <ceiling>, <trigger to revisit>`; trivial code gets none. ',
+    'O4': '"Verified" exists only inside this block, filled with what you actually ran; outside it, say what you executed and what it returned:\n\n',
+    'O5': "```\ndevanity-proof:\n  check: <command>\n  failed_before: yes | no | n/a\n  passed_after: yes | no\n  probes: <run>/<survived>   (the verifier's adversarial probes; survived = the claims held; 0/0 when none ran)\n  status: VERIFIED | NOT_VERIFIED: <reason>\n  pending: <n decisions>\n```\n",
+}
+EXPERIMENTS.update({f"devanity-ablate-{row.lower()}": {"kernel_replace": [(text, "")],
+                    "description": f"Devanity candidate without kernel sentence {row} (evals/kernel-sentences.md), harness-only"}
+                    for row, text in ABLATIONS.items()})
+
 def build_experiment(name, out=None):
     """One experiment arm: the working tree's plugin/ plus EXPERIMENTS[name], nothing else."""
     spec = EXPERIMENTS[name]
