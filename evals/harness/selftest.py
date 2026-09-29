@@ -195,7 +195,7 @@ def _selftest_experiment_arms():
                and len(cmd(hooks_n["PostToolUse"])) == 1 and "devanity-nudge.js" in cmd(hooks_n["PostToolUse"])[0],
                "devanity-nudge: hooks.json is the candidate's plus one PostToolUse and one Stop entry for the nudge")
         # the kernel_replace arms (PLAN 2026-09-29): the kernel with exactly their declared replacements, each found once
-        for name in ("devanity-scoped", "devanity-scoped2"):
+        for name in ("devanity-form",):
             _check(ARMS.get(name, {}).get("plugins") == [name], f"{name} is an arm that loads exactly its plugin")
             pairs = build_plugins.EXPERIMENTS.get(name, {}).get("kernel_replace", [])
             want, once = cand[skill].decode(), bool(pairs)
