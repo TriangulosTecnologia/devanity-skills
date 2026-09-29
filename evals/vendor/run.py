@@ -142,8 +142,14 @@ def _caveman_evals(copy, args):
     return [(copy, [sys.executable, "evals/llm_run.py", *args]), (copy, [_venv(copy, "tiktoken"), "evals/measure.py"])], {}
 
 def _caveman_benchmarks(copy, args):
-    build = _twice("benchmarks/run.py", "skills/caveman/SKILL.md", lambda c: [_venv(c, "anthropic>=0.40.0")])
+    # Their requirements.txt says anthropic>=0.40.0 with no ceiling; the 1.0.0 SDK (2026-08-20) dropped the
+    # `temperature` argument run.py passes, so every 1.x fails on the first call. <1 is the range it was written for.
+    build = _twice("benchmarks/run.py", "skills/caveman/SKILL.md", lambda c: [_venv(c, "anthropic>=0.40.0,<1")])
     return build(copy, args)
+
+# The scripts that read their key only from a .env at the tree's root, as their authors keep it: the runner
+# writes it into the copy for the run and deletes it after, so the key never stays on disk.
+DOTENV = {"ponytail-claude-email", "ponytail-model-email"}
 
 # suite -> (vendored tree, what it needs besides the container, how to build its commands)
 SUITES = {
@@ -176,7 +182,11 @@ def run_suite(suite, args):
                                                               "commands": [[str(c), cmd] for c, cmd in cmds]}, indent=2), encoding="utf-8")
     for cwd, cmd in cmds:
         print(f"\n$ ({cwd}) {' '.join(cmd)}", flush=True)
-        r = subprocess.run(cmd, cwd=cwd, env={**os.environ, **env})
+        dotenv = cwd / ".env"
+        if suite in DOTENV: dotenv.write_text("".join(f"{k}={os.environ[k]}\n" for k in needs), encoding="utf-8")
+        try: r = subprocess.run(cmd, cwd=cwd, env={**os.environ, **env})
+        finally:
+            if suite in DOTENV: dotenv.unlink(missing_ok=True)
         if r.returncode: sys.exit(f"{suite}: exited {r.returncode}; the copy is kept at {cwd}")
     print(f"\n{suite}: outputs under {copy}")
 
