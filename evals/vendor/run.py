@@ -118,7 +118,9 @@ def agentic_main(copy, args):
 
 def _promptfoo(config):
     def build(copy, args):
-        return [(copy, ["npx", "--yes", "promptfoo@latest", "eval", "-c", f"benchmarks/{_promptfoo_arm(copy, config)}", *args])], {}
+        # promptfoo exits 100 when a test fails, which here is the measurement, not a broken run
+        return ([(copy, ["npx", "--yes", "promptfoo@latest", "eval", "-c", f"benchmarks/{_promptfoo_arm(copy, config)}", *args])],
+                {"PROMPTFOO_FAILED_TEST_EXIT_CODE": "0"})
     return build
 
 def _twice(script, skill_rel, runner):
