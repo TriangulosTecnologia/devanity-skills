@@ -126,7 +126,7 @@ fi
 # Harness knobs pass through when set. DEVANITY_AUTONOMOUS never does: a host value would reach
 # every task; the unattended task sets its own through the task's `env` (run.py cell_env).
 # The vendored suites' own knobs and the OpenAI key two of them use (evals/vendor/README.md).
-for v in ANTHROPIC_MODEL OPENAI_API_KEY CAVEMAN_EVAL_MODEL AUDIT_N AUDIT_MODEL CE_N CE_MODELS ME_N ME_MODELS; do
+for v in ANTHROPIC_MODEL OPENAI_API_KEY DEVANITY_VENDOR_EXPERIMENT CAVEMAN_EVAL_MODEL AUDIT_N AUDIT_MODEL CE_N CE_MODELS ME_N ME_MODELS; do
   if [ -n "${!v:-}" ]; then run+=(-e "$v"); fi
 done
 
