@@ -194,16 +194,17 @@ def _selftest_experiment_arms():
                and [c for c in cmd(hooks_n["Stop"]) if c not in cmd(hooks_c["Stop"])] == cmd(hooks_n["PostToolUse"])
                and len(cmd(hooks_n["PostToolUse"])) == 1 and "devanity-nudge.js" in cmd(hooks_n["PostToolUse"])[0],
                "devanity-nudge: hooks.json is the candidate's plus one PostToolUse and one Stop entry for the nudge")
-        # devanity-scoped (PLAN 2026-09-29): the kernel with exactly its declared replacements, each found once
-        _check(ARMS.get("devanity-scoped", {}).get("plugins") == ["devanity-scoped"], "devanity-scoped is an arm that loads exactly its plugin")
-        pairs = build_plugins.EXPERIMENTS.get("devanity-scoped", {}).get("kernel_replace", [])
-        want, once = cand[skill].decode(), bool(pairs)
-        for old, new in pairs:
-            once = once and want.count(old) == 1 and old != new
-            want = want.replace(old, new)
-        sc = tree(build_plugins.build_experiment("devanity-scoped", Path(d) / "sc")) if pairs else {}
-        _check(once and sc.get(skill, b"").decode() == want and same(sc, []) and sc["hooks/hooks.json"] == cand["hooks/hooks.json"],
-               f"devanity-scoped: the kernel with exactly its {len(pairs)} replacements, each found once; every other file the candidate's")
+        # the kernel_replace arms (PLAN 2026-09-29): the kernel with exactly their declared replacements, each found once
+        for name in ("devanity-scoped", "devanity-scoped2"):
+            _check(ARMS.get(name, {}).get("plugins") == [name], f"{name} is an arm that loads exactly its plugin")
+            pairs = build_plugins.EXPERIMENTS.get(name, {}).get("kernel_replace", [])
+            want, once = cand[skill].decode(), bool(pairs)
+            for old, new in pairs:
+                once = once and want.count(old) == 1 and old != new
+                want = want.replace(old, new)
+            sc = tree(build_plugins.build_experiment(name, Path(d) / name)) if pairs else {}
+            _check(once and sc.get(skill, b"").decode() == want and same(sc, []) and sc["hooks/hooks.json"] == cand["hooks/hooks.json"],
+                   f"{name}: the kernel with exactly its {len(pairs)} replacements, each found once; every other file the candidate's")
         if not shutil.which("node"):
             _check(False, "node is required to run the nudge hook"); return fails
         repo = Path(d) / "repo"; repo.mkdir()
