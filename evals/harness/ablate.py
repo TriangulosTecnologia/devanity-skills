@@ -66,11 +66,15 @@ def _invoke(tasks, arm, a, runs_dir):
     cmd = [sys.executable, str(HERE / "run.py"), "--task", ",".join(tasks), "--arms", arm,
            "--models", a.models, "--runs", str(a.runs), "--workers", str(a.workers)]
     # each invocation its own runs dir: run.py stamps to the second, and parallel jobs would share one
-    p = subprocess.run(cmd, cwd=HERE, capture_output=True, text=True,
-                       env={**os.environ, "DEVANITY_HARNESS_RUNS_DIR": str(runs_dir)})
-    out = [l for l in p.stdout.splitlines() if l.startswith("wrote ")]
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    log = runs_dir / "run.log"                       # live, so a long batch can be watched cell by cell
+    with log.open("w", encoding="utf-8") as f:
+        p = subprocess.run(cmd, cwd=HERE, stdout=f, stderr=subprocess.STDOUT, text=True,
+                           env={**os.environ, "DEVANITY_HARNESS_RUNS_DIR": str(runs_dir)})
+    text = log.read_text(encoding="utf-8")
+    out = [l for l in text.splitlines() if l.startswith("wrote ")]
     run_dir = out[-1].split()[1].rsplit("/results.json", 1)[0] if out else None
-    return {"arm": arm, "tasks": tasks, "rc": p.returncode, "dir": run_dir, "tail": (p.stdout + p.stderr)[-2000:]}
+    return {"arm": arm, "tasks": tasks, "rc": p.returncode, "dir": run_dir, "log": str(log), "tail": text[-2000:]}
 
 def run(a):
     rows = [r.strip().upper() for r in a.rows.split(",")] if a.rows else list(ROW_TASKS)
