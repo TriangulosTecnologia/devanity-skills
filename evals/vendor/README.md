@@ -40,6 +40,8 @@ Each run copies the tree to `$DEVANITY_HARNESS_RUNS_DIR/vendor/<suite>-<stamp>/`
 | `caveman-evals` | `python3 evals/llm_run.py`, then `evals/measure.py` (10 prompts, every `skills/*/SKILL.md` an arm) | a venv with `tiktoken` in the copy (network) | `skills/devanity/SKILL.md` in the copy |
 | `caveman-benchmarks` | `python3 benchmarks/run.py` (10 prompts, Messages API) | `ANTHROPIC_API_KEY`, a venv with `anthropic` | run twice: as shipped, then with the devanity kernel at `skills/caveman/SKILL.md` |
 
+**Where each suite puts devanity.** Devanity is built to work in a repository. Only `ponytail-agentic` runs it there, as a plugin in a workspace; every other suite gives it the kernel as a system prompt with no files, which is outside its design. Those numbers are a field comparison, never a gate and never a target for the kernel.
+
 `DEVANITY_VENDOR_EXPERIMENT=<arm>` (an arm of `evals/harness/build_plugins.EXPERIMENTS`, built by `build_plugins.py`) adds that arm beside `devanity` in the same run, the same way, so a kernel candidate meets the same models at the same hour as the control; the run's json records the sha256 of every kernel it used.
 
 The authors' suggested arguments are theirs to read in each tree (for example `--repeat 10` for the promptfoo configs, `--arms baseline,caveman,ponytail,yagni-oneliner --models haiku --runs 4` for the agentic suite).

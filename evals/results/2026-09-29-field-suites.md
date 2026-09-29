@@ -2,7 +2,7 @@
 
 *Rodada de diagnóstico, não o writeup público.* Primeira vez que o devanity é medido pelos testes que o próprio campo publica, com os arquivos e os comandos dos autores (`evals/vendor/`, byte a byte pelo `MANIFEST.json`), e `devanity` como mais um braço. Cada suíte é lida contra o número que o autor publicou, nunca somada às outras nem à tabela da SPEC §13.
 
-**Resultado em uma linha:** onde o devanity entra como plugin, com hooks e num repositório, ele empata; onde entra só como texto do kernel, sem repositório, ele **para de entregar**: pergunta pelo repositório que não existe, narra a escada e mostra o teste antes do código. Os três padrões contradizem o próprio kernel e são o número que uma edição do kernel precisa mover.
+**Resultado em uma linha:** onde o devanity entra como plugin, com hooks e num repositório, ele empata; onde entra só como texto do kernel, sem repositório, ele **para de entregar**: pergunta pelo repositório que não existe, narra a escada e mostra o teste antes do código. O devanity é feito para funcionar em repositório; o modo texto fica fora do desenho, e estes números são comparação de campo, não meta do kernel (decisão do mantenedor, PLAN 2026-09-29).
 
 ## Ambiente e método
 
@@ -91,4 +91,4 @@ Só uma célula de prova (`safe-path`, braços `ponytail` e `devanity`, Haiku, n
 
 ## O que isto decide
 
-Os três padrões do devanity em modo texto são defeitos do kernel, não dos instrumentos, e cada um tem agora o número que uma frase nova precisa mover (guardrail 1 da SPEC): `correct` do devanity no `ponytail-promptfoo` em Haiku (30%) e no `ponytail-claude-email` em Haiku (0/40). O próximo passo é um braço de experimento por padrão (`build_plugins.EXPERIMENTS`), medido contra estas mesmas suítes, antes de qualquer edição do `SKILL.md`.
+Os três padrões do devanity em modo texto vêm do kernel, não dos instrumentos: sem repositório, "leia antes" vira "me dê o código-base". Foram tratados como defeito e medidos em quatro braços (`2026-09-29-scoped-kernel.md`); nenhum resolveu sem custo dentro do repositório, e o mantenedor fechou a questão: o devanity é feito para funcionar em repositório, o modo texto fica fora do desenho, e estas suítes seguem como comparação de campo, nunca como gate ou meta do kernel.
