@@ -113,7 +113,7 @@ Skills follow the [Agent Skills](https://agentskills.io) standard. Host-specific
 
 ## Status
 
-The kernel is a **candidate** (`1.0.0-candidate`): it is measured by the harness in [`evals/harness/`](evals/harness/) against the field a maintainer would choose from (ponytail, superpowers, caveman, the official feature-dev and security-guidance plugins, a one-sentence control, and the previously released devanity) before it is released.
+The kernel is a **candidate** (`1.0.0-candidate`): it is measured by the harness in [`evals/harness/`](evals/harness/) against the field a maintainer would choose from (ponytail, superpowers, and a one-sentence control) before it is released.
 
 ## Contributing
 

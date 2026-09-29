@@ -5,13 +5,13 @@
 """LLM-judge COMPLETENESS pass for the agentic benchmark.
 
 Fewer lines is only a win if the code still does the job. The real-repo tickets (tmpl-*) are
-scored on LOC alone and the greenfield vibe-app-* scorers only prove shape -- there is no deterministic check that the asked
+scored on LOC alone and the unattended billing scorer only proves the queue -- there is no deterministic check that the asked
 feature was actually implemented, so an arm could "win" the LOC metric by shipping a stub.
 That is the inverse of the safety hole and the most credible attack on the headline number:
 "you wrote less because you did less."
 
 This pass closes it. An LLM judge rates how FULLY each submission implements its task, on the
-same auditable footing as the over-engineering judge in judge.py: a published rubric, a fixed
+auditable footing: a published rubric, a fixed
 model at temperature 0, and a --selftest that must rank a complete reference strictly above a
 stub before any real scoring is trusted. Pair the output with run.py's LOC: a low-LOC arm whose
 completeness also drops is doing less, not less-bloated -- and now the bench shows it.
@@ -20,18 +20,91 @@ completeness also drops is doing less, not less-bloated -- and now the bench sho
   python complete.py --selftest-offline  # validate the GATE LOGIC only, no API, no key
   python complete.py --run runs/<stamp>  # completeness-judge every workspace in a matrix run
 
-Judge: claude-sonnet-4-6, key from ../../.env (shared with judge.py), or `claude -p` without a key. ~$0.003/cell.
+Judge: claude-sonnet-4-6 via the Messages API (key from ../../.env or ANTHROPIC_API_KEY), or, without a
+key, via `claude -p` (no temperature control; the run records which backend judged). ~$0.003/cell.
 
-Reuses judge.py's HTTP/key/source plumbing; one rubric param is the only delta between the
-two passes.
 """
-import argparse, json, sys
+import argparse, json, os, re, shutil, subprocess, sys, tempfile, time, urllib.request
 from collections import defaultdict
 from pathlib import Path
 
-from tasks import TASKS
-from judge import load_key, source_text, judge_call, parse_score, judge_backend_label, RUNS_DIR, JUDGE_MODEL, ARMS_ORDER
-import judge as _judge
+from tasks import TASKS, source_text      # source_text: what the judge reads (the delivery, tests excluded)
+import run as _run                      # RUNS_DIR (DEVANITY_HARNESS_RUNS_DIR), memory_guard, PERMISSION_MODE
+
+ROOT = Path(__file__).resolve().parents[2]
+RUNS_DIR = _run.RUNS_DIR
+JUDGE_MODEL = "claude-sonnet-4-6"
+# Backend "cli": when no ANTHROPIC_API_KEY exists (a subscription-only maintainer), the judge call
+# goes through `claude -p` with the same rubric as system prompt, the same user message and the
+# same JSON parse. Two declared losses vs the Messages API: the CLI exposes no temperature (so
+# "temperature 0" is not guaranteed; the run records which backend judged), and the judge model is
+# whatever the CLI resolves JUDGE_MODEL to. Every tool is disabled, one turn, cwd under RUNS_DIR
+# (memory_guard: no CLAUDE.md/AGENTS.md above it, so the judge never inherits the kernel).
+JUDGE_BACKEND = "api"   # set by load_key(): "api" with a key, "cli" without one
+ARMS_ORDER = list(_run.ARMS)
+
+
+def load_key():
+    """The API key from ../../.env or the environment; None means the `claude -p` backend."""
+    global JUDGE_BACKEND
+    key = None
+    try:
+        for line in (ROOT / ".env").read_text(encoding="utf-8").splitlines():
+            if line.startswith("ANTHROPIC_API_KEY=") and len(line) > 18:
+                key = line.split("=", 1)[1].strip()
+    except Exception:
+        pass
+    key = key or os.environ.get("ANTHROPIC_API_KEY")
+    JUDGE_BACKEND = "api" if key else "cli"
+    return key
+
+def judge_backend_label():
+    return f"{JUDGE_MODEL} via {'Messages API, temperature 0' if JUDGE_BACKEND == 'api' else 'claude -p (no temperature control)'}"
+
+def _judge_call_cli(user, system, retries=3):
+    claude = shutil.which("claude")
+    if not claude: return '{"error": "claude CLI not found on PATH"}'
+    _run.memory_guard(RUNS_DIR); RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    cmd = [claude, "-p", user, "--model", JUDGE_MODEL, "--output-format", "json",
+           "--append-system-prompt", system, "--setting-sources", "project,local", "--strict-mcp-config",
+           "--tools", "", "--max-turns", "1", "--no-session-persistence",
+           "--permission-mode", _run.PERMISSION_MODE]
+    for attempt in range(retries):
+        try:
+            with tempfile.TemporaryDirectory(dir=RUNS_DIR) as d:
+                r = subprocess.run(cmd, cwd=d, capture_output=True, text=True, timeout=180)
+            j = json.loads(r.stdout)
+            if j.get("is_error"): raise RuntimeError(str(j.get("result"))[:120])
+            return j.get("result", "")
+        except Exception as e:
+            if attempt == retries - 1: return f'{{"error": "{str(e)[:120]}"}}'
+            time.sleep(2 * (attempt + 1))
+
+def judge_call(task_prompt, files, key, system, retries=3):
+    user = f"TASK GIVEN TO THE AUTHOR:\n{task_prompt}\n\nFILES THEY WROTE:\n{files}"
+    if not key: return _judge_call_cli(user, system, retries)
+    body = json.dumps({"model": JUDGE_MODEL, "max_tokens": 300, "temperature": 0,
+                       "system": system, "messages": [{"role": "user", "content": user}]}).encode()
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request("https://api.anthropic.com/v1/messages", data=body,
+                headers={"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                j = json.loads(r.read())
+            return j["content"][0]["text"]
+        except Exception as e:
+            if attempt == retries - 1: return f'{{"error": "{str(e)[:120]}"}}'
+            time.sleep(2 * (attempt + 1))
+
+def parse_score(text):
+    m = re.search(r"\{.*\}", text or "", re.S)
+    if not m: return None
+    try:
+        d = json.loads(m.group(0))
+        return d
+    except Exception:
+        return None
+
 
 SCORE_KEY = "completeness"
 FLAG_AT = 1                 # cells scoring <= this are under-delivery (stub/partial) and get listed
@@ -79,8 +152,8 @@ def _rank_ok(scores):
 
 # Complete refs are the deterministic tasks' known-good answers; stubs do nothing.
 STUBS = {
-    "cache":     "def compute(n):\n    pass\n",
     "safe-path": "def safe_upload_path(base_dir, filename):\n    pass\n",
+    "csv-sum":   "def sum_amount(path):\n    pass\n",
 }
 PAIRS = [(t, lbl, code) for t in STUBS for lbl, code in
          (("complete", TASKS[t]["good"]), ("stub", STUBS[t]))]
@@ -89,7 +162,7 @@ def selftest(key):
     """Live: the judge model must rank each complete ref above its stub."""
     scores = {}
     for task_id, label, code in PAIRS:
-        s = parse_complete(judge_call(TASKS[task_id]["prompt"], code, key, system=RUBRIC))
+        s = parse_complete(judge_call(TASKS[task_id]["prompt"], code, key, RUBRIC))
         scores[(task_id, label)] = s or {}
         print(f"  {task_id:10} {label:8} -> {s}")
     ok = _rank_ok(scores)
@@ -100,8 +173,8 @@ def selftest_offline():
     """No API, no key: prove the GATE catches under-delivery. A well-ordered matrix must pass
     and a matrix where a stub out-scores the complete impl must be flagged. Fails loudly if the
     gate is ever weakened into a no-op."""
-    good = {("cache", "complete"): {SCORE_KEY: 3}, ("cache", "stub"): {SCORE_KEY: 0}}
-    bad  = {("cache", "complete"): {SCORE_KEY: 1}, ("cache", "stub"): {SCORE_KEY: 3}}
+    good = {("csv-sum", "complete"): {SCORE_KEY: 3}, ("csv-sum", "stub"): {SCORE_KEY: 0}}
+    bad  = {("csv-sum", "complete"): {SCORE_KEY: 1}, ("csv-sum", "stub"): {SCORE_KEY: 3}}
     print("offline gate -- well-ordered (expect ok):")
     p_good = _rank_ok(good)
     print("offline gate -- stub out-scores complete (expect XX):")
@@ -109,11 +182,11 @@ def selftest_offline():
     # Billing's right answer leaves the refund path a failing stub, which the rubric scores as
     # INCOMPLETE (review G-041, decision G-051): the judge is told that slice is queued, and a task
     # with no queued slice is judged on its prompt alone.
-    billing, cache = judge_prompt("vibe-autonomous-billing"), judge_prompt("cache")
+    billing, plain = judge_prompt("vibe-autonomous-billing"), judge_prompt("csv-sum")
     p_note = billing.startswith(TASKS["vibe-autonomous-billing"]["prompt"]) and "NotImplementedError" in billing and "queued" in billing
-    p_plain = cache == TASKS["cache"]["prompt"]
+    p_plain = plain == TASKS["csv-sum"]["prompt"]
     print(f"{'ok' if p_note else 'XX'} vibe-autonomous-billing: the judge is told the refund slice is queued")
-    print(f"{'ok' if p_plain else 'XX'} cache: a task with no queued slice is judged on its prompt alone")
+    print(f"{'ok' if p_plain else 'XX'} csv-sum: a task with no queued slice is judged on its prompt alone")
     passed = p_good and not p_bad and p_note and p_plain
     print(f"\ncompleteness gate selftest (offline): {'valid' if passed else 'BROKEN'}")
     return 0 if passed else 1
@@ -129,13 +202,13 @@ def run(run_dir, key):
     print(f"completeness-judging {len(cells)} workspaces with {judge_backend_label()} ...")
     scored = []
     for i, (tid, arm, model, ws) in enumerate(cells, 1):
-        s = parse_complete(judge_call(judge_prompt(tid), source_text(ws, TASKS[tid]), key, system=RUBRIC)) \
+        s = parse_complete(judge_call(judge_prompt(tid), source_text(ws, TASKS[tid]), key, RUBRIC)) \
             or {SCORE_KEY: None}
         scored.append({"task": tid, "arm": arm, "model": model, SCORE_KEY: s.get(SCORE_KEY),
                        "why": s.get("why", ""), "missing": s.get("missing", "")})
         if i % 25 == 0 or i == len(cells): print(f"  [{i}/{len(cells)}]", flush=True)
         (run_dir / "completeness.json").write_text(
-            json.dumps({"judge": JUDGE_MODEL, "backend": _judge.JUDGE_BACKEND, "rubric": RUBRIC, "scores": scored}, indent=2), encoding="utf-8")
+            json.dumps({"judge": JUDGE_MODEL, "backend": JUDGE_BACKEND, "rubric": RUBRIC, "scores": scored}, indent=2), encoding="utf-8")
     by_arm = defaultdict(list)
     for r in scored:
         if isinstance(r[SCORE_KEY], int): by_arm[r["arm"]].append(r[SCORE_KEY])

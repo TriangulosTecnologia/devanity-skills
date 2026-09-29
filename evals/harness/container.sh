@@ -7,7 +7,7 @@
 #
 # Builds the image devanity-harness:local from container/ if it is missing, then runs one disposable
 # container (--rm) with the repo mounted read-only at /harness (cwd: /harness/evals/harness, because
-# run.py, judge.py and build_plugins.py locate skills/, agents/ and .env two levels up), runs/ mounted read-write so kept workspaces
+# run.py, complete.py and build_plugins.py locate plugin/ and .env two levels up), runs/ mounted read-write so kept workspaces
 # survive, plugin dirs and the fixture mounted read-only, credentials passed through, and the
 # capability/pid/memory limits below. This is the only supported way to run behavior-tier cells:
 # the image sets DEVANITY_HARNESS_CONTAINER=1 and run.py refuses them without it.
@@ -110,8 +110,8 @@ fi
 
 # Credentials. Environment tokens win; otherwise hand the entrypoint the host config dir read-only
 # and let it copy only .credentials.json (see container/entrypoint.sh).
-# Both pass when both are set: the CLI prefers the key, and the vendored suites that call the
-# Messages API directly (evals/vendor/run.py) need the key while `claude -p` can use the token.
+# Both pass when both are set: the CLI prefers the key, and complete.py's judge calls the Messages
+# API with the key while `claude -p` can use the token.
 if [ -n "${ANTHROPIC_API_KEY:-}" ]; then run+=(-e ANTHROPIC_API_KEY); fi
 if [ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then run+=(-e CLAUDE_CODE_OAUTH_TOKEN); fi
 if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
@@ -123,12 +123,8 @@ if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; the
   fi
 fi
 
-# Harness knobs pass through when set. DEVANITY_AUTONOMOUS never does: a host value would reach
-# every task; the unattended task sets its own through the task's `env` (run.py cell_env).
-# The vendored suites' own knobs and the OpenAI key two of them use (evals/vendor/README.md).
-for v in ANTHROPIC_MODEL OPENAI_API_KEY DEVANITY_VENDOR_EXPERIMENT CAVEMAN_EVAL_MODEL AUDIT_N AUDIT_MODEL CE_N CE_MODELS ME_N ME_MODELS; do
-  if [ -n "${!v:-}" ]; then run+=(-e "$v"); fi
-done
+# DEVANITY_AUTONOMOUS never passes through: a host value would reach every task; the unattended
+# task sets its own through the task's `env` (run.py cell_env).
 
 if [ -t 0 ] && [ -t 1 ]; then run+=(-t); fi
 if [ -n "${DEVANITY_HARNESS_DOCKER_ARGS:-}" ]; then
