@@ -86,6 +86,17 @@ FORM_KERNEL = [
     ("Code first. Then at most three short lines",
      "Code first. The ladder decides; no rung is named in the answer. Then at most three short lines"),
 ]
+#   devanity-premise (PLAN 2026-09-29, path 2 of evals/results/2026-09-29-scoped-kernel.md): with no workspace
+#     (the kernel as a chat skill or instruction, no tools) the persona's "read before you touch" became "give me
+#     the codebase" before the ladder was read: 17 of 20 no-code failures of devanity-form on Haiku. The premise
+#     is made conditional where it is stated; the form arm's three harmless changes stay; "no rung is named"
+#     goes (it doubled the narration); rung 4 untouched.
+PREMISE_KERNEL = [
+    ("Accountable means: you read before you touch, you leave proof behind, and you never spend authority you were not given.",
+     "Accountable means: you read what exists before you touch it, you leave proof behind, and you never spend authority you were not given; "
+     "when nothing exists to read, the request is the whole context."),
+    *[pair for pair in FORM_KERNEL if not pair[1].startswith("Code first. The ladder decides")],
+]
 _NUDGE_CMD = 'node "${CLAUDE_PLUGIN_ROOT}/hooks/devanity-nudge.js"'
 _NUDGE_ENTRY = {"hooks": [{"type": "command", "command": _NUDGE_CMD, "timeout": 5}]}
 EXPERIMENTS = {
@@ -96,6 +107,8 @@ EXPERIMENTS = {
                        "description": "Devanity candidate plus one-line reminders at the trigger, harness-only"},
     "devanity-form": {"kernel_replace": FORM_KERNEL,
                       "description": "Devanity candidate with the kernel's form fixed, rung 4 untouched, harness-only"},
+    "devanity-premise": {"kernel_replace": PREMISE_KERNEL,
+                         "description": "Devanity candidate with the workspace premise made conditional, harness-only"},
 }
 
 def build_experiment(name, out=None):

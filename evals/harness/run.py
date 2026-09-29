@@ -108,8 +108,9 @@ ARMS = {
     "devanity-examples": {"plugins": ["devanity-examples"]},
     "devanity-nudge":    {"plugins": ["devanity-nudge"]},
     "devanity-form":     {"plugins": ["devanity-form"]},
+    "devanity-premise":  {"plugins": ["devanity-premise"]},
 }
-FIELD = [a for a in ARMS if a not in ("devanity-examples", "devanity-nudge", "devanity-form")]   # the default --arms
+FIELD = [a for a in ARMS if a not in ("devanity-examples", "devanity-nudge", "devanity-form", "devanity-premise")]   # the default --arms
 MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}   # current as of 2026-09-28; the 2026-09-24 round ran sonnet-4-6
 
 PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
@@ -123,6 +124,7 @@ _LOCAL_PLUGINS = {
     "devanity-examples": "run `python3 evals/harness/build_plugins.py` (the candidate plus one kernel sentence)",
     "devanity-nudge":    "run `python3 evals/harness/build_plugins.py` (the candidate plus the nudge hook)",
     "devanity-form":     "run `python3 evals/harness/build_plugins.py` (the candidate with the kernel's form fixed)",
+    "devanity-premise":  "run `python3 evals/harness/build_plugins.py` (the workspace premise made conditional)",
 }
 
 def _env_key(name): return "DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_", name.upper())
