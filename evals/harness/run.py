@@ -127,14 +127,15 @@ def _env_key(name): return "DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_"
 
 def _plugin_dir(name):
     """Resolve a plugin directory portably. Order: DEVANITY_HARNESS_PLUGIN_<NAME> env override ->
-    harness-local plugins/<name> for the devanity components -> latest version dir under
+    harness-local plugins/<name> (the devanity components, which must be there, and the competitors
+    evals/vendor/run.py fetches at their pins) -> latest version dir under
     ~/.claude/plugins/cache/<name>/<name> -> clear error (sys.exit).
     Never guess: passing a non-existent path to --plugin-dir would silently run the baseline."""
     env = os.environ.get(_env_key(name))
     if env: return env
+    local = HARNESS_PLUGINS / name
+    if (local / ".claude-plugin" / "plugin.json").exists(): return str(local)
     if name in _LOCAL_PLUGINS:
-        local = HARNESS_PLUGINS / name
-        if (local / ".claude-plugin" / "plugin.json").exists(): return str(local)
         sys.exit(f"plugin dir for arm component '{name}' not found at {local}: {_LOCAL_PLUGINS[name]}; "
                  f"or set {_env_key(name)}")
     # ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>: the marketplace differs per plugin

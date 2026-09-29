@@ -223,6 +223,7 @@ evals/
   RUNBOOK.md                    a rodada de referência F1.13: ordem e regras de parada
   kernel-sentences.md           tabela viva frase do kernel → métrica
   harness/                      run.py · selftest.py · tasks.py (tarefas e o registro AXES) · judge.py · complete.py · fixture.py · build_plugins.py · container.sh + container/ (a imagem) · LICENSE-ponytail
+  vendor/                       as suítes de eval do campo copiadas como são (ponytail, caveman; MANIFEST.json com o sha256 de cada arquivo) · run.py, que as roda com o braço devanity
   results/                      writeups datados, commitados
 AGENTS.md                       kernel sem frontmatter e sem as seções de host, gerado de SKILL.md
 devanity.rules.json             as regras deste próprio repositório (dogfood)

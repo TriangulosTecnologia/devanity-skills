@@ -1,6 +1,6 @@
 # Devanity evals
 
-What the harness measures, why, and against whom. One row per axis of the registry, `AXES` in [`harness/tasks.py`](harness/tasks.py); `--selftest` fails when a task has no axis or an axis names a task that does not exist. The criterion column is written for people; the registry's `criterion` field quotes the [SPEC §13](../docs/evolution/SPEC.md) line it serves. How to run it: [`harness/README.md`](harness/README.md).
+What the harness measures, why, and against whom. One row per axis of the registry, `AXES` in [`harness/tasks.py`](harness/tasks.py); `--selftest` fails when a task has no axis or an axis names a task that does not exist. The criterion column is written for people; the registry's `criterion` field quotes the [SPEC §13](../docs/evolution/SPEC.md) line it serves. How to run it: [`harness/README.md`](harness/README.md). The field's own published suites (ponytail's and caveman's), copied as they are and run by their own harnesses with `devanity` as one more arm, are [`vendor/`](vendor/README.md); their results are read against each author's, suite by suite, never merged into the table below.
 
 ## Axes
 

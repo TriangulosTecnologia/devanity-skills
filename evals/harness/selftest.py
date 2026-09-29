@@ -54,7 +54,7 @@ def selftest():
     failures += _selftest_remote_excluded()
     failures += _selftest_delivery_rule()
     failures += _selftest_judged_text()
-    failures += _selftest_ported()
+    failures += _selftest_vendor()
     failures += _selftest_sequential()
     failures += _selftest_certificate()
     failures += _selftest_experiment_arms()
@@ -319,14 +319,36 @@ def _selftest_sequential():
     _check(not bad, f"{len(GATES)} gated tasks and {len(FLOORS)} floors name real tasks, ops and arms" + (f": {bad}" if bad else ""))
     return fails
 
-def _selftest_ported():
-    """The ported tasks (tasks.PORTED) are the ones whose numbers compare with ponytail's: any
-    change to their prompt, seed or refs is red until it is named in the README and re-pinned."""
-    from tasks import PORTED, PORTED_SHA256, ported_digest
-    got = ported_digest()
-    ok = got == PORTED_SHA256
-    print(f"{'ok ' if ok else 'XX '} ported       {len(PORTED)} tasks pinned" + ("" if ok else f": digest {got} != PORTED_SHA256 (name the change in the README, then re-pin)"))
-    return 0 if ok else 1
+def _selftest_vendor():
+    """evals/vendor/ holds other projects' eval suites copied as they are (evals/vendor/README.md):
+    every file listed in MANIFEST.json exists with its sha256, nothing else lives under a vendored
+    tree, each tree carries its licence, and the tasks this harness shares with ponytail are the
+    vendored module's own objects, never a copy that could drift."""
+    import hashlib
+    vendor = ROOT / "evals" / "vendor"
+    fails = 0
+    def _check(ok, label):
+        nonlocal fails
+        print(f"{'ok ' if ok else 'XX '} vendor       {label}")
+        fails += 0 if ok else 1
+    try: manifest = json.loads((vendor / "MANIFEST.json").read_text(encoding="utf-8"))
+    except Exception as e:
+        _check(False, f"MANIFEST.json unreadable: {type(e).__name__}"); return fails
+    for name, spec in manifest.items():
+        tree = vendor / name
+        on_disk = sorted(str(p.relative_to(tree)) for p in tree.rglob("*") if p.is_file() and "__pycache__" not in p.parts) if tree.is_dir() else []
+        bad = [f for f, digest in spec["files"].items()
+               if not (tree / f).is_file() or hashlib.sha256((tree / f).read_bytes()).hexdigest() != digest]
+        extra = sorted(set(on_disk) - set(spec["files"]))
+        _check(not bad and not extra and spec["license"] in spec["files"],
+               f"{name}@{spec['commit'][:7]}: {len(spec['files'])} files byte-identical, licence {spec['license']}"
+               + (f"; changed or missing: {bad[:3]}" if bad else "") + (f"; not in the manifest: {extra[:3]}" if extra else ""))
+    import tasks
+    pt = tasks.PONYTAIL_TASKS
+    same = [t for t in tasks.PORTED if all(TASKS[t].get(k) is pt[t].get(k) for k in ("prompt", "seed", "good", "bad", "file"))]
+    _check(len(same) == len(tasks.PORTED) == 23 and Path(tasks.PONYTAIL_TASKS_FILE).is_relative_to(vendor),
+           f"the {len(same)} shared tasks are the vendored ponytail module's own objects")
+    return fails
 
 def _selftest_remote_excluded():
     """authority-ship's bare `origin` lives inside the agent's working tree; an agent's `git add -A`
@@ -486,7 +508,17 @@ def _selftest_plugin_dir():
     except SystemExit:
         ok_miss = True
     print(f"{'ok ' if ok_miss else 'XX '} plugin_dir   miss clear error (sys.exit)")
-    return fails + (0 if ok_miss else 1)
+    fails += 0 if ok_miss else 1
+    # a competitor fetched at its pin into plugins/<name> (evals/vendor/run.py plugins) resolves with no env
+    with tempfile.TemporaryDirectory() as d:
+        saved, run.HARNESS_PLUGINS = run.HARNESS_PLUGINS, Path(d)
+        (Path(d) / "ponytail" / ".claude-plugin").mkdir(parents=True)
+        (Path(d) / "ponytail" / ".claude-plugin" / "plugin.json").write_text("{}", encoding="utf-8")
+        try: ok_local = _plugin_dir("ponytail") == str(Path(d) / "ponytail")
+        except SystemExit: ok_local = False
+        finally: run.HARNESS_PLUGINS = saved
+    print(f"{'ok ' if ok_local else 'XX '} plugin_dir   a fetched competitor under plugins/<name> resolves")
+    return fails + (0 if ok_local else 1)
 
 def _selftest_isolation():
     """Contamination test (SPEC §9): the baseline must receive NO plugin, every other arm exactly

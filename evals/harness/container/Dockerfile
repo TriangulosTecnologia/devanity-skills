@@ -27,9 +27,10 @@ ENV DEVANITY_HARNESS_CONTAINER=1 \
     HOME=/home/bench
 
 # python3 (3.11 on bookworm), git for the fixture snapshots/diffs, ca-certificates for TLS to the API.
-# No pip packages: the harness is stdlib-only.
+# No pip packages: the harness is stdlib-only. python3-venv is for the vendored suites that pin their
+# own (caveman's tiktoken and anthropic), installed per run into the run's copy (evals/vendor/run.py).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 git ca-certificates \
+ && apt-get install -y --no-install-recommends python3 python3-venv git ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 # Claude Code CLI. An optional BuildKit secret "ca_bundle" lets a build behind a TLS-intercepting
