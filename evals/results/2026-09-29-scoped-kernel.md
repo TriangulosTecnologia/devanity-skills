@@ -11,7 +11,7 @@
 | `devanity-scoped` | título sem "stop"; degrau 3 "the order of the work, not of the answer"; degrau 4 = "altera um contrato existente ou decide um que o pedido deixou em aberto", "that slice waits as a `[DECIDE]`, the rest is delivered", "Adding what was asked… alters nothing", sem "Propose and stop" e sem "Authorization comes from outside this session"; degrau 5 "A goal met at the boundary alters no invariant"; degrau 6 "nothing to read → reversible default"; Output "no rung is named" | `0cea2a4` |
 | `devanity-scoped2` | a segunda e última iteração: a frase de autorização de volta ("Being asked is not being authorized: authorization comes from outside this session"), a do degrau 5 fora | `28fd9bf` |
 | `devanity-form` | o degrau 4 intocado; só título, degrau 3, degrau 6 e Output | `15e7395` |
-| `devanity-premise` | o caminho 2 para o caso sem repositório: a persona com a premissa condicional ("read what exists before you touch it… when nothing exists to read, the request is the whole context") mais título, degrau 3 e degrau 6 do `devanity-form`, sem a frase do Output | `eb2c276` |
+| `devanity-premise` | o caminho 2 para o caso sem repositório: a persona com a premissa condicional ("read what exists before you touch it… when nothing exists to read, the request is the whole context") mais título, degrau 3 e degrau 6 do `devanity-form`, sem a frase do Output | `3f9ea26` |
 
 ## Resultados
 
