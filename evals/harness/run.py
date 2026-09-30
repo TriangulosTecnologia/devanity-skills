@@ -787,8 +787,10 @@ def health(run_dir: Path):
     ceiling of the model):
       cells       every cell holds a completed agent run (not an error, a limit, empty output)
       scorer      no cell's scorer raised on the delivered code (`scorer: ...`)
-      hooks       every candidate cell of a task whose repository declares rules has a ledger:
-                  the plugin's hooks ran in it (guard, oracle)
+      hooks       every candidate cell of a task whose repository declares rules, and whose
+                  final message carries a devanity-proof block, has that claim in its ledger:
+                  the Stop oracle ran in it (a cell with no block and no blocked call leaves
+                  no ledger, so its absence alone proves nothing)
       fields      no criterion reads a field the round never produced (a MISSING that is not an
                   absent arm)
       solvable    some cell of the task scored correct = 1"""
@@ -803,9 +805,11 @@ def health(run_dir: Path):
         parts = ws.name.split("__")
         if len(parts) != 4 or parts[0] not in TASKS or parts[1] != "devanity": continue
         task = TASKS[parts[0]]
-        if "devanity.rules.json" in task.get("seed", {}) and task.get("setup") and not (ws / ".git" / "devanity").is_dir():
+        claimed = "devanity-proof:" in (_cell_meta(ws)[1] or "")
+        if "devanity.rules.json" in task.get("seed", {}) and task.get("setup") and claimed \
+                and not (ws / ".git" / "devanity" / "proofs.jsonl").is_file():
             silent.append(ws.name)
-    out.append(("FAIL" if silent else "OK", "hooks", "; ".join(silent[:5]) or "the candidate's hooks ran wherever rules are declared"))
+    out.append(("FAIL" if silent else "OK", "hooks", "; ".join(silent[:5]) or "the Stop oracle recorded every candidate claim where rules are declared"))
     rows = aggregate(results)
     unmeasured = sorted({f"{v['task']}: {v['rule']} [{v['detail']}]" for v in round_verdict(rows, trap_summary(rows))
                          if v["status"] == "MISSING" and "not measured" in v["detail"]})
