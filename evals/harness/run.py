@@ -780,6 +780,40 @@ def failed_cells(run_dir: Path):
         if why: out.append((parts[0], parts[1], parts[2], int(parts[3]), ws, why))
     return out
 
+def health(run_dir: Path):
+    """Is the instrument working on real agents? Read over a kept round, before any larger one is
+    spent (the canary: every task and arm once). [(status, check, detail)], FAIL for a defect of the
+    instrument, WARN for what a person must read (a task no arm solved may be a broken seed, or a
+    ceiling of the model):
+      cells       every cell holds a completed agent run (not an error, a limit, empty output)
+      scorer      no cell's scorer raised on the delivered code (`scorer: ...`)
+      hooks       every candidate cell of a task whose repository declares rules has a ledger:
+                  the plugin's hooks ran in it (guard, oracle)
+      fields      no criterion reads a field the round never produced (a MISSING that is not an
+                  absent arm)
+      solvable    some cell of the task scored correct = 1"""
+    results = [r for r in json.loads((run_dir / "results.json").read_text(encoding="utf-8"))["results"] if "error" not in r]
+    out = []
+    bad = [f"{t}/{a}/{m}#{r}: {why}" for t, a, m, r, _ws, why in failed_cells(run_dir)]
+    out.append(("FAIL" if bad else "OK", "cells", "; ".join(bad[:5]) or f"{len(results)} completed"))
+    crashed = sorted({f"{r['task']}/{r['arm']}: {r['reason'][:80]}" for r in results if str(r.get("reason", "")).startswith("scorer:")})
+    out.append(("FAIL" if crashed else "OK", "scorer", "; ".join(crashed[:5]) or "no scorer raised"))
+    silent = []
+    for ws in sorted(p for p in run_dir.iterdir() if p.is_dir()):
+        parts = ws.name.split("__")
+        if len(parts) != 4 or parts[0] not in TASKS or parts[1] != "devanity": continue
+        task = TASKS[parts[0]]
+        if "devanity.rules.json" in task.get("seed", {}) and task.get("setup") and not (ws / ".git" / "devanity").is_dir():
+            silent.append(ws.name)
+    out.append(("FAIL" if silent else "OK", "hooks", "; ".join(silent[:5]) or "the candidate's hooks ran wherever rules are declared"))
+    rows = aggregate(results)
+    unmeasured = sorted({f"{v['task']}: {v['rule']} [{v['detail']}]" for v in round_verdict(rows, trap_summary(rows))
+                         if v["status"] == "MISSING" and "not measured" in v["detail"]})
+    out.append(("FAIL" if unmeasured else "OK", "fields", "; ".join(unmeasured[:5]) or "every field a criterion reads was produced"))
+    unsolved = sorted({r["task"] for r in results} - {r["task"] for r in results if r.get("correct") == 1})
+    out.append(("WARN" if unsolved else "OK", "solvable", ", ".join(unsolved) or "every task solved by some cell"))
+    return out
+
 def _claude_version():
     try: return subprocess.run([shutil.which("claude"), "--version"], capture_output=True, text=True).stdout.strip()
     except Exception: return "unknown"
@@ -793,6 +827,7 @@ def parser():
     ap.add_argument("--stage", help=f"comma list of stages (tasks.AXES): {', '.join(STAGES)}")
     ap.add_argument("--verdict", help="judge a kept run dir by tasks.CRITERIA from its summary (no API, no scoring)")
     ap.add_argument("--registry", action="store_true", help="print the axes table evals/README.md carries")
+    ap.add_argument("--health", help="is the instrument working on real agents? read a kept round (the canary: --all --runs 1)")
     ap.add_argument("--arms", default=",".join(ARMS), help="default: every arm")
     ap.add_argument("--model", help="single model (shorthand for --models)")
     ap.add_argument("--models", default="haiku", help="comma list: haiku,sonnet,opus")
@@ -811,6 +846,11 @@ def main():
         sys.exit(1 if selftest() else 0)
     if args.registry:
         return print(render_registry())
+    if args.health:
+        d = Path(args.health) if Path(args.health).exists() else RUNS_DIR / Path(args.health).name
+        checks = health(d)
+        for status, name, detail in checks: print(f"{status:4} {name:9} {detail}")
+        sys.exit(1 if any(st == "FAIL" for st, _, _ in checks) else 0)
     if args.verdict:
         d = Path(args.verdict) if Path(args.verdict).exists() else RUNS_DIR / Path(args.verdict).name
         v = write_verdict(d, json.loads((d / "summary.json").read_text(encoding="utf-8")))

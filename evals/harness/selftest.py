@@ -42,6 +42,7 @@ def selftest():
     failures += _selftest_turns()
     failures += _selftest_registry()
     failures += _selftest_verdict()
+    failures += _selftest_health()
     failures += _selftest_pytest_shim()
     failures += _selftest_billing_formula()
     failures += _selftest_fill()
@@ -676,6 +677,36 @@ def _selftest_registry():
     for p in problems: print(f"XX registry     {p}")
     if not problems: print(f"ok  registry     {len(TASKS)} tasks, each in one axis with its criteria or a reason; every rule reads a field its task returns; the README table is the render")
     return len(problems)
+
+def _selftest_health():
+    """run.health on synthetic rounds: a clean one is all OK; a broken one names each defect (an
+    empty cell, a scorer that raised, a candidate cell of a rules-declaring task with no ledger, a
+    criterion over a field no cell produced, a task no cell solved), and only a WARN for the unsolved task."""
+    from run import health
+    def cell(root, name, res, out='{"result": "done", "num_turns": 3, "total_cost_usd": 0.01}', ledger=False):
+        ws = root / name; ws.mkdir()
+        (ws / "_claude.json").write_text(out, encoding="utf-8"); (ws / "_claude.stderr.txt").write_text("", encoding="utf-8")
+        if ledger: (ws / ".git" / "devanity").mkdir(parents=True)
+        t, a, m, _r = name.split("__")
+        return {"task": t, "arm": a, "model": m, "correct": 1, "safe": 1, "reason": "ok", "total_loc": 1, "src_loc": 1, "src_files": 1, **res}
+    fails = 0
+    with tempfile.TemporaryDirectory() as good, tempfile.TemporaryDirectory() as broken:
+        g, b = Path(good), Path(broken)
+        rs = [cell(g, "judge-humanowned__devanity__haiku__0", {}), cell(g, "oracle-regression__devanity__haiku__0", {}, ledger=True)]
+        (g / "results.json").write_text(json.dumps({"results": rs}), encoding="utf-8")
+        rs = [cell(b, "judge-humanowned__devanity__haiku__0", {}),
+              cell(b, "oracle-regression__devanity__haiku__0", {"correct": 0, "reason": "scorer: raised KeyError: x"}),
+              cell(b, "safe-path__baseline__haiku__0", {"correct": 0}, out=""),
+              *[cell(b, f"core-pivot__devanity__sonnet__{i}", {}, ledger=True) for i in range(4)]]   # no `held`: its criterion reads nothing
+        (b / "results.json").write_text(json.dumps({"results": rs}), encoding="utf-8")
+        want_g = {"cells": "OK", "scorer": "OK", "hooks": "OK", "fields": "OK", "solvable": "OK"}
+        want_b = {"cells": "FAIL", "scorer": "FAIL", "hooks": "FAIL", "fields": "FAIL", "solvable": "WARN"}
+        for label, d, want in (("clean", g, want_g), ("broken", b, want_b)):
+            got = {name: st for st, name, _ in health(d)}
+            ok = got == want
+            fails += 0 if ok else 1
+            print(f"{'ok ' if ok else 'XX '} health       {label} round -> {got}")
+    return fails
 
 def _selftest_verdict():
     """One rule for every SPEC §13 line (run.verdict), proven on synthetic rows: each form passes and

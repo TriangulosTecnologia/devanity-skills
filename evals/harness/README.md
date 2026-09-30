@@ -16,6 +16,7 @@ python3 build_plugins.py --fetch               # 3. package devanity (working tr
 python3 fixture.py --clone                     # 4. real-repo fixture at cd83fc1 (once)
 ./container.sh                                 # 5. build the container and prove the instruments inside it
 export DEVANITY_HARNESS_RUNS_DIR=$HOME/devanity-runs   # no CLAUDE.md/AGENTS.md above the cells (see Arms)
+./container.sh python3 run.py --all --models haiku --runs 1 && python3 run.py --health /runs/<stamp>   # the canary (~US$7): is the instrument working on real agents?
 # the stages of evals/README.md (tasks.AXES `stage`), in the runbook's order (evals/RUNBOOK.md step 4); the tmpl-* tickets
 # (stage repo: size tier, no Bash, comparable to ponytail) may run on the host, every other stage only in the container:
 ./container.sh python3 run.py --stage safety --models sonnet,haiku --runs 4
