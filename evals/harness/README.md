@@ -2,7 +2,7 @@
 
 Executable benchmark for devanity ([SPEC](../../docs/evolution/SPEC.md) §9). Every cell is a real headless Claude Code session in an isolated workspace, scored on the files it leaves behind. What each task measures, and why, is the axis table in [`../README.md`](../README.md); this file is how to run it.
 
-`python3 run.py --selftest` proves every instrument offline, on the host and inside the container (and in CI): each task's good reference passes and its bad one is caught, the evals review's counter-examples (`tasks.PROBES`) score as they must, arm isolation, the tier guard and the container rule for scoring, the metric definitions, the multi-turn wiring, the seeded CI job of `judge-loosen` (red for both hidden reasons), the registry of axes, the memory-file guard, cross-cell isolation of the scorers, one delivery rule for scorers, the judge and LOC, the seeded checks of the mode tasks, the candidate's real guard and Stop oracle biting on the seeds of the in-repo mechanism tasks, and the vendored tree byte for byte with the shared tasks read from it.
+`python3 run.py --selftest` proves every instrument offline (the registry, the verdict rule on synthetic rows, and the README table against its render among them), on the host and inside the container (and in CI): each task's good reference passes and its bad one is caught, the evals review's counter-examples (`tasks.PROBES`) score as they must, arm isolation, the tier guard and the container rule for scoring, the metric definitions, the multi-turn wiring, the seeded CI job of `judge-loosen` (red for both hidden reasons), the registry of axes, the memory-file guard, cross-cell isolation of the scorers, one delivery rule for scorers, the judge and LOC, the seeded checks of the mode tasks, the candidate's real guard and Stop oracle biting on the seeds of the in-repo mechanism tasks, and the vendored tree byte for byte with the shared tasks read from it.
 
 ## Reproduce from zero
 
@@ -16,15 +16,14 @@ python3 build_plugins.py --fetch               # 3. package devanity (working tr
 python3 fixture.py --clone                     # 4. real-repo fixture at cd83fc1 (once)
 ./container.sh                                 # 5. build the container and prove the instruments inside it
 export DEVANITY_HARNESS_RUNS_DIR=$HOME/devanity-runs   # no CLAUDE.md/AGENTS.md above the cells (see Arms)
-# minimal diff on a real repo (size tier, no Bash, comparable to ponytail) — host or container:
-python3 run.py --task tmpl-fe-datepicker,tmpl-fe-colorpicker,tmpl-be-archive,tmpl-be-bulkdelete --models sonnet --runs 4 --workers 6
-# every other axis, in the runbook's stage order (evals/RUNBOOK.md step 4) — container only (the scorers and the agents execute delivered code):
-./container.sh python3 run.py --task safe-path,rate-limit,sql-user,auth-token,csv-sum,sec-shell --models sonnet --runs 4       # safety
-./container.sh python3 run.py --task judge-humanowned,vibe-autonomous-billing,partial-highrisk,authority-ship,judge-loosen,oracle-regression,judge-nochange,judge-askable,judge-falsetest,trace-transfer \
-  --models sonnet,haiku --runs 4 --workers 4                                                                                    # authority and judgment
-./container.sh python3 run.py --task rung2-typo,rung2-constant,long-3-tickets --models sonnet,haiku --runs 4                  # rung-2 cost, long horizon
-./container.sh python3 run.py --task twin-clean,twin-debt,long-entropy,core-pivot --models sonnet,haiku --runs 4              # context hygiene, entropy, the core
-./container.sh python3 run.py --task mode-review,mode-review-clean,mode-audit,mode-plan,mode-architect --arms devanity --models sonnet --runs 4   # the modes (devanity only)
+# the stages of evals/README.md (tasks.AXES `stage`), in the runbook's order (evals/RUNBOOK.md step 4); the tmpl-* tickets
+# (stage repo: size tier, no Bash, comparable to ponytail) may run on the host, every other stage only in the container:
+./container.sh python3 run.py --stage safety --models sonnet,haiku --runs 4
+./container.sh python3 run.py --stage judgment --models sonnet,haiku --runs 4
+./container.sh python3 run.py --stage cost,context --models sonnet,haiku --runs 4
+./container.sh python3 run.py --stage modes --models sonnet --runs 4          # the mode tasks run on devanity alone (their `arms`)
+python3 run.py --stage repo --models sonnet --runs 4 --workers 6
+python3 run.py --verdict /runs/<stamp>                  # the SPEC §13 lines of every task in the round (tasks.CRITERIA); a live run and --rescore write it too
 ./container.sh python3 run.py --rescore /runs/<stamp>   # 6. recompute metrics offline (the scorers execute delivered code: container; a tmpl-*-only stamp may rescore on the host, where git reads a cell only while its .git/config is the one git init wrote)
 python3 complete.py --selftest && python3 complete.py --run <stamp>    # 7. completeness judge (small spend)
 ./container.sh python3 run.py --fill /runs/<stamp>   # re-run only the cells that ended in an error or a usage limit (a cell killed at its timeout is a result, kept)
