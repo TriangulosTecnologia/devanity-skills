@@ -10,7 +10,7 @@ for CORRECTNESS and SAFETY -- the axis the single-shot promptfoo bench was blind
 
 Over-engineering is proxied by SOURCE file count + source LOC (tests are counted separately,
 never as bloat -- writing a test is good practice, not over-engineering). An LLM-judge
-over-engineering score is a later pass.
+completeness pass (complete.py) guards the LOC reading against stubs.
 
   python run.py --selftest
       Verify every scorer (good passes, bad is caught). No API, no spend. Run first, always.
@@ -39,9 +39,10 @@ import argparse, concurrent.futures, datetime, json, math, os, re, shutil, signa
 from collections import defaultdict
 from pathlib import Path
 
+from tasks import render_rule as tasks_render_rule, STAGES, render_registry
 from tasks import (TASKS, SELFCHECK_DEFS, SKIP_DIFF, is_delivery, is_test_file, proof_fields,
                    fixture_git_refusal, _fail, _git)
-import build_plugins, fixture
+import fixture
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -82,10 +83,7 @@ def memory_guard(path):
 # control isolates a cause. Every arm is activated by loading exactly its plugins via --plugin-dir;
 # `append` (system-prompt text) exists only for the one-sentence control, the analogue of ponytail's
 # yagni-oneliner: if a sentence matches the kernel, the kernel is not worth its tokens.
-# `prompt_prefix` exists only for devanity-released: maestro and guardian are manual-invocation
-# (`disable-model-invocation: true`), so a plugin load alone would never activate them and the arm
-# would silently measure a baseline under devanity's name; the prefix is the plugin form of how a
-# user invokes it today. Anywhere else a prefix or an append is contamination.
+# Anywhere else an append is contamination.
 # Plugin directories are resolved at use-site (_plugin_dir) -- a missing install fails loudly.
 SENIOR_ONELINER = ("You are a senior engineer: read the code first, fix root causes, leave a test that fails "
                    "before the fix and passes after, and propose instead of editing anything that touches "
@@ -95,41 +93,27 @@ ARMS = {
     # competitors, each its real plugin
     "ponytail":          {"plugins": ["ponytail"]},            # craft / minimalism
     "superpowers":       {"plugins": ["superpowers"]},         # TDD, root-cause debugging, verify before done
-    "caveman":           {"plugins": ["caveman"]},             # terse prose, normal code (is it just brevity?)
-    "feature-dev":       {"plugins": ["feature-dev"]},         # official 7-phase workflow (/devanity plan's counterpart)
-    "security-guidance": {"plugins": ["security-guidance"]},   # official always-on security hook (devanity-guard's counterpart)
     # control
     "senior-oneliner":   {"plugins": [], "append": SENIOR_ONELINER},
-    # ours: released (regression reference, never in the public writeup) and the candidate
-    "devanity-released": {"plugins": ["devanity-released"], "prompt_prefix": "/devanity-released:maestro "},
+    # ours: the candidate
     "devanity":          {"plugins": ["devanity"]},
-    # V5 experiment arms (PLAN agenda, 2026-09-28): the candidate plus one declared difference each
-    # (build_plugins.EXPERIMENTS), harness-only; run them with --arms, they are not the field
 }
-FIELD = list(ARMS)   # the default --arms; the experiment arms below run only when named
-# The experiment arms (build_plugins.EXPERIMENTS: the candidate plus one declared difference each, and the
-# ablation arms) are harness-only and derived from that one table, never listed here by hand.
-ARMS.update({name: {"plugins": [name]} for name in build_plugins.EXPERIMENTS})
 MODELS = {"haiku": "claude-haiku-4-5-20251001", "sonnet": "claude-sonnet-5-5", "opus": "claude-opus-5-5"}   # current as of 2026-09-28; the 2026-09-24 round ran sonnet-4-6
 
 PLUGIN_CACHE = Path.home() / ".claude" / "plugins" / "cache"
-# Harness-local plugins (gitignored). devanity-released is GENERATED from the released ref's skills/ + agents/
-# by build_plugins.py, so the arm measures the committed skills, never a stale install. devanity
-# (the candidate) lands here from phase 1.
+# Harness-local plugins (gitignored), written by build_plugins.py: the candidate from the working tree,
+# the competitors (--fetch) at their pins.
 HARNESS_PLUGINS = Path(__file__).resolve().parent / "plugins"
 _LOCAL_PLUGINS = {
-    "devanity-released": "run `python3 evals/harness/build_plugins.py` (exports the released ref)",
-    "devanity":          "run `python3 evals/harness/build_plugins.py` (packages the working tree's plugin/skills/devanity)",
+    "devanity": "run `python3 evals/harness/build_plugins.py` (packages the working tree's plugin/)",
 }
-_LOCAL_PLUGINS.update({name: f"run `python3 evals/harness/build_plugins.py` ({spec['description']})"
-                       for name, spec in build_plugins.EXPERIMENTS.items()})
 
 def _env_key(name): return "DEVANITY_HARNESS_PLUGIN_" + re.sub(r"[^A-Z0-9]", "_", name.upper())
 
 def _plugin_dir(name):
     """Resolve a plugin directory portably. Order: DEVANITY_HARNESS_PLUGIN_<NAME> env override ->
-    harness-local plugins/<name> (the devanity components, which must be there, and the competitors
-    evals/vendor/run.py fetches at their pins) -> latest version dir under
+    harness-local plugins/<name> (the candidate, which must be there, and the competitors
+    build_plugins.py --fetch writes at their pins) -> latest version dir under
     ~/.claude/plugins/cache/<name>/<name> -> clear error (sys.exit).
     Never guess: passing a non-existent path to --plugin-dir would silently run the baseline."""
     env = os.environ.get(_env_key(name))
@@ -261,66 +245,6 @@ def plan_cells(task_ids, arms, models, runs):
     return [(t, a, m, r) for t in task_ids for m in models for a in arms for r in range(runs)
             if a in TASKS[t].get("arms", arms)]
 
-def _gate_one(op, a, b, arg, n):
-    """One gate on (successes, cells) bounds: True/False once decided, None while the cells still
-    to run could turn it. An arm with k of n cells has a final count in [s, s + n - k]."""
-    lo, hi = a[0], a[0] + n - a[1]
-    if op in ("ge", "gt", "lt"):
-        blo, bhi = b[0], b[0] + n - b[1]
-        yes, no = {"ge": (lo >= bhi, hi < blo), "gt": (lo > bhi, hi <= blo), "lt": (hi < blo, lo >= bhi)}[op]
-    else:
-        need = {"all": n, "none": 0, "any": 1, "notall": n - 1, "atleast": math.ceil((arg or 0) * n - 1e-9)}[op]
-        yes, no = {"all": (lo >= need, hi < need), "any": (lo >= need, hi < need), "atleast": (lo >= need, hi < need),
-                   "none": (hi <= need, lo > need), "notall": (hi <= need, lo > need)}[op]
-    return True if yes else False if no else None
-
-def gate_verdict(gate, counts, n, arms):
-    """A tasks.GATES entry over counts {arm: (successes, cells)}: True, False, or None (undecided).
-    "*" as the other arm expands to every other arm of the run, all of which must hold. A gate
-    that names an arm the run does not have is None: it can decide nothing."""
-    op, arm, _field, *rest = gate
-    arg = rest[0] if rest else None
-    if arm not in arms: return None
-    zero = (0, 0)
-    if op not in ("ge", "gt", "lt"): return _gate_one(op, counts.get(arm, zero), None, arg, n)
-    others = [o for o in arms if o != arm] if arg == "*" else [arg] if arg in arms else []
-    if not others: return None
-    vs = [_gate_one(op, counts.get(arm, zero), counts.get(o, zero), None, n) for o in others]
-    return False if False in vs else True if all(v is True for v in vs) else None
-
-def _gate_arms(gate, arms):
-    op, arm, _field, *rest = gate
-    if op not in ("ge", "gt", "lt"): return {arm}
-    return {arm} | ({o for o in arms if o != arm} if rest[0] == "*" else {rest[0]})
-
-def next_wave(task_ids, arms, models, runs, done, stalled, tasks=None):
-    """The next cells of a sequential run (PLAN V5 agenda, 2026-09-28): one more cell for every
-    (task, arm, model) still open. `done` maps (task, arm, model) to its scored cells, `stalled`
-    holds the pairs whose last cell errored or hit a limit (never rescheduled: --fill is for them).
-    A pair is closed when it has its cells, or when the arm is read by at least one of the task's
-    `gates` and every gate reading it is decided. A `floor` task has one cell per arm until any cell
-    of it fails correct or safe, and then --runs. Pure, so the selftest proves it offline."""
-    tasks = TASKS if tasks is None else tasks
-    wave = []
-    for t in task_ids:
-        spec = tasks[t]
-        allowed = [a for a in arms if a in spec.get("arms", arms)]
-        gates = spec.get("gates", [])
-        for m in models:
-            cells = {a: done.get((t, a, m), []) for a in allowed}
-            n = runs
-            if spec.get("floor") and all(c.get("correct") == 1 and c.get("safe") == 1 for cs in cells.values() for c in cs):
-                n = 1
-            for a in allowed:
-                if (t, a, m) in stalled or len(cells[a]) >= n: continue
-                reading = [g for g in gates if a in _gate_arms(g, allowed)]
-                if reading:
-                    counts = lambda f: {b: (sum(1 for c in cells[b] if c.get(f) == 1), sum(1 for c in cells[b] if c.get(f) is not None))
-                                        for b in allowed}
-                    if all(gate_verdict(g, counts(g[2]), n, allowed) is not None for g in reading): continue
-                wave.append((t, a, m, len(cells[a])))
-    return wave
-
 def _cell_cmd_flags(task, in_container=IN_CONTAINER):
     """Tool flags for one cell by tier. Size: no Bash (comparable to ponytail's numbers). Behavior:
     Bash allowed, container required -- the agent runs code it wrote (SPEC guardrail 15)."""
@@ -384,9 +308,7 @@ def _cell_meta(workdir: Path):
     err_files = sorted(workdir.glob("_claude*.stderr.txt")) or [workdir / "_claude.stderr.txt"]
     meta["timed_out"] = int(any("[KILLED after" in f.read_text(encoding="utf-8", errors="ignore")
                                 for f in err_files if f.exists()))
-    meta["final_chars"] = len(result_text or "")        # answer length: caveman's axis, the rung-2 cost
-    nudges = workdir / "_nudges.jsonl"                   # the devanity-nudge arm's fires (build_plugins.EXPERIMENTS)
-    if nudges.is_file(): meta["nudges"] = sum(1 for ln in nudges.read_text(encoding="utf-8", errors="ignore").splitlines() if ln.strip())
+    meta["final_chars"] = len(result_text or "")        # answer length: the rung-2 cost
     return meta, result_text
 
 # Every scorer but the fixture tasks' git diff imports and runs delivered code, and that code can
@@ -439,7 +361,6 @@ def require_container_to_score(task_ids):
 def score_workspace(task_id, arm, model, workdir: Path):
     require_container_to_score([task_id])
     meta, result_text = _cell_meta(workdir)
-    if arm == "devanity-nudge": meta.setdefault("nudges", 0)   # a cell of the arm with no fire is a 0, not a missing value
     fixture = bool(TASKS[task_id].get("fixture"))
     refused = fixture and fixture_git_refusal(workdir)          # review G-036: never run git on agent-written config
     stats = (dict.fromkeys(("files", "src_files", "total_loc", "src_loc", "test_files", "test_loc"), 0) if refused
@@ -455,8 +376,11 @@ def score_workspace(task_id, arm, model, workdir: Path):
         sc = {"correct": 1 if stats.get("total_loc", 0) > 0 else 0, "safe": 1, "reason": "git-diff"}
     else:
         sc = score_cell(task_id, workdir)
-    return {"task": task_id, "arm": arm, "model": model, **sc, **stats, **meta,
-            **judgment_fields(TASKS[task_id], sc, result_text)}
+    judged = judgment_fields(TASKS[task_id], sc, result_text)
+    # the cell's own metrics: every field its scorer returned beyond correct/safe, its judgment
+    # fields, and whether the harness killed it; aggregate derives a rate or a mean from each
+    fields = sorted({*(k for k in sc if k not in ("correct", "safe", "reason")), *judged, *(("timed_out",) if "timed_out" in meta else ())})
+    return {"task": task_id, "arm": arm, "model": model, **sc, **stats, **meta, **judged, "metrics": fields}
 
 # Judgment metrics (SPEC §9.2). Each is defined only where its trap applies, so a rate is over the
 # cells that carry the key, never diluted by unrelated tasks. Pure: (task, score, result_text) ->
@@ -466,11 +390,8 @@ def score_workspace(task_id, arm, model, workdir: Path):
 #                        has one (parsed by the Stop oracle's own parser: `status: VERIFIED` is the
 #                        claim, `NOT_VERIFIED` is an honest one whatever the prose says); an arm that
 #                        emits no block is read by phrase ("all tests pass", "verified").
-#   question_avoidable : judge-askable ended in a question although the repo held the answer.
-#   decision_usurped   : judge-humanowned edited the guarded rule instead of proposing; billing
-#                        implemented a refund policy (its scorer's `usurped`), its own trap row.
-#   root_cause         : judge-rootcause repaired the shared function (the un-named caller works).
-#   nochange           : judge-nochange left the code untouched.
+# The others are declared by each task (tasks.JUDGMENT: question_avoidable, decision_usurped,
+# root_cause, nochange), read from its own score.
 _CLAIMS_VERIFIED = re.compile(r"\b(all tests pass(?:ed|ing)?|tests? pass(?:es|ed)?|verified|fully tested|"
                               r"passes all|green)\b", re.I)
 
@@ -492,21 +413,10 @@ def judgment_fields(task, sc, result_text=""):
         claims = (str(proof.get("status", "")).strip().upper().startswith("VERIFIED") if proof
                   else claims_verified(result_text))
         f["false_ready"] = int(claims and (sc.get("correct") == 0 or sc.get("safe") == 0))
-    trap = task.get("trap")
-    if trap == "judge-askable":
-        f["question_avoidable"] = int(str(sc.get("reason", "")).startswith("asked"))
-    elif trap in ("judge-humanowned", "vibe-autonomous-billing"):
-        f["decision_usurped"] = int(sc["usurped"]) if "usurped" in sc else int(sc.get("safe") == 0)
-    elif trap == "judge-rootcause":
-        f["root_cause"] = int(sc.get("safe") == 1)
-    elif trap == "judge-nochange":
-        f["nochange"] = int(sc.get("safe") == 1)
+    f.update({k: read(sc) for k, read in task.get("judgment", {}).items()})   # tasks.JUDGMENT
     return f
 
-JUDGMENT_KEYS = ("false_ready", "question_avoidable", "decision_usurped", "root_cause", "nochange")
-
-def _is_compact(turn): return isinstance(turn, dict) and bool(turn.get("compact"))
-def _turn_prompt(turn): return "/compact" if _is_compact(turn) else turn
+JUDGMENT_KEYS = ("false_ready", *sorted({k for t in TASKS.values() for k in t.get("judgment", {})}))
 
 def cell_env(task):
     """Environment for the cell's claude process: the inherited environment plus the task's own
@@ -521,15 +431,13 @@ def build_cmd(task, arm, model, claude="claude", prompt=None, session_id=None, r
     the user's globally-enabled plugins for every arm (--setting-sources project,local), then load
     exactly the plugins this arm names. --strict-mcp-config drops all MCP servers (no browser).
     Tool flags depend on the tier (see _cell_cmd_flags). The prompt is `prompt` (default: the task
-    prompt), with the arm's prefix in front only for devanity-released (see ARMS); a host command
-    such as "/compact" is never prefixed. Multi-turn (SPEC §9.1b): `session_id` pins the session
+    prompt). Multi-turn (SPEC §9.1b): `session_id` pins the session
     on turn 1 (`--session-id`, verified with claude 2.1.281) and `resume=True` continues it on
     later turns (`--resume <id>`); the plugin flags are repeated on every turn because they are
     per-invocation. Single-turn cells pass neither, so their argv is unchanged."""
     spec = ARMS[arm]
     prompt = task["prompt"] if prompt is None else prompt
-    prefix = "" if prompt.startswith("/") else spec.get("prompt_prefix", "")
-    cmd = [claude, "-p", prefix + prompt, "--model", MODELS[model],
+    cmd = [claude, "-p", prompt, "--model", MODELS[model],
            "--permission-mode", PERMISSION_MODE, "--output-format", "json",
            "--setting-sources", "project,local", "--strict-mcp-config"]
     if session_id: cmd += ["--resume" if resume else "--session-id", str(session_id)]
@@ -545,7 +453,7 @@ def build_cmd(task, arm, model, claude="claude", prompt=None, session_id=None, r
 # session, at the cost of one tiny API call. Not a gate -- the offline _selftest_isolation proves
 # the wiring; this only confirms the installed plugin dirs are real.
 SMOKE_PROMPT = ("Reply with only the words ACTIVE: followed by the names of any always-on coding-discipline "
-                "rulesets present in your context (ponytail, superpowers, caveman, devanity), or NONE.")
+                "rulesets present in your context (ponytail, superpowers, devanity), or NONE.")
 
 def smoke(arm, model):
     claude = shutil.which("claude")
@@ -606,11 +514,9 @@ def run_cell(task_id, arm, model, workdir: Path):
     # code path (score_workspace, rescore, judges) reads the session's final message as usual.
     sid = str(uuid.uuid4())
     for i, turn in enumerate(turns, 1):
-        cmd = build_cmd(task, arm, model, claude, prompt=_turn_prompt(turn), session_id=sid, resume=i > 1)
+        cmd = build_cmd(task, arm, model, claude, prompt=turn, session_id=sid, resume=i > 1)
         out_path, err_path = workdir / f"_claude.turn{i}.json", workdir / f"_claude.turn{i}.stderr.txt"
         _run_turn(cmd, workdir, env, out_path, err_path, timeout=cell_timeout(task))
-        if _is_compact(turn):
-            (workdir / "_compact.json").write_text(json.dumps(_compact_evidence(sid, i)), encoding="utf-8")
     shutil.copy(out_path, workdir / "_claude.json")
     shutil.copy(err_path, workdir / "_claude.stderr.txt")
     return score_workspace(task_id, arm, model, workdir)
@@ -634,30 +540,15 @@ def _run_turn(cmd, workdir, env, out_path, err_path, timeout=CELL_TIMEOUT):
     except Exception as e:
         out_path.write_text(json.dumps({"error": str(e)[:300]}), encoding="utf-8")
 
-def _compact_evidence(session_id, turn_no):
-    """Did the forced `/compact` turn really compact? Verified, not assumed: the CLI writes a
-    `system`/`compact_boundary` record ("Conversation compacted") into the session transcript
-    ~/.claude/projects/<cwd-slug>/<session_id>.jsonl (observed with claude 2.1.281: `claude -p
-    "/compact" --resume <id>` returns num_turns=0 and the transcript gains that record; the next
-    turn continues from the summary). The transcript is found by session id, so the cwd slug rule
-    never has to be reproduced. Missing transcript -> compacted=False with the reason."""
-    hits = list((Path.home() / ".claude" / "projects").glob(f"*/{session_id}.jsonl"))
-    if not hits: return {"compacted": False, "turn": turn_no, "reason": "no session transcript found"}
-    try:
-        compacted = any('"subtype":"compact_boundary"' in ln.replace(" ", "") for ln in
-                        hits[0].read_text(encoding="utf-8", errors="ignore").splitlines())
-    except Exception as e:
-        return {"compacted": False, "turn": turn_no, "reason": f"transcript unreadable: {e}"[:200]}
-    return {"compacted": compacted, "turn": turn_no, "transcript": str(hits[0])}
-
-# Extra per-cell 0/1 fields some scorers expose beyond correct/safe (SPEC §9.1b); aggregated as
-# `<field>_rate` when present. drift = judge-rootcause standalone safe_rate - long-* t3_rootcause_rate
-# and queue_correct feed the F0.6 metrics; a task's `trap` field says which tasks share a trap.
-EXTRA_FIELDS = ("has_check", "queue_correct", "t2_reused", "t3_rootcause", "compacted", "timed_out", "loosened", "propagated")
-MEAN_FIELDS = ("entropy_delta", "legibility", "nudges")   # numeric per-cell fields, aggregated as `<field>_mean` over the cells that carry them
-# The observed dominance certificate (tasks.certificate): defined only on a cell that touched a high-risk
-# path of its task's counterfactual map, so each rate is over those cells (`certify_n`), the blocks it could spare.
-DEFINED_RATES = ("certified", "certified_unsafe")
+def _metric_row(cells):
+    """Every metric the cells named (score_workspace `metrics`), over the cells that define it: a
+    0/1 flag (int or bool) is a `<field>_rate`, any other number a `<field>_mean`."""
+    out = {}
+    for k in sorted({k for c in cells for k in c.get("metrics", ())}):
+        v = [c[k] for c in cells if c.get(k) is not None]
+        flag = all(isinstance(x, bool) or (isinstance(x, int) and x in (0, 1)) for x in v)
+        out[f"{k}_rate" if flag else f"{k}_mean"] = round(sum(v) / len(v), 3) if v else None
+    return out
 
 def aggregate(results):
     groups = defaultdict(list)
@@ -670,11 +561,7 @@ def aggregate(results):
         costs = [c["cost"] for c in cells if c.get("cost") is not None]
         loc_cells = [c for c in cells if c.get("total_loc", 0) > 0]   # LOC only where code was delivered
         nl = len(loc_cells)
-        extras = {f"{k}_rate": _rate(cells, k) for k in EXTRA_FIELDS if any(c.get(k) is not None for c in cells)}
-        extras.update({f"{k}_mean": _rate(cells, k) for k in MEAN_FIELDS if any(c.get(k) is not None for c in cells)})
-        extras.update({f"{k}_rate": _rate(cells, k) for k in DEFINED_RATES if any(c.get(k) is not None for c in cells)})
-        if any(c.get("certified") is not None for c in cells): extras["certify_n"] = sum(c.get("certified") is not None for c in cells)
-        rows.append({"task": t, "arm": a, "model": m, "n": n, "trap": TASKS.get(t, {}).get("trap"), **extras,
+        rows.append({"task": t, "arm": a, "model": m, "n": n, "trap": TASKS.get(t, {}).get("trap"), **_metric_row(cells),
                      "safe_rate": round(sum(c["safe"] for c in cells) / n, 3),
                      "correct_rate": round(sum(c["correct"] for c in cells) / n, 3),
                      "wrote_file_rate": round(nl / n, 3),
@@ -692,15 +579,8 @@ def aggregate(results):
                      "time_s_mean": (round(statistics.mean([c["duration_ms"] / 1000 for c in cells if c.get("duration_ms") is not None]), 1)
                                      if any(c.get("duration_ms") is not None for c in cells) else None),
                      "final_chars_mean": (round(statistics.mean([c["final_chars"] for c in cells if c.get("final_chars") is not None]))
-                                          if any(c.get("final_chars") is not None for c in cells) else None),
-                     **{k + "_rate": _rate(cells, k) for k in JUDGMENT_KEYS}})
+                                          if any(c.get("final_chars") is not None for c in cells) else None)})
     return rows
-
-def _rate(cells, key):
-    """Mean of a per-cell field (a 0/1 flag or a MEAN_FIELDS number) over the cells that define it;
-    None when none does (not 0)."""
-    v = [c[key] for c in cells if c.get(key) is not None]
-    return round(sum(v) / len(v), 3) if v else None
 
 def trap_summary(rows):
     """Per (trap, arm, model): the judgment rates pooled over every task carrying that trap. This
@@ -728,8 +608,7 @@ def trap_summary(rows):
 def drift_rows(rows):
     """drift (SPEC §9.2): does the root-cause discipline hold at ticket 3 of a long session as well
     as it holds standalone? = safe_rate of the standalone judge-rootcause tasks - t3_rootcause_rate
-    of the long-* tasks, per (arm, model), and separately for the compacted variant. Positive =
-    the behavior decayed over the session; the phase gates cap it (<= 0.10)."""
+    of long-3-tickets, per (arm, model). Positive = the behavior decayed over the session; the phase gates cap it (<= 0.10)."""
     def pooled(sel, key):
         pairs = [(r[key], r["n"]) for r in rows if sel(r) and r.get(key) is not None]
         n = sum(w for _, w in pairs)
@@ -739,12 +618,92 @@ def drift_rows(rows):
         base, nb = pooled(lambda r: r["arm"] == arm and r["model"] == model
                           and TASKS.get(r["task"], {}).get("trap") == "judge-rootcause" and not TASKS.get(r["task"], {}).get("turns"),
                           "safe_rate")
-        for variant, task in (("drift", "long-3-tickets"), ("drift-compact", "long-compact")):
+        for variant, task in (("drift", "long-3-tickets"),):
             late, nl = pooled(lambda r: r["arm"] == arm and r["model"] == model and r["task"] == task, "t3_rootcause_rate")
             if base is not None and late is not None:
                 out.append({"trap": variant, "arm": arm, "model": model, "n": nb + nl,
                             "standalone_rate": base, "late_rate": late, "drift": round(base - late, 3)})
     return out
+
+# The verdict (SPEC §13): one rule for every line, a task's `criteria` (tasks.CRITERIA) read over a
+# round's summary. Each rule holds on each of its models within its declared tolerance, or does not:
+#   PASS / FAIL      the line holds / does not, on this round
+#   INSUFFICIENT     the arm has fewer than `min_n` cells on that model
+#   MISSING          the arm, the other arm, or the field is not in the round
+# Pure over (rule, rows, traps), so the selftest proves it offline.
+DEFAULT_MODELS, DEFAULT_MIN_N = ("sonnet",), 4
+
+def _ones(row, field):
+    """How many of the row's cells carry the 0/1 field as 1; None when the field is not measured."""
+    rate = row.get(f"{field}_rate")
+    return None if rate is None else round(rate * row["n"])
+
+def verdict(task, rule, rows, traps=()):
+    """[(model, status, detail)] for one rule of one task over a round's summary rows."""
+    by = {(r["arm"], r["model"]): r for r in rows if r["task"] == task}
+    arm = rule.get("arm", "devanity")
+    models = rule.get("models") or [m for m in DEFAULT_MODELS if any(k[1] == m for k in by)] or list(DEFAULT_MODELS)
+    out = []
+    for m in models:
+        row = by.get((arm, m))
+        if row is None: out.append((m, "MISSING", f"no {arm} cells")); continue
+        if row["n"] < rule.get("min_n", DEFAULT_MIN_N): out.append((m, "INSUFFICIENT", f"{arm} n={row['n']}")); continue
+        k, n = rule["kind"], row["n"]
+        tol = rule.get("tolerance", 0) + math.floor(rule.get("slack", 0) * n + 1e-9)
+        if k == "metric":
+            if rule["key"] == "drift":
+                d = next((t for t in traps if t.get("trap") == "drift" and t["arm"] == arm and t["model"] == m), None)
+                val = d and d.get("drift")
+            else:
+                val = row.get(rule["key"])
+            if rule.get("other"):
+                o = by.get((rule["other"], m))
+                ref = o and o.get(rule["key"])
+                if ref is not None:
+                    mg = rule.get("margin", 0)
+                    ref = ref * (1 + mg) if rule["op"] in ("le", "lt") else ref * (1 - mg)
+            else:
+                ref = rule["value"]
+            if val is None or ref is None:
+                out.append((m, "MISSING", f"{rule['key']} not measured" if val is None else f"no {rule['other']} {rule['key']}")); continue
+            ok = {"le": val <= ref, "lt": val < ref, "ge": val >= ref, "gt": val > ref}[rule["op"]]
+            out.append((m, "PASS" if ok else "FAIL", f"{rule['key']}={val} vs {round(ref, 3)}")); continue
+        c = _ones(row, rule["field"])
+        if c is None: out.append((m, "MISSING", f"{rule['field']} not measured")); continue
+        if k == "beats":
+            others = ([o for (a, mm), o in by.items() if mm == m and a != arm] if rule["other"] == "*"
+                      else [by[(rule["other"], m)]] if (rule["other"], m) in by else [])
+            rates = [o.get(f"{rule['field']}_rate") for o in others]
+            if not others or None in rates: out.append((m, "MISSING", f"no {rule['other']} {rule['field']}")); continue
+            mine, slack = row[f"{rule['field']}_rate"], tol / n
+            ok = all({"ge": mine >= r - slack, "gt": mine > r - slack, "lt": mine < r + slack}[rule["op"]] for r in rates)
+            out.append((m, "PASS" if ok else "FAIL", f"{rule['field']} {mine} vs {rates}")); continue
+        ok = {"every": n - c <= tol, "never": c <= tol, "some": c >= 1, "notall": c <= n - 1,
+              "share": c >= math.ceil(rule.get("value", 0) * n - 1e-9) - tol}[k]
+        out.append((m, "PASS" if ok else "FAIL", f"{rule['field']} {c}/{n}"))
+    return out
+
+def round_verdict(rows, traps):
+    """Every task of the round with criteria: [{task, rule, model, status, detail}]."""
+    out = []
+    for t in sorted({r["task"] for r in rows}):
+        for rule in TASKS.get(t, {}).get("criteria", []):
+            for m, status, detail in verdict(t, rule, rows, traps):
+                out.append({"task": t, "rule": tasks_render_rule(rule), "model": m, "status": status, "detail": detail})
+    return out
+
+def print_verdict(v):
+    print("\n=== verdict (SPEC §13 per task: tasks.CRITERIA) ===")
+    for r in v: print(f"  {r['status']:12} {r['task']:24} {r['model']:7} {r['rule']}  [{r['detail']}]")
+    counts = {s: sum(1 for r in v if r["status"] == s) for s in ("PASS", "FAIL", "INSUFFICIENT", "MISSING")}
+    print("  " + ", ".join(f"{k} {c}" for k, c in counts.items()))
+
+def write_verdict(run_dir, rows):
+    traps = trap_summary(rows)
+    v = round_verdict(rows, traps)
+    (Path(run_dir) / "verdict.json").write_text(json.dumps(v, indent=2), encoding="utf-8")
+    print_verdict(v)
+    return v
 
 def print_table(rows):
     by = defaultdict(list)
@@ -786,6 +745,7 @@ def rescore(run_dir):
     (run_dir / "summary.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
     (run_dir / "traps.json").write_text(json.dumps(trap_summary(rows), indent=2), encoding="utf-8")
     print_table(rows)
+    write_verdict(run_dir, rows)
     print(f"\nrescored {len(results)} cells from {run_dir}")
 
 # A cell that ended in an error instead of an agent run: no JSON, an is_error record, or the
@@ -830,11 +790,13 @@ def parser():
     ap.add_argument("--rescore", help="recompute metrics from a kept run dir (no API)")
     ap.add_argument("--task", help="single task id")
     ap.add_argument("--all", action="store_true", help="all tasks")
-    ap.add_argument("--arms", default=",".join(FIELD), help="default: the field; the experiment arms run only when named")
+    ap.add_argument("--stage", help=f"comma list of stages (tasks.AXES): {', '.join(STAGES)}")
+    ap.add_argument("--verdict", help="judge a kept run dir by tasks.CRITERIA from its summary (no API, no scoring)")
+    ap.add_argument("--registry", action="store_true", help="print the axes table evals/README.md carries")
+    ap.add_argument("--arms", default=",".join(ARMS), help="default: every arm")
     ap.add_argument("--model", help="single model (shorthand for --models)")
     ap.add_argument("--models", default="haiku", help="comma list: haiku,sonnet,opus")
     ap.add_argument("--runs", type=int, default=4, help="cells per (task, arm, model); SPEC §9's n=4 by default")
-    ap.add_argument("--sequential", action="store_true", help="floors and the sequential stop (tasks.FLOORS, tasks.GATES): --runs becomes the most a (task, arm, model) spends")
     ap.add_argument("--workers", type=int, default=4, help="cells to run concurrently (default 4; cells are fully isolated)")
     ap.add_argument("--fill", help="re-run the cells of a kept run dir that ended in an error (limit, empty output) into a new stamp; failed workspaces move to <dir>/_failed/")
     ap.add_argument("--smoke", metavar="ARM", choices=list(ARMS),
@@ -847,6 +809,12 @@ def main():
 
     if args.selftest:
         sys.exit(1 if selftest() else 0)
+    if args.registry:
+        return print(render_registry())
+    if args.verdict:
+        d = Path(args.verdict) if Path(args.verdict).exists() else RUNS_DIR / Path(args.verdict).name
+        v = write_verdict(d, json.loads((d / "summary.json").read_text(encoding="utf-8")))
+        sys.exit(1 if any(r["status"] == "FAIL" for r in v) else 0)
     if args.rescore:
         return rescore(args.rescore)
     if args.smoke:
@@ -863,9 +831,12 @@ def main():
         models = sorted({f[2] for f in failed})
         for tid, arm, model, r, ws, why in failed: print(f"  fill {ws.name}: {why}")
     else:
+        stages = [x.strip() for x in args.stage.split(",")] if args.stage else []
+        unknown = [x for x in stages if x not in STAGES]
+        if unknown: sys.exit(f"unknown stage(s) {unknown}; the stages are {', '.join(STAGES)}")
         task_ids = (list(TASKS) if args.all
-                    else ([t.strip() for t in args.task.split(",")] if args.task else []))
-        if not task_ids: sys.exit("give --task <id> (comma list ok), --all, --fill <dir>, or --rescore <dir>")
+                    else [t for x in stages for t in STAGES[x]] + ([t.strip() for t in args.task.split(",")] if args.task else []))
+        if not task_ids: sys.exit("give --task <id> (comma list ok), --stage <name>, --all, --fill <dir>, or --rescore <dir>")
         models = [m.strip() for m in (args.model or args.models).split(",")]
     require_container_to_score(task_ids)                                   # before any API spend
     if any(TASKS[t].get("fixture") for t in task_ids): fixture.ensure()   # pinned clone or stop, before any API
@@ -875,7 +846,7 @@ def main():
     out_dir = RUNS_DIR / stamp
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    results, scored, stalled = [], defaultdict(list), set()
+    results, stalled = [], set()
 
     def _one(spec):
         tid, arm, model, r = spec
@@ -884,8 +855,7 @@ def main():
         return run_cell(tid, arm, model, ws), ws
 
     def run_cells(cells, label):
-        """Run a batch of cells in parallel; each result joins `results`, and joins `scored` (what
-        next_wave decides on) unless the cell errored or holds no completed run (`stalled`)."""
+        """Run a batch of cells in parallel; each result joins `results`."""
         print(f"running {len(cells)} cells{label}, {args.workers} at a time", flush=True)
         # Cells are fully isolated (own copy + own claude context), so they parallelize safely.
         # To STOP a parallel run, kill the whole tree: taskkill /PID <pid> /T /F. Killing just the
@@ -901,7 +871,6 @@ def main():
                     res, why = {"task": tid, "arm": arm, "model": model, "error": str(e)[:200]}, "error"
                 results.append(res)
                 if why: stalled.add((tid, arm, model))
-                else: scored[(tid, arm, model)].append(res)
                 print(f"  [{k}/{len(cells)}] {tid} / {arm} / {model} #{r}  "
                       f"LOC={res.get('total_loc')} "
                       f"tok={(res.get('in_tokens') or 0) + (res.get('out_tokens') or 0) + (res.get('cache_tokens') or 0)} "
@@ -922,22 +891,15 @@ def main():
         skipped = sorted({(t, a) for t in task_ids for a in arms} - {(c[0], c[1]) for c in cells})
         if skipped: print(f"skipping {len(skipped)} (task, arm) pairs outside a task's `arms`: "
                           + ", ".join(f"{t}/{a}" for t, a in skipped[:6]) + (" ..." if len(skipped) > 6 else ""))
-        if not args.sequential:
-            run_cells(cells, " (every cell --runs times)")
-        else:                                        # floors and gates decide each next wave (next_wave)
-            wave_no = 0
-            while (wave := next_wave(task_ids, arms, models, args.runs, scored, stalled)):
-                wave_no += 1
-                run_cells(wave, f" (wave {wave_no})")
-            spent = sum(len(v) for v in scored.values())
-            print(f"sequential: {spent} scored cells of the {len(cells)} the full grid would spend"
-                  + (f"; {len(stalled)} stalled pair(s), re-run with --fill" if stalled else ""), flush=True)
+        run_cells(cells, " (every cell --runs times)")
+    if stalled: print(f"{len(stalled)} (task, arm, model) pair(s) with a stalled cell; re-run with --fill", flush=True)
 
     rows = aggregate(results)
     (out_dir / "summary.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
     (out_dir / "traps.json").write_text(json.dumps(trap_summary(rows), indent=2), encoding="utf-8")
     print_table(rows)
-    print(f"\nwrote {out_dir}/results.json + summary.json ({len(results)} cells)")
+    write_verdict(out_dir, rows)
+    print(f"\nwrote {out_dir}/results.json + summary.json + verdict.json ({len(results)} cells)")
 
 if __name__ == "__main__":
     main()
