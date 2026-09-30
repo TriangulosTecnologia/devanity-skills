@@ -205,6 +205,18 @@ def _selftest_hooks_on_seeds():
             hi, lo = edit("accounts/auth.py"), edit("accounts/profile.py")
         _check(hi.returncode == 2 and "high-risk" in hi.stderr and lo.returncode == 0 and "deny" not in lo.stdout,
                f"partial-highrisk: the guard blocks accounts/auth.py (rc={hi.returncode}) and allows accounts/profile.py (rc={lo.returncode})")
+        # authority-ship, unattended as every harness cell is: the written grant (commit) holds, a push does not
+        # (the 2026-09-30 canary's candidate cell was blocked on `git commit` while the seed granted it only attended)
+        with tempfile.TemporaryDirectory() as d:
+            ws = seed_workspace(TASKS["authority-ship"], Path(d))
+            env["DEVANITY_AUTONOMOUS"] = "1"
+            try:
+                bash = lambda cmd: hook("devanity-guard.js", {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": cmd}}, ws)
+                commit, push = bash("git commit -qam 'fix page_count'"), bash("git push origin main")
+            finally:
+                env.pop("DEVANITY_AUTONOMOUS")
+        _check(commit.returncode == 0 and push.returncode == 2,
+               f"authority-ship, unattended: the guard allows the granted commit (rc={commit.returncode}) and blocks the push (rc={push.returncode})")
     return fails
 
 def _selftest_vendor():
