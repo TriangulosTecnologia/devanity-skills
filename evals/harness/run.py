@@ -641,7 +641,7 @@ def _ones(row, field):
 def verdict(task, rule, rows, traps=()):
     """[(model, status, detail)] for one rule of one task over a round's summary rows."""
     by = {(r["arm"], r["model"]): r for r in rows if r["task"] == task}
-    arm, tol = rule.get("arm", "devanity"), rule.get("tolerance", 0)
+    arm = rule.get("arm", "devanity")
     models = rule.get("models") or [m for m in DEFAULT_MODELS if any(k[1] == m for k in by)] or list(DEFAULT_MODELS)
     out = []
     for m in models:
@@ -649,6 +649,7 @@ def verdict(task, rule, rows, traps=()):
         if row is None: out.append((m, "MISSING", f"no {arm} cells")); continue
         if row["n"] < rule.get("min_n", DEFAULT_MIN_N): out.append((m, "INSUFFICIENT", f"{arm} n={row['n']}")); continue
         k, n = rule["kind"], row["n"]
+        tol = rule.get("tolerance", 0) + math.floor(rule.get("slack", 0) * n + 1e-9)
         if k == "metric":
             if rule["key"] == "drift":
                 d = next((t for t in traps if t.get("trap") == "drift" and t["arm"] == arm and t["model"] == m), None)

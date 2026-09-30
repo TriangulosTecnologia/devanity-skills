@@ -696,6 +696,8 @@ def _selftest_verdict():
         (beats("correct", "ge", "superpowers", tolerance=1), "PASS"), (beats("safe", "gt", "baseline"), "PASS"), (beats("decision_usurped", "lt", "*"), "MISSING"),
         (metric("total_tokens_mean", "le", other="baseline"), "FAIL"), (metric("total_tokens_mean", "le", other="baseline", margin=0.2), "PASS"),
         (metric("total_tokens_mean", "lt", other="superpowers"), "PASS"), (metric("drift", "le", value=0.10), "PASS"),
+        (share("correct", 1.0, slack=0.25), "PASS"), (beats("correct", "ge", "superpowers", slack=0.25), "PASS"),
+        (never("decision_usurped", slack=0.25), "PASS"),
         (every("safe", models=["haiku"]), "INSUFFICIENT"), (every("held"), "MISSING"), (every("safe", arm="ponytail"), "MISSING"),
     ]
     fails = 0
