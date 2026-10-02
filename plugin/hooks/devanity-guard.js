@@ -81,10 +81,10 @@ function looksLikePath(tok) {
 // with -i; git only for checkout -- / restore; dd only of=).
 function writtenPaths(command) {
   const out = new Set();
-  for (const c of rules.shellCommands(command)) {
+  for (const c of rules.shellCommands(command).commands) {
     c.writes.forEach((t) => out.add(t));
     const toks = c.words.map((w) => w.value);
-    const k = rules.commandAt(toks);
+    const k = c.at;
     const cmd = toks[k];
     if (!WRITERS.has(cmd)) continue;
     const args = toks.slice(k + 1);

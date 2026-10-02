@@ -326,6 +326,13 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ['"bash" -c "git push --force"', 'merge'],
       ["tee x.sh <<'EOF'\n./deploy.sh\nEOF\nbash -o pipefail x.sh", 'deploy'],
       ["cat > x.sh <<'EOF'\n./deploy.sh\nEOF\nbash < x.sh", 'deploy'],
+      ["ssh host bash <<'EOF'\ngit push --force\nEOF", 'merge'],
+      ...['source x.sh', '. ./x.sh', 'timeout 60 bash x.sh', 'bash -c "$(cat x.sh)"', 'eval "$(cat x.sh)"', 'docker exec -i c bash < x.sh', 'ssh host < x.sh', 'bash <(cat x.sh)']
+        .map((run) => [`cat > x.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
+      ['echo "git push --force" > p.sh && bash p.sh', 'merge'],
+      ['bash <(echo "git push --force")', 'merge'],
+      ...['sudo ./deploy.sh', 'FOO=1 ./deploy.sh', 'env FOO=1 ./deploy.sh', 'time ./deploy.sh', 'nohup ./deploy.sh', 'nice -n 5 ./deploy.sh', 'timeout 60 ./deploy.sh', '"./deploy.sh"'].map((cmd) => [cmd, 'deploy']),
+      ['"git" push --force', 'merge'],
     ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
     for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"']) {
       assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), 'billing/x.py');
@@ -334,13 +341,19 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
 });
 
 describe('guard: the shell reader stays inside the hook budget', () => {
-  test('deep nesting, long eval chains and thousands of heredocs: an answer in time, never a throw', () => {
+  test('deep nesting, long chains, repeated heredocs and option runs: an answer in time, never a throw', { timeout: 30000 }, () => {
     const rules = require(join(hooksDir, 'devanity-rules.js'));
     const loaded = rules.parseRules(JSON.stringify(RULES)).rules;
     for (const [cmd, need] of [
       ['echo ' + '"$('.repeat(3000) + 'git push --force origin main' + ')"'.repeat(3000), 'merge'],
       ['eval '.repeat(3000) + 'git push --force', 'merge'],
       ["cat > a.sh <<'E'\nx\nE\n".repeat(4000) + 'git push --force', 'merge'],
+      ['x <<< a '.repeat(20000) + '; git push --force origin main', 'merge'],
+      ['cat <<E '.repeat(20000) + '\n' + 'E\n'.repeat(20000) + 'git push', 'commit'],
+      ['git' + ' --git-dir=a'.repeat(40) + ' push', 'commit'],
+      ['git' + ' -c'.repeat(60) + ' push', 'commit'],
+      ['git push x '.repeat(16000), 'commit'],
+      ['make a '.repeat(100000), null],
     ]) {
       const started = Date.now();
       assert.equal(rules.commandAuthority(loaded, cmd), need);
