@@ -292,6 +292,20 @@ describe('rules CI', () => {
       const r = runCi(d, ['--base', 'main', '--no-proof-required']);
       assert.equal(r.code, 1, r.out); assert.match(r.out, /names `typecheck`, which this diff removes/);
     });
+    test('the falsifiers of the first verification: a fence closed only by a bare fence, flags with values, bare file names, quoted link titles', () => {
+      const claude = ['Example:', '```', '```bash', 'run `src/a.js`', '```', 'Real: `src/b.js`, `ARCHITECTURE.md`, [c](docs/c.md \'T\').', 'Build: `pnpm --filter web run build`; `npm --prefix . run lint`.', ''].join('\n');
+      const base = { 'CLAUDE.md': claude, 'src/a.js': '1\n', 'src/b.js': '1\n', 'ARCHITECTURE.md': 'a\n', 'docs/c.md': 'c\n', 'package.json': JSON.stringify({ scripts: { build: 'tsc', lint: 'eslint' } }) };
+      const d = repo(base, (d) => { for (const f of ['src/a.js', 'src/b.js', 'ARCHITECTURE.md', 'docs/c.md']) git(d, 'rm', '-q', f); write(d, 'package.json', JSON.stringify({ scripts: {} })); });
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 1, r.out);
+      for (const t of ['src/b.js', 'ARCHITECTURE.md', 'docs/c.md', 'build', 'lint']) assert.match(r.out, new RegExp(`names \`${t.replace(/[.]/g, '\\.')}\`, which this diff removes:`), `${t} must fail:\n${r.out}`);
+      assert.doesNotMatch(r.out, /names `src\/a\.js`/, 'a code span inside a fence is an example, even after a line that opens like a fence');
+    });
+    test('a bare file name is a claim only when it resolves: a generic mention of a file this repository lacks is not reported', () => {
+      const d = repo({ 'AGENTS.md': 'x\n' }, (d) => write(d, 'AGENTS.md', 'x\nA `CLAUDE.md` grown into a manual.\n'));
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out); assert.doesNotMatch(r.out, /CLAUDE\.md/);
+    });
     test('a break inside a skill (loaded on demand, often vendored) is reported, not failed', () => {
       const d = repo({ 'skills/x/SKILL.md': 'Build: `pnpm run build`.\n', 'package.json': JSON.stringify({ scripts: { build: 'tsc' } }) },
         (d) => write(d, 'package.json', JSON.stringify({ scripts: {} })));

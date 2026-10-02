@@ -9,7 +9,9 @@
 // A reference is a claim a surface makes about this repository: a code span or a link naming a
 // path, or a package script it runs (`npm|pnpm|yarn|bun run <name>`, `<pm> test`). A code span is a
 // path only when it starts inside the repository (its first segment exists), so `origin/main` or an
-// example path of some other repository is not one; code spans inside fenced blocks are examples.
+// example path of some other repository is not one; a bare file name (`ARCHITECTURE.md`) is one
+// only where it resolves, so a generic mention of a file the repository lacks is not; code spans
+// inside fenced blocks are examples.
 // A path resolves as a file, a directory, a module specifier without its extension, or, in a working
 // tree, anything on disk (so a symlinked directory counts); a gitignored path is expected to be
 // absent, and with no package.json there is nothing to check a script against. Node >= 18, no
@@ -53,12 +55,19 @@ function normalizePath(raw, link) {
   t = t.replace(link ? /[#?].*$/ : /#.*$/, '').replace(/^\.\//, '').replace(/:\d+(?:-\d+)?$/, '').replace(/\/+$/, '');
   if (!t || t.startsWith('/') || t.startsWith('-') || /[\s*?[\]{}<>|()=,;'"`!$~^@\\]/.test(t)) return null;
   if (/(^|\/)\.{3,}(\/|$)/.test(t) || /^\.\.(\/\.\.)*$/.test(t)) return null;   // a placeholder (`src/.../x.ts`) or only `..`
-  return link || t.includes('/') ? t : null;
+  return link || t.includes('/') || /^[^.][^/]*\.[A-Za-z0-9]+$/.test(t) ? t : null;
 }
 
-// The package script a command line runs, past any flags before and after `run`.
-function scriptOf(rest) {
-  const words = rest.trim().split(/\s+/).filter((w) => !w.startsWith('-'));
+// Flags that take the next word as their value, per package manager (`pnpm -w` takes none).
+const VALUED = { npm: ['--prefix', '-w', '--workspace'], pnpm: ['--filter', '-F', '-C', '--dir'], yarn: ['--cwd'], bun: ['--cwd', '--filter'] };
+
+// The package script a command line runs, past the flags before and after `run`.
+function scriptOf(pm, rest) {
+  const words = [];
+  for (let ws = rest.trim().split(/\s+/), i = 0; i < ws.length; i++) {
+    if (!ws[i].startsWith('-')) words.push(ws[i]);
+    else if (!ws[i].includes('=') && VALUED[pm].includes(ws[i])) i++;
+  }
   const name = words[0] === 'run' ? words[1] : words[0] === 'test' ? 'test' : null;
   return name && /^[A-Za-z0-9][\w:.-]*$/.test(name) ? name.replace(/[.:]+$/, '') : null;
 }
@@ -68,18 +77,19 @@ function references(text) {
   const refs = [];
   let fence = null;
   String(text).split('\n').forEach((line, i) => {
-    for (const m of line.matchAll(/\b(?:npm|pnpm|yarn|bun)\b([^`\n;|&]*)/g)) {
-      const name = scriptOf(m[1]);
+    for (const m of line.matchAll(/\b(npm|pnpm|yarn|bun)\b([^`\n;|&]*)/g)) {
+      const name = scriptOf(m[1], m[2]);
       if (name) refs.push({ kind: 'script', target: name, line: i + 1, link: false });
     }
-    const f = /^\s*(`{3,}|~{3,})/.exec(line);
-    if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null; return; }
+    const f = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
+    // A closing fence carries no info string: inside a fence, "```bash" is content.
+    if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !f[2].trim()) fence = null; return; }
     if (f) { fence = f[1]; return; }
     for (const m of line.matchAll(/`([^`]+)`/g)) {
       const t = normalizePath(m[1], false);
-      if (t) refs.push({ kind: 'path', target: t, line: i + 1, link: false });
+      if (t) refs.push({ kind: 'path', target: t, line: i + 1, link: false, bare: !t.includes('/') });
     }
-    for (const m of line.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)) {
+    for (const m of line.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g)) {
       const t = normalizePath(m[1], true);
       if (t) refs.push({ kind: 'path', target: t, line: i + 1, link: true });
     }
@@ -124,6 +134,7 @@ function resolves(ref, from, tree) {
 function isClaim(ref, from, trees) {
   if (ref.kind === 'script') return trees.some((t) => t.scripts);
   if (ref.link) return true;
+  if (ref.bare) return trees.some((t) => resolves(ref, from, t));
   const first = ref.target.split('/')[0];
   return trees.some((t) => exists(first, t) || exists(posix.join(posix.dirname(from), first), t));
 }
