@@ -300,6 +300,9 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       "cat > docs/ops.md <<'EOF'\nRestore: cp src/x.py billing/x.py\necho hi > billing/x.py\nEOF",
       'grep -n "=> billing/x.py" src/x.py',
       "cat > docs/ops.md <<'EOF'\nRun pnpm deploy:vm.\nEOF\ngit add docs/ops.md && cat docs/ops.md",
+      'grep -rn ssh scripts/ deploy',
+      'pytest -k eval deploy',
+      "cat > x.sh <<'EOF'\ngit push --force\nEOF\nbash -n x.sh",
     ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
   });
 
@@ -314,9 +317,34 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ['bash -lc "pnpm deploy:vm"', 'deploy'],
       ['if true; then ./deploy.sh; fi', 'deploy'],
       ["cat > run.sh <<'EOF'\n./deploy.sh prod\nEOF\nbash run.sh", 'deploy'],
+      ["{ cat <<'EOF'\ngit push --force\nEOF\n} | bash", 'merge'],
+      ["(cat <<'EOF'\ngit push --force\nEOF\n) | bash", 'merge'],
+      ['echo "git push --force" | bash', 'merge'],
+      ["printf 'git push --force\\n' | sh", 'merge'],
+      ["git commit -m \"$(cat <<'EOF'\nmsg\nEOF)\" && git push --force", 'merge'],
+      ["bash -c \"$(cat <<'EOF'\ngit push --force origin main\nEOF\n)\"", 'merge'],
+      ['"bash" -c "git push --force"', 'merge'],
+      ["tee x.sh <<'EOF'\n./deploy.sh\nEOF\nbash -o pipefail x.sh", 'deploy'],
+      ["cat > x.sh <<'EOF'\n./deploy.sh\nEOF\nbash < x.sh", 'deploy'],
     ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
     for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"']) {
       assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), 'billing/x.py');
+    }
+  });
+});
+
+describe('guard: the shell reader stays inside the hook budget', () => {
+  test('deep nesting, long eval chains and thousands of heredocs: an answer in time, never a throw', () => {
+    const rules = require(join(hooksDir, 'devanity-rules.js'));
+    const loaded = rules.parseRules(JSON.stringify(RULES)).rules;
+    for (const [cmd, need] of [
+      ['echo ' + '"$('.repeat(3000) + 'git push --force origin main' + ')"'.repeat(3000), 'merge'],
+      ['eval '.repeat(3000) + 'git push --force', 'merge'],
+      ["cat > a.sh <<'E'\nx\nE\n".repeat(4000) + 'git push --force', 'merge'],
+    ]) {
+      const started = Date.now();
+      assert.equal(rules.commandAuthority(loaded, cmd), need);
+      assert.ok(Date.now() - started < 1000, `${cmd.slice(0, 30)}…: ${Date.now() - started} ms`);
     }
   });
 });

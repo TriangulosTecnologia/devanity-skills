@@ -36,7 +36,8 @@ const BUILTIN_COMMANDS = {
   'npm\\s+publish': 'deploy',
   // `deploy` as the command, or as the target of a runner; never a word inside an argument
   // (`cat docs/deploy.md`, `grep deploy`).
-  '(?:^|[;&|(]\\s*)(?:(?:ba|z)?sh\\s+)?(?:\\S*/)?deploy(?:\\.sh)?(?=\\s|$)': 'deploy',
+  // (a bounded directory prefix: `\S*` backtracks over every long word, quadratic in its length)
+  '(?:^|[;&|(]\\s*)(?:(?:ba|z)?sh\\s+)?(?:\\S{0,256}/)?deploy(?:\\.sh)?(?=\\s|$)': 'deploy',
   '\\b(?:npm|pnpm|yarn|bun)\\s+(?:run\\s+)?deploy\\b|\\bmake\\s+(?:\\S+\\s+)*deploy\\b': 'deploy',
 };
 
@@ -185,46 +186,101 @@ function isTestPath(rules, rel) {
 }
 
 // ---- what a Bash command runs -------------------------------------------------------------------
-// The simple commands a shell runs for `src`, in order, each {op, words, writes, shown}: a word's
-// `value` is its text without quotes, `writes` the targets of its `>` redirects, and `shown` the
-// command with each quoted part as "" (a quoted argument is data, not a command word). Heredoc
-// bodies, here-strings and comments are data, unless a shell or ssh in the same pipeline reads
-// them, or the command runs the file a heredoc was written to (`cat > x.sh <<EOF … bash x.sh`);
-// `$( )`, backticks, `<( )`, `>( )`, `sh -c <script>`, `eval` and ssh's remote command run. Lenient:
-// an unterminated quote or substitution ends with the text (bash would run none of it).
-const RUNS_SCRIPT = /^(?:(?:ba|z|da|k)?sh|ssh)$/;
+// The simple commands a shell runs for `src`, in order, each {op, words, writes, reads, shown}: a
+// word's `value` is its text without quotes, `writes`/`reads` the files of its `>`/`<` redirects,
+// and `shown` the command with each quoted part as "" (a quoted argument is data, not a command
+// word). Comments are dropped. Data becomes code where the shell makes it so: `$( )`, backticks,
+// `<( )`, `>( )`; `sh -c`, `eval` and ssh's remote command, with what a substitution prints into
+// them; a heredoc or here-string read by a shell or ssh, and any data in a command that pipes into
+// one; a file a heredoc wrote that the command then runs. Lenient: an unterminated quote,
+// substitution or heredoc ends with the text. Bounded: past MAX_DEPTH nested readings, or once
+// re-reading costs WORK times the input, the rest counts as raw text, as it did before there was a
+// reader, so a hook never runs past its budget on a pathological command.
+const SHELL = /^(?:ba|z|da|k)?sh$/;
+const SHELL_VALUED = /^[-+][oO]$|^--(?:rcfile|init-file)$/;
 const SSH_VALUED = /^-[bcDEeFIiJLlmOopQRSWw]$/;
 // Words that open or close a compound command: the command proper is the word after them.
 const RESERVED = new Set(['if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'while', 'until', 'for', 'case', 'esac', '!', '{', '}']);
-const baseName = (w) => w.value.split('/').pop();
+// Words that run the command after them, with the options that take a value.
+const PREFIXES = new Map([['sudo', /^-[ugCDhpRrT]$/], ['env', /^-[uCS]$/], ['nice', /^-n$/], ['exec', /^-a$/], ['time', null], ['nohup', null], ['command', null]]);
+// Commands that run a shell inside something else, reading its script from their stdin (`docker exec -i c sh`).
+const WRAPPERS = new Set(['docker', 'podman', 'kubectl', 'chroot', 'nsenter', 'lxc']);
+const MAX_DEPTH = 16;
+const WORK = 4;
+const REDIRECT = /(?:\d*|&)(<<<|<<-|<<|<&|<|>>|>\||>&|>|&>>|&>)/y;
+const base = (v) => String(v || '').split('/').pop();
+const bare = (p) => String(p || '').replace(/^\.\//, '');
 
 function shellCommands(src) {
   const out = [];
+  out.data = [];      // what quotes, heredocs and here-strings hold
   out.scripts = [];   // heredocs written to a file: {targets, body}
+  out.depth = 0;
+  out.work = 0; out.budget = WORK * String(src || '').length + 4096;
   parseShell(String(src || ''), 0, false, out);
-  const bare = (p) => String(p || '').replace(/^\.\//, '');
-  while (out.scripts.length) {
-    const { targets, body } = out.scripts.shift();
-    if (out.some((c) => targets.some((t) => bare(t) === bare(scriptRun(c))))) parseShell(body, 0, false, out);
+  // `echo "…" | bash`, `{ cat <<EOF … } | bash`: what reaches a shell's stdin runs (`\n` as printf prints it).
+  if (out.some((c) => c.stdin && (c.op === '|' || c.op === '|&'))) for (const d of out.data.slice()) parseShell(d.replace(/\\n/g, '\n'), 0, false, out);
+  const ran = new Set(); let seen = 0;
+  for (let k = 0; k < out.scripts.length; k++) {
+    for (; seen < out.length; seen++) if (out[seen].script) ran.add(bare(out[seen].script));
+    const { targets, body } = out.scripts[k];
+    if (targets.some((t) => ran.has(bare(t)))) parseShell(body, 0, false, out);
   }
-  delete out.scripts;
-  return out;
+  return out.map(({ op, words, writes, reads, shown }) => ({ op, words, writes, reads, shown }));
+}
+
+// Index of the command word in a simple command's values: past assignments and runners like sudo.
+function commandAt(v) {
+  let k = 0;
+  for (;;) {
+    while (k < v.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(v[k])) k++;
+    if (!PREFIXES.has(v[k])) return k;
+    const valued = PREFIXES.get(v[k]); k++;
+    while (k < v.length && v[k].startsWith('-')) k += valued && valued.test(v[k]) ? 2 : 1;
+  }
+}
+
+// A shell's arguments after its name at j: its -c script, whether it only checks syntax (-n),
+// reads its script from stdin (-s, `-`, or no operand), or runs a file.
+function shellArgs(v, j) {
+  let noexec = false; let stdin = false;
+  for (let k = j + 1; k < v.length; k++) {
+    const a = v[k];
+    if (SHELL_VALUED.test(a)) { k++; continue; }
+    if (a === '--') return { noexec, stdin, operand: v[k + 1] || null };
+    if (a === '-') return { noexec, stdin: true, operand: null };
+    if (/^-[A-Za-z]*c[A-Za-z]*$/.test(a)) return { noexec: noexec || a.includes('n'), script: v[k + 1] || '' };
+    if (/^[-+]./.test(a)) { if (/^-[A-Za-z]*n/.test(a)) noexec = true; if (/^-[A-Za-z]*s/.test(a)) stdin = true; continue; }
+    return { noexec, stdin, operand: a };
+  }
+  return { noexec, stdin: true, operand: null };
 }
 
 // Reads `s` from `i` into `out`; with `inner`, stops after the `)` that closes a substitution.
 // Returns the index where it stopped.
 function parseShell(s, i, inner, out) {
+  if (!inner) out.work += s.length - i;   // a new text read (a `$( )` continues the one being read)
+  if (out.depth >= MAX_DEPTH || out.work > out.budget) { out.push({ op: ';', words: [], writes: [], reads: [], shown: s.slice(i) }); return s.length; }
+  out.depth++;
+  const end = readShell(s, i, inner, out);
+  out.depth--;
+  return end;
+}
+
+function readShell(s, i, inner, out) {
   let cmd = null; let word = null; let redirect = null; let op = ';'; let depth = 0;
-  let pipeline = []; const heredocs = []; const feeds = [];
+  const heredocs = []; const feeds = [];
   const w = () => (word = word || { value: '', shown: '', quoted: false });
-  const startCmd = () => { if (!cmd) { cmd = { op, words: [], writes: [] }; pipeline.push(cmd); } return cmd; };
+  const startCmd = () => (cmd = cmd || { op, words: [], writes: [], reads: [] });
   const endWord = () => {
     if (!word) return;
     const r = redirect; redirect = null;
+    if (word.quoted) out.data.push(word.value);
     if (!r) { if (word.quoted || (cmd && cmd.words.length) || !RESERVED.has(word.value)) startCmd().words.push(word); }
     else if (r === 'write') startCmd().writes.push(word.value);
-    else if (r === 'heredoc' || r === 'heredoc-') heredocs.push({ delim: word.value, strip: r === 'heredoc-', expand: !word.quoted, pipe: pipeline, cmd: startCmd() });
-    else if (r === 'herestring') feeds.push({ body: word.value, expand: false, pipe: pipeline });
+    else if (r === 'in') startCmd().reads.push(word.value);
+    else if (r === 'heredoc' || r === 'heredoc-') heredocs.push({ delim: word.value, strip: r === 'heredoc-', expand: !word.quoted, cmd: startCmd() });
+    else if (r === 'herestring') feeds.push({ body: word.value, expand: false, cmd: startCmd() });
     word = null;
   };
   const endCmd = (next) => {
@@ -235,15 +291,15 @@ function parseShell(s, i, inner, out) {
       runsInside(cmd, out);
     }
     cmd = null; op = next;
-    if (next !== '|' && next !== '|&') pipeline = [];
   };
   const resolveFeeds = () => {
     for (const f of feeds.splice(0)) {
-      if (f.pipe.some((c) => c.words.some((x) => !x.quoted && RUNS_SCRIPT.test(baseName(x))))) parseShell(f.body, 0, false, out);
-      else {
-        if (f.expand) substitutionsIn(f.body, out);
-        if (f.cmd && f.cmd.writes.length) out.scripts.push({ targets: f.cmd.writes, body: f.body });
-      }
+      out.data.push(f.body);
+      if (f.cmd.stdin) { parseShell(f.body, 0, false, out); continue; }
+      if (f.expand) substitutionsIn(f.body, out);
+      const v = f.cmd.words.map((x) => x.value); const k = commandAt(v);
+      const targets = [...f.cmd.writes, ...(base(v[k]) === 'tee' ? v.slice(k + 1).filter((a) => !a.startsWith('-')) : [])];
+      if (targets.length) out.scripts.push({ targets, body: f.body });
     }
   };
   // `$( )`, `<( )` and `>( )` from j (at the `(`): the commands inside, and the index after.
@@ -275,11 +331,13 @@ function parseShell(s, i, inner, out) {
         const lines = [];
         while (i < s.length) {
           const e = s.indexOf('\n', i); const line = s.slice(i, e < 0 ? s.length : e);
+          // `EOF)` ends both the heredoc and the `$( )` it sits in
+          if (inner && line.startsWith(h.delim) && /^\s*\)/.test(line.slice(h.delim.length))) { i += h.delim.length + line.slice(h.delim.length).indexOf(')'); break; }
           i = e < 0 ? s.length : e + 1;
           if ((h.strip ? line.replace(/^\t+/, '') : line) === h.delim) break;
           lines.push(line);
         }
-        feeds.push({ body: lines.join('\n'), expand: h.expand, pipe: h.pipe, cmd: h.cmd });
+        feeds.push({ body: lines.join('\n'), expand: h.expand, cmd: h.cmd });
       }
       resolveFeeds();
     } else if (c === '#' && !word) { const e = s.indexOf('\n', i); i = e < 0 ? s.length : e; }
@@ -296,7 +354,8 @@ function parseShell(s, i, inner, out) {
     } else if ((c === '<' || c === '>') && s[i + 1] === '(') { const k = sub(i + 1); w().value += s.slice(i, k); w().shown += '$()'; i = k; }
     else if (c === '<' || c === '>' || (c === '&' && s[i + 1] === '>') || (/\d/.test(c) && !word && /^\d+[<>]/.test(s.slice(i, i + 12)))) {
       endWord();
-      const m = /^(?:\d*|&)(<<<|<<-|<<|<&|<|>>|>\||>&|>|&>>|&>)/.exec(s.slice(i));
+      REDIRECT.lastIndex = i;
+      const m = REDIRECT.exec(s);
       const tok = m[1]; i += m[0].length;
       if (tok === '<<<') redirect = 'herestring';
       else if (tok === '<<' || tok === '<<-') redirect = tok === '<<' ? 'heredoc' : 'heredoc-';
@@ -304,14 +363,14 @@ function parseShell(s, i, inner, out) {
       else if (tok === '>&' && /^[\d-]/.test(s[i] || '')) { i++; while (/\d/.test(s[i] || '')) i++; }   // a descriptor copy writes no file
       else redirect = 'write';
     } else if (c === "'") {
-      const e = s.indexOf("'", i + 1); const end = e < 0 ? s.length : e;
-      const x = w(); x.value += s.slice(i + 1, end); x.shown += '""'; x.quoted = true; i = end + 1;
+      const e = s.indexOf("'", i + 1); const stop = e < 0 ? s.length : e;
+      const x = w(); x.value += s.slice(i + 1, stop); x.shown += '""'; x.quoted = true; i = stop + 1;
     } else if (c === '$' && s[i + 1] === "'") {
       let k = i + 2; while (k < s.length && s[k] !== "'") k += s[k] === '\\' ? 2 : 1;
       const x = w(); x.value += s.slice(i + 2, k); x.shown += '""'; x.quoted = true; i = k + 1;
     } else if (c === '"') i = dquote(i);
     else if (c === '$' && s[i + 1] === '(') { const k = sub(i + 1); w().value += s.slice(i, k); w().shown += '$()'; i = k; }
-    else if (c === '$' && s[i + 1] === '{') { const e = s.indexOf('}', i); const end = e < 0 ? s.length : e + 1; w().value += s.slice(i, end); w().shown += s.slice(i, end); i = end; }
+    else if (c === '$' && s[i + 1] === '{') { const e = s.indexOf('}', i); const stop = e < 0 ? s.length : e + 1; w().value += s.slice(i, stop); w().shown += s.slice(i, stop); i = stop; }
     else if (c === '`') { const k = backtick(i); w().value += s.slice(i, k); w().shown += '$()'; i = k; }
     else if (c === '\\') {
       if (s[i + 1] !== '\n') { const x = w(); x.value += s[i + 1] || ''; x.shown += '""'; x.quoted = true; }
@@ -319,40 +378,41 @@ function parseShell(s, i, inner, out) {
     } else { const x = w(); x.value += c; x.shown += c; i++; }
   }
   endCmd(';');
-  for (const h of heredocs.splice(0)) feeds.push({ body: '', expand: false, pipe: h.pipe });
+  for (const h of heredocs.splice(0)) feeds.push({ body: '', expand: false, cmd: h.cmd });
   resolveFeeds();
   return i;
 }
 
-// The file a command runs as a script: its command word, or the first operand of a shell, `source`
-// or `.` (`git add x.sh` names the file, it does not run it).
-function scriptRun(cmd) {
-  const v = cmd.words.map((x) => x.value);
-  let k = 0;
-  while (k < v.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(v[k]) || v[k] === 'sudo' || v[k] === 'env')) k++;
-  if (!/^(?:(?:ba|z|da|k)?sh|source|\.)$/.test((v[k] || '').split('/').pop())) return v[k];
-  return v.slice(k + 1).find((a) => !a.startsWith('-'));
-}
-
-// What a finished command runs besides itself: `sh -c <script>`, `eval <args>`, ssh's remote command.
+// What a finished command runs besides itself, and how: `eval <args>`, ssh's remote command or its
+// stdin, a shell's -c script, its stdin or the file it runs (`cmd.script`, also a command's own
+// path). A shell counts as the command word (quoted or not) or, unquoted, inside a runner
+// (`xargs sh -c`, `find -exec sh -c`, `docker exec -i c sh`).
 function runsInside(cmd, out) {
   const v = cmd.words.map((x) => x.value);
-  for (let j = 0; j < v.length; j++) {
-    if (cmd.words[j].quoted) continue;   // `grep "bash" x` names a shell, it does not start one
-    const name = baseName(cmd.words[j]);
-    if (name === 'eval') { parseShell(v.slice(j + 1).join(' '), 0, false, out); return; }
-    if (name === 'ssh') {
-      let k = j + 1;
-      while (k < v.length && v[k].startsWith('-')) k += SSH_VALUED.test(v[k]) ? 2 : 1;
-      if (k + 1 < v.length) parseShell(v.slice(k + 1).join(' '), 0, false, out);
-      return;
-    }
-    if (RUNS_SCRIPT.test(name)) {
-      const c = v.findIndex((a, k) => k > j && /^-[A-Za-z]*c[A-Za-z]*$/.test(a));   // -c, or -lc, -ec, …
-      if (c >= 0 && c + 1 < v.length) parseShell(v[c + 1], 0, false, out);
-      return;
-    }
+  const at = commandAt(v); const name = base(v[at]);
+  cmd.script = v[at];
+  if (name === 'eval') { runScript(v.slice(at + 1).join(' '), out); return; }
+  if (name === 'ssh') {
+    let k = at + 1;
+    while (k < v.length && v[k].startsWith('-')) k += SSH_VALUED.test(v[k]) ? 2 : 1;
+    if (k + 1 < v.length) runScript(v.slice(k + 1).join(' '), out); else cmd.stdin = true;
+    return;
   }
+  const j = SHELL.test(name) ? at : cmd.words.findIndex((x, k) => k > at && !x.quoted && SHELL.test(base(x.value)));
+  if (j < 0) return;
+  const a = shellArgs(v, j);
+  if (a.script !== undefined) { if (!a.noexec) runScript(a.script, out); cmd.script = null; return; }
+  if (j !== at) { cmd.stdin = WRAPPERS.has(name) && a.stdin; return; }
+  cmd.script = a.noexec ? null : a.operand || cmd.reads[0] || null;
+  cmd.stdin = !a.noexec && a.stdin && !cmd.reads.length;
+}
+
+// A script the shell runs from text (`sh -c`, `eval`, ssh): its commands, and, when a substitution
+// builds it (`bash -c "$(cat <<EOF …)"`), what the substitution prints: its data, read as commands.
+function runScript(text, out) {
+  const from = out.data.length;
+  parseShell(text, 0, false, out);
+  if (/\$\(|`/.test(text)) for (const d of out.data.slice(from)) parseShell(d, 0, false, out);
 }
 
 // `$( )` and backticks inside an unquoted heredoc body: the shell expands them, so they run.
@@ -360,7 +420,7 @@ function substitutionsIn(body, out) {
   for (let j = 0; j < body.length; j++) {
     if (body[j] === '\\') j++;
     else if (body[j] === '$' && body[j + 1] === '(') j = parseShell(body, j + 2, true, out) - 1;
-    else if (body[j] === '`') { const e = body.indexOf('`', j + 1); const end = e < 0 ? body.length : e; parseShell(body.slice(j + 1, end), 0, false, out); j = end; }
+    else if (body[j] === '`') { const e = body.indexOf('`', j + 1); const stop = e < 0 ? body.length : e; parseShell(body.slice(j + 1, stop), 0, false, out); j = stop; }
   }
 }
 
@@ -384,5 +444,5 @@ function commandAuthority(rules, command) {
 
 module.exports = {
   AUTHORITIES, AUTONOMY_AUTHORITIES, FILE, TIERS,
-  authorityRank, commandAuthority, globToRegExp, isTestPath, loadRules, parseRules, relPath, ruleFor, shellCommands, validate,
+  authorityRank, commandAt, commandAuthority, globToRegExp, isTestPath, loadRules, parseRules, relPath, ruleFor, shellCommands, validate,
 };

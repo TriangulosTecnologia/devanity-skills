@@ -84,8 +84,7 @@ function writtenPaths(command) {
   for (const c of rules.shellCommands(command)) {
     c.writes.forEach((t) => out.add(t));
     const toks = c.words.map((w) => w.value);
-    let k = 0;
-    while (k < toks.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[k]) || toks[k] === 'sudo' || toks[k] === 'env')) k++;
+    const k = rules.commandAt(toks);
     const cmd = toks[k];
     if (!WRITERS.has(cmd)) continue;
     const args = toks.slice(k + 1);
