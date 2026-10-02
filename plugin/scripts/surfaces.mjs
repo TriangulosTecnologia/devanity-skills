@@ -240,11 +240,12 @@ export function compare(before, after, renamed = new Map(), ignored = () => new 
   return out;
 }
 
-// Every git call here and in the CI job. One that did not finish (output over maxBuffer, killed) left
-// partial output that would read as complete, so it throws instead.
+// Every git call of the scripts here. One that did not finish (output over maxBuffer, killed) left
+// partial output that would read as complete, so it throws instead. A git that exited is judged by
+// its status, even with an error beside it: one that refuses a batch leaves its stdin unread (EPIPE).
 export function gitRun(cwd, args, input) {
   const r = spawnSync('git', args, { cwd, input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (r.error || r.signal) throw new Error(`git ${args[0]} did not finish (${r.error ? r.error.code || r.error.message : r.signal})`);
+  if (r.status === null) throw new Error(`git ${args[0]} did not finish (${r.error ? r.error.code || r.error.message : r.signal})`);
   return r;
 }
 

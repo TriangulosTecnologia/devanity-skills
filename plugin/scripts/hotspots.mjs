@@ -3,7 +3,7 @@
 // commits from HEAD, times its size. A window of commits, never a date relative to today, so the
 // same HEAD ranks the same. A shallow clone cannot count history: frequency is UNKNOWN, never guessed.
 //   node hotspots.mjs [--window 300] [--top 20] [--json] [-- <scope…>]
-import { spawnSync } from 'node:child_process';
+import { gitRun } from './surfaces.mjs';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -30,7 +30,7 @@ const json = opts.includes('--json');
 // is read. Without a scope every call runs from the root, so a subdirectory ranks the same files;
 // with one, git reads the scope from where the command runs, as `git ls-files -- <scope>` would
 // (relative, absolute, through a symlink, `:(glob)…`), and still names repository paths.
-const raw = (cwd, ...args) => spawnSync('git', ['-c', 'core.quotepath=off', ...args], { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+const raw = (cwd, ...args) => gitRun(cwd, ['-c', 'core.quotepath=off', ...args]);
 const top = raw(process.cwd(), 'rev-parse', '--show-toplevel');
 if (top.status !== 0) usage('not inside a git repository');
 const ROOT = top.stdout.trim();

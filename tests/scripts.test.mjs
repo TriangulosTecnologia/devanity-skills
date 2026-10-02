@@ -7,6 +7,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gitIgnored } from '../plugin/scripts/surfaces.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HOTSPOTS = join(root, 'plugin', 'scripts', 'hotspots.mjs');
@@ -25,6 +26,14 @@ const commit = (cwd, files, msg) => {
 const run = (script, args, opts = {}) => {
   const r = spawnSync(process.execPath, [script, ...args], { encoding: 'utf8', ...opts });
   return { code: r.status, out: r.stdout, err: r.stderr };
+};
+// An environment whose git, for the call naming `cut`, prints a little of the real output and dies,
+// as node kills one over maxBuffer.
+const cutGit = (cut) => {
+  const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  const bin = join(temp, `cut-git${++n}`); mkdirSync(bin);
+  writeFileSync(join(bin, 'git'), `#!/bin/sh\ncase " $* " in *" $CUT "*) "${real}" "$@" | head -c 40; kill -KILL $$;; esac\nexec "${real}" "$@"\n`, { mode: 0o755 });
+  return { ...process.env, CUT: cut, PATH: `${bin}:${process.env.PATH}` };
 };
 
 test('hotspots: change frequency over a fixed window from HEAD, tracked files only, frequency × lines, same HEAD same ranking', () => {
@@ -170,15 +179,34 @@ test('surfaces: with no package.json there is nothing to check a script against,
 test('surfaces: a git call that does not finish stops the inventory: partial output is never reported', () => {
   const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
   commit(d, { 'AGENTS.md': 'See `src/gone.js`.\n', 'src/a.js': '1\n' }, 'one');
-  const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
-  const bin = join(temp, `cut-git${n}`); mkdirSync(bin);
-  // A git that, for the call named in CUT, prints a little of the real output and dies, as node kills one over maxBuffer.
-  writeFileSync(join(bin, 'git'), `#!/bin/sh\ncase " $* " in *" $CUT "*) "${real}" "$@" | head -c 40; kill -KILL $$;; esac\nexec "${real}" "$@"\n`, { mode: 0o755 });
   for (const cut of ['ls-files', 'check-ignore']) {
-    const r = run(SURFACES, [], { cwd: d, env: { ...process.env, CUT: cut, PATH: `${bin}:${process.env.PATH}` } });
+    const r = run(SURFACES, [], { cwd: d, env: cutGit(cut) });
     assert.equal(r.code, 1, `${cut}:\n${r.out}`);
     assert.match(r.err, /git \S+ did not finish/, `${cut}:\n${r.err}`);
   }
+});
+
+test('surfaces: a batch git refuses that outgrows the pipe buffer still falls back path by path (git finished: exit 128, EPIPE on its stdin)', () => {
+  const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
+  commit(d, { '.gitignore': 'dist/\n', 'a.md': 'a\n' }, 'one');
+  // A git whose first check-ignore refuses the batch before reading it, as git does on a path outside the repository.
+  const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  const bin = join(temp, `refuse-git${n}`); mkdirSync(bin);
+  writeFileSync(join(bin, 'git'), `#!/bin/sh\ncase " $* " in *" check-ignore "*) [ -e "$MARK" ] || { : > "$MARK"; exit 128; };; esac\nexec "${real}" "$@"\n`, { mode: 0o755 });
+  const PATH = process.env.PATH;
+  process.env.PATH = `${bin}:${PATH}`; process.env.MARK = join(bin, 'refused');
+  try {
+    const paths = Array.from({ length: 300 }, (_, i) => `dist/${`${'a'.repeat(200)}/`.repeat(12)}${i}`);   // ~750 KB, past any pipe buffer
+    assert.equal(gitIgnored(d)(paths).size, 300);
+  } finally { process.env.PATH = PATH; delete process.env.MARK; }
+});
+
+test('hotspots: a git call that does not finish stops the ranking: no empty result stands in for it', () => {
+  const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
+  commit(d, { 'a.js': '1\n' }, 'one');
+  const r = run(HOTSPOTS, ['--json'], { cwd: d, env: cutGit('--verify') });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.err, /git \S+ did not finish/);
 });
 
 test('surfaces: run through a symlinked path it still reports (an install path may hold a symlink)', () => {
