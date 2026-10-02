@@ -49,6 +49,8 @@ function isSurface(path, skills) {
 export const surfacesOf = (files) => { const skills = skillDirs(files); return files.filter((f) => isSurface(f, skills)).sort(); };
 
 const frontmatter = (text) => /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] || '';
+// A frontmatter key's value on its own line ('' when empty, null when absent): never the next line.
+const fmValue = (fm, name) => { const m = new RegExp(`^${name}[ \\t]*:[ \\t]*(.*?)[ \\t]*\\r?$`, 'm').exec(fm); return m ? m[1].replace(/^["']|["']$/g, '') : null; };
 
 // When the surface's bytes are paid: on every turn, only while working under a path, or when
 // invoked. A host file (CLAUDE.md, AGENTS.md, GEMINI.md) loads by where it sits, even in a skill.
@@ -56,11 +58,11 @@ function loadClass(path, text, skills) {
   if (HOST.test(path)) return !path.includes('/') || path === '.claude/CLAUDE.md' ? 'always' : 'scoped';   // .claude/CLAUDE.md is project memory
   if (SKILL.test(path) || inSkill(path, skills) || /(^|\/)\.(claude\/(skills|agents)|agents\/skills)\//.test(path)) return 'on-demand';
   const fm = frontmatter(text);
-  if (/(^|\/)\.claude\/rules\//.test(path)) return /^paths\s*:/m.test(fm) ? 'scoped' : 'always';
+  if (/(^|\/)\.claude\/rules\//.test(path)) return fmValue(fm, 'paths') !== null ? 'scoped' : 'always';
   // Copilot applies an instructions file by `applyTo`, and none without it; Cursor applies a rule
   // always, by `globs`, or only when requested.
-  if (/(^|\/)\.github\/instructions\//.test(path)) return /^applyTo\s*:\s*["']?\*\*["']?\s*$/m.test(fm) ? 'always' : /^applyTo\s*:\s*\S/m.test(fm) ? 'scoped' : 'on-demand';
-  if (/(^|\/)\.cursor\/rules\//.test(path)) return /^alwaysApply\s*:\s*true\b/m.test(fm) ? 'always' : /^globs\s*:\s*\S/m.test(fm) ? 'scoped' : 'on-demand';
+  if (/(^|\/)\.github\/instructions\//.test(path)) { const v = fmValue(fm, 'applyTo'); return v === '**' ? 'always' : v ? 'scoped' : 'on-demand'; }
+  if (/(^|\/)\.cursor\/rules\//.test(path)) return fmValue(fm, 'alwaysApply') === 'true' ? 'always' : fmValue(fm, 'globs') ? 'scoped' : 'on-demand';
   return 'always';   // .cursorrules, .windsurfrules, .github/copilot-instructions.md
 }
 

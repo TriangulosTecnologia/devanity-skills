@@ -351,6 +351,7 @@ describe('rules CI', () => {
         ['an untracked build directory under a dir/ ignore pattern', { 'CLAUDE.md': 'Build output: [dist](dist/), and `packages/web/dist/`.\n', 'dist/index.js': '1\n', 'packages/web/dist/a.js': '1\n' }, (d) => { git(d, 'rm', '-rq', '--cached', 'dist', 'packages/web/dist'); write(d, '.gitignore', 'dist/\n'); }],
         ['a directory replaced by a symlink written with a trailing slash', { 'CLAUDE.md': 'See [the docs](docs/).\n', 'docs/guide.md': 'g\n' }, (d) => { git(d, 'mv', 'docs', 'documentation'); symlinkSync('documentation/', join(d, 'docs')); git(d, 'add', 'docs'); }],
         ['rules loaded on request (Cursor without globs, Copilot without applyTo) are reported', { '.cursor/rules/r.mdc': '---\ndescription: x\nalwaysApply: false\n---\n`src/old.ts`\n', '.github/instructions/i.instructions.md': '`src/old.ts`\n', 'src/old.ts': '1\n' }, (d) => git(d, 'rm', '-q', 'src/old.ts')],
+        ['Cursor\'s default rule template (empty globs) and an empty Copilot applyTo load on request', { '.cursor/rules/r.mdc': '---\ndescription: \nglobs: \nalwaysApply: false\n---\nUse `src/old.ts`.\n', '.github/instructions/i.instructions.md': '---\napplyTo:\ndescription: x\n---\nUse `src/old.ts`.\n', 'src/old.ts': '1\n' }, (d) => git(d, 'rm', '-q', 'src/old.ts')],
         ['a package.json rewritten with a byte-order mark keeps its scripts', { 'CLAUDE.md': 'Lint: `npm run lint`.\n', 'package.json': JSON.stringify({ scripts: { lint: 'x' } }) }, (d) => write(d, 'package.json', '\ufeff' + JSON.stringify({ scripts: { lint: 'x' } }, null, 2))],
       ]) {
         const d = fresh(); git(d, 'init', '-q', '-b', 'main');
@@ -373,6 +374,18 @@ describe('rules CI', () => {
       writeFileSync(body, 'reference-change: the entry moved to the wiki\n\n```\ndevanity-proof:\n  check: true\n  failed_before: n/a\n  passed_after: yes\n  status: NOT_VERIFIED: docs only\n  pending: 0\n```\n');
       const r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
       assert.equal(r.code, 0, r.out); assert.match(r.out, /names `src\/old\.js`.*declared by reference-change/);
+    });
+    test('an empty declaration line declares nothing, for reference-change and verifier-change alike', () => {
+      const proof = '```\ndevanity-proof:\n  check: true\n  failed_before: n/a\n  passed_after: yes\n  status: NOT_VERIFIED: x\n  pending: 0\n```\n';
+      let d = repo({ 'CLAUDE.md': 'Entry: `src/old.js`.\n', 'src/old.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/old.js'));
+      const body = join(temp, `ebody${n}.md`);
+      writeFileSync(body, `reference-change:\n\n## Notes\n${proof}`);
+      let r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+      assert.equal(r.code, 1, r.out);
+      d = repo({ 'src/a.js': '1\n', 'src/a.test.js': 'line one\nline two\n' }, (d) => { write(d, 'src/a.js', '2\n'); write(d, 'src/a.test.js', 'line one\n'); });
+      writeFileSync(body, `verifier-change:\n\n## Notes\n${proof}`);
+      r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+      assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks/);
     });
     test('reading details: a column suffix, a sentence-ending period, a script name containing a package manager', () => {
       const d = repo({ 'CLAUDE.md': 'At `src/a.ts:12:5`. Run npm test. Then npm run build-bun.\n', 'src/a.ts': '1\n', 'package.json': JSON.stringify({ scripts: { test: 'x', 'build-bun': 'y' } }) },

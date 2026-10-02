@@ -144,6 +144,9 @@ function hasProofBlock(text) {
   return { present: true, status: field('status'), check: field('check'), failedBefore: field('failed_before') };
 }
 
+// Whether a PR body declares `<name>: <why>`: the reason on the same line, never the next one's.
+const declares = (body, name) => body !== null && new RegExp(`^[ \\t]*${name}[ \\t]*:[ \\t]*\\S`, 'm').test(body);
+
 function runCheck(command) {
   const [bin, a] = process.platform === 'win32' ? ['cmd', ['/d', '/s', '/c', command]] : ['sh', ['-c', command]];
   const r = spawnSync(bin, a, { cwd: root, stdio: 'inherit' });
@@ -200,7 +203,7 @@ if (base && rulesMod && !loaded.errors.length) {
   const refs = compare(before, after, renames(fromRev(base)), gitIgnored(root));
   // A `reference-change: <why>` line in the PR body declares the breaks for review, as
   // `verifier-change:` does for a verifier: a residual false failure costs one visible line.
-  const declaredRefs = (() => { const b = selfCheck ? null : prBody(); return b !== null && /^\s*reference-change\s*:\s*\S/m.test(b); })();
+  const declaredRefs = declares(selfCheck ? null : prBody(), 'reference-change');
   for (const b of refs.broken) {
     const what = `${b.path}:${b.line} names \`${b.target}\`, which resolved before this diff and does not now`;
     if (b.load === 'on-demand') note(`${what} (loaded on demand: reported, not failed)`);
@@ -248,7 +251,7 @@ if (base && rulesMod && !loaded.errors.length) {
   const codeTouched = touched.some((t) => !isVerifier(t.path) && !/\.md$/i.test(t.path));
   if (verifierEdits.length && codeTouched) {
     const body = selfCheck ? null : prBody();
-    const declaredChange = body !== null && /^\s*verifier-change\s*:\s*\S/m.test(body);
+    const declaredChange = declares(body, 'verifier-change');
     if (declaredChange) note(`verifier-change declared for ${verifierEdits.join(', ')}`);
     else if (body === null) note(`the diff edits existing checks with code (${verifierEdits.join(', ')}); no PR body to hold the verifier-change line`);
     else fail(`the diff edits existing checks together with the code they judge (${verifierEdits.join(', ')}): add a \`verifier-change: <why>\` line to the PR body so review treats it as a verifier change`);
