@@ -13,8 +13,8 @@
 // starts inside the repository (its first segment exists), so `origin/main` or another repository's
 // example path is not one; a name with no `/` (`Makefile`, `.env.example`) counts only where it
 // resolves. A path resolves as a file, a directory, an extensionless module specifier, or through a
-// symlink git records; a gitignored path is expected to be absent; with no package.json there is
-// nothing to check a script against. The CI job fails only a reference that resolved at the base,
+// symlink git records; a gitignored path is expected to be absent; with no package.json at either
+// revision there is nothing to check a script against. The CI job fails only a reference that resolved at the base,
 // so whether a text is an example never decides a verdict.
 //
 // Not read, by design of a parser-free reader: a path inside `--flag=value`, a Windows backslash
@@ -80,7 +80,8 @@ function scriptOf(pm, rest) {
     if (!ws[i].startsWith('-')) words.push(ws[i]);
     else if (!ws[i].includes('=') && VALUED[pm].includes(ws[i])) i++;
   }
-  const name = (words[0] === 'run' ? words[1] : words[0] === 'test' ? 'test' : '') || '';
+  // `bun test` is bun's own runner, not the package script.
+  const name = (words[0] === 'run' ? words[1] : words[0] === 'test' && pm !== 'bun' ? 'test' : '') || '';
   const clean = name.replace(/[.,:;!?]+$/, '');
   return /^[A-Za-z0-9][\w:.-]*$/.test(clean) ? clean : null;
 }
@@ -129,15 +130,21 @@ function treeOf(files, read, links) {
   return { files: new Set(files), dirs, stems, links, scripts };
 }
 
-// A path exists when it, or the target of the first symlink on its way, does (8 hops at most).
-function exists(p, tree, hops = 0) {
-  if (hops > 8 || p.startsWith('..')) return false;
+// The path with every symlink on its way replaced by its target, as git records them (8 hops at
+// most), or null when it climbs out of the repository or loops.
+function real(p, links, hops = 0) {
+  if (hops > 8 || p.startsWith('..')) return null;
   const segs = p.split('/');
   for (let i = 1; i <= segs.length; i++) {
     const head = segs.slice(0, i).join('/');
-    if (tree.links.has(head)) return exists(posix.normalize(posix.join(posix.dirname(head), tree.links.get(head), ...segs.slice(i))), tree, hops + 1);
+    if (links.has(head)) return real(posix.normalize(posix.join(posix.dirname(head), links.get(head), ...segs.slice(i))), links, hops + 1);
   }
-  return tree.files.has(p) || tree.dirs.has(p) || (p.includes('/') && !posix.extname(p) && tree.stems.has(p));
+  return p;
+}
+
+function exists(p, tree) {
+  const r = real(p, tree.links);
+  return r !== null && (tree.files.has(r) || tree.dirs.has(r) || (r.includes('/') && !posix.extname(r) && tree.stems.has(r)));
 }
 
 // The repository paths a path reference can mean: a link is relative to its file; a code span is
@@ -174,7 +181,8 @@ function anchor(base, target) {
 const key = (r) => `${r.kind}\0${r.link}\0${r.target}`;
 const once = (refs) => { const seen = new Set(); return refs.filter((r) => !seen.has(key(r)) && seen.add(key(r))); };
 
-// Between two snapshots ({files, read, links}), with the diff's renames (new path → old path):
+// Between two snapshots ({files, read, links}), with the diff's renames (new path → old path); a
+// symlinked surface is read as what it points to, the way an agent opening it would:
 // `broken` are references that resolved before, from where the surface then was, and do not now,
 // each with its surface's load class; `added` are new references that never resolved.
 export function compare(before, after, renamed = new Map()) {
@@ -184,8 +192,9 @@ export function compare(before, after, renamed = new Map()) {
   const out = { broken: [], added: [] };
   for (const path of surfacesOf(after.files)) {
     const was = renamed.get(path) || path;
-    const text = after.read(path) || '';
-    const prior = new Set(references(before.read(was) || '').map(key));
+    const readAt = (snap, p) => { const r = real(p, snap.links); return r === null ? '' : snap.read(r) || ''; };
+    const text = readAt(after, path);
+    const prior = new Set(references(readAt(before, was)).map(key));
     for (const ref of once(references(text))) {
       if (!(isClaim(ref, was, [tb]) || isClaim(ref, path, [ta])) || resolves(ref, path, ta)) continue;
       if (resolves(ref, was, tb)) out.broken.push({ path, load: loadClass(path, text, skills), ...ref });

@@ -29,7 +29,7 @@
 
 import { existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, join, resolve, posix } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { compare, surfacesOf } from './surfaces.mjs';
@@ -73,16 +73,18 @@ function snapshot(rev) {
   const r = spawnSync('git', ['ls-tree', '-r', '-z', rev], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   const entries = (r.stdout || '').split('\0').filter(Boolean).map((l) => [l.slice(0, 6), l.slice(l.indexOf('\t') + 1)]);
   const links = new Map(entries.filter(([mode]) => mode === '120000').map(([, p]) => [p, show(rev, p)]));
-  // A symlinked surface reads as what it points to, as an agent opening it would (8 hops at most).
-  const read = (p, hops = 0) => (links.has(p) && hops < 8 ? read(posix.normalize(posix.join(posix.dirname(p), links.get(p))), hops + 1) : show(rev, p));
-  return { files: entries.map(([, p]) => p), read, links };
+  return { files: entries.map(([, p]) => p), read: (p) => show(rev, p), links };
 }
 
-// The diff's renames, new path → old path.
+// The diff's renames, new path → old path. `-z` output is a status token, then one path, or two
+// for a rename or copy: read it as records, so a file named `R` is a path, never a status.
 function renames(from) {
   const out = (spawnSync('git', ['diff', '--name-status', '-M', '-z', from, 'HEAD'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout || '').split('\0');
   const map = new Map();
-  for (let i = 0; i < out.length; i++) if (/^R\d*$/.test(out[i])) { map.set(out[i + 2], out[i + 1]); i += 2; }
+  for (let i = 0; i + 1 < out.length;) {
+    const status = out[i];
+    if (/^[RC]/.test(status)) { if (status[0] === 'R') map.set(out[i + 2], out[i + 1]); i += 3; } else i += 2;
+  }
   return map;
 }
 
@@ -135,7 +137,7 @@ function hasProofBlock(text) {
   const i = lines.findIndex((l) => /^\s*devanity-proof\s*:\s*$/.test(l));
   if (i < 0) return { present: false };
   const block = lines.slice(i + 1).join('\n');
-  const field = (name) => new RegExp(`^\\s*${name}\\s*:\\s*(\\S.*?)\\s*$`, 'm').exec(block)?.[1] || null;
+  const field = (name) => new RegExp(`^[ \\t]*${name}[ \\t]*:[ \\t]*(\\S.*?)[ \\t]*$`, 'm').exec(block)?.[1] || null;   // one line: an empty field never takes the next
   return { present: true, status: field('status'), check: field('check'), failedBefore: field('failed_before') };
 }
 

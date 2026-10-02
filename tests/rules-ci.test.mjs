@@ -322,6 +322,7 @@ describe('rules CI', () => {
         ['a surface that is itself a symlink', { 'docs/agent-guide.md': 'Code: `src/a.js`.\n', 'src/a.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/a.js'), 'src/a.js', null, (d) => symlinkSync('docs/agent-guide.md', join(d, 'CLAUDE.md'))],
         ['a double-backtick code span', { 'CLAUDE.md': 'See ``src/a.js``.\n', 'src/a.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/a.js'), 'src/a.js'],
         ['route segments with brackets, parentheses and a scope', { 'CLAUDE.md': 'Pages: `app/[slug]/page.tsx`, `app/(auth)/page.tsx`, `packages/@acme/ui/index.ts`.\n', 'app/[slug]/page.tsx': '1\n', 'app/(auth)/page.tsx': '1\n', 'packages/@acme/ui/index.ts': '1\n' }, (d) => git(d, 'rm', '-q', 'app/[slug]/page.tsx'), 'app/[slug]/page.tsx'],
+        ['a symlinked surface whose target goes through a symlinked directory', { 'documentation/guide.md': 'Code: `src/a.js`.\n', 'src/a.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/a.js'), 'src/a.js', null, (d) => { symlinkSync('documentation', join(d, 'docs')); symlinkSync('docs/guide.md', join(d, 'CLAUDE.md')); }],
         ['a `..`-relative span one level down', { 'sub/CLAUDE.md': 'Shared: `../src/x.js`.\n', 'src/x.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/x.js'), '../src/x.js'],
       ];
       for (const [name, base, change, broken, quiet, link] of cases) {
@@ -334,6 +335,16 @@ describe('rules CI', () => {
         assert.equal(r.code, 1, `${name}:\n${r.out}`);
         assert.match(r.out, new RegExp(`names \`${broken.replace(/[.[\]()]/g, '\\$&')}\`, which resolved before this diff and does not now:`), `${name}:\n${r.out}`);
         if (quiet) assert.doesNotMatch(r.out, new RegExp(`names \`${quiet.replace(/[.]/g, '\\.')}\``), `${name}:\n${r.out}`);
+      }
+    });
+    test('no false failure: a root file named R does not misread renames, and `bun test` is no package script', () => {
+      for (const [name, base, change] of [
+        ['a root file named R', { 'R': 'r\n', 'foo.md': 'f\n', 'sub/CLAUDE.md': '[x](foo.md)\n' }, (d) => { write(d, 'R', 'r2\n'); write(d, 'sub/CLAUDE.md', '[x](foo.md)\nmore\n'); }],
+        ['bun test is bun\'s own runner', { 'CLAUDE.md': 'Run `bun test`.\n', 'package.json': JSON.stringify({ scripts: { test: 'x' } }) }, (d) => write(d, 'package.json', JSON.stringify({ scripts: {} }))],
+      ]) {
+        const d = repo(base, change);
+        const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+        assert.equal(r.code, 0, `${name}:\n${r.out}`);
       }
     });
     test('a bare file name is a claim only when it resolves: a generic mention of a file this repository lacks is not reported', () => {
