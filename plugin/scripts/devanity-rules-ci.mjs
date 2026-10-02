@@ -106,17 +106,19 @@ function fromRev(base) {
   return mb.ok && mb.out ? mb.out : base;
 }
 
-// [{path, added, deleted}] between the merge base of `base` and HEAD. `-z` keeps every path as its
-// bytes (without it git C-quotes a non-ASCII name); a rename is `added\tdeleted\t` then the old and
-// the new path as their own records, and the new path is the one touched.
+// [{path, added, deleted}] between the merge base of `base` and HEAD. `-z` keeps every UTF-8 path as
+// it is (without it git C-quotes a non-ASCII name); a rename is `added\tdeleted\t` then the old and
+// the new path as their own records, and the new path is the one touched. Only the first two tabs
+// separate fields: a path may hold one.
 function changedFiles(base) {
   const r = spawnSync('git', ['diff', '--numstat', '-z', '-M', fromRev(base), 'HEAD'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   if (r.status !== 0) { fail(`git diff failed: ${(r.stderr || '').trim()}`); return []; }
   const records = (r.stdout || '').split('\0');
   const files = [];
   for (let i = 0; i < records.length; i++) {
-    const [added, deleted, rawPath] = records[i].split('\t');
-    if (rawPath === undefined) continue;
+    const m = /^([^\t]*)\t([^\t]*)\t([\s\S]*)$/.exec(records[i]);
+    if (!m) continue;
+    const [, added, deleted, rawPath] = m;
     const path = rawPath === '' ? records[(i += 2)] : rawPath;
     files.push({ path, added: added === '-' ? 0 : parseInt(added, 10) || 0, deleted: deleted === '-' ? 0 : parseInt(deleted, 10) || 0 });
   }

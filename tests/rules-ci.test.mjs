@@ -438,15 +438,15 @@ describe('rules CI', () => {
     assert.equal(r.code, 0, r.out); assert.doesNotMatch(r.out, /could have measured/, 'a changed test is an oracle the claim can rest on');
   });
 
-  test('a changed path git would quote (non-ASCII, a rename into one) is the real path: its high-risk check runs', () => {
-    for (const change of [(d) => write(d, 'billing/saída.js', '1\n'), (d) => git(d, 'mv', 'billing/charge.js', 'billing/cobrança.js')]) {
+  test('a changed path git would quote or that holds a tab (non-ASCII, a rename into one) is the real path: its high-risk check runs', () => {
+    for (const change of [(d) => write(d, 'billing/saída.js', '1\n'), (d) => git(d, 'mv', 'billing/charge.js', 'billing/cobrança.js'), (d) => write(d, 'billing/a\tb.js', '1\n')]) {
       const d = fresh(); git(d, 'init', '-q', '-b', 'main');
       write(d, 'devanity.rules.json', JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', check: 'exit 3' } } }));
       write(d, 'billing/charge.js', 'module.exports = 1;\n');
       commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature'); change(d); commitAll(d, 'change');
       const r = runCi(d, ['--base', 'main', '--no-proof-required']);
       assert.equal(r.code, 1, r.out); assert.match(r.out, /check failed: exit 3/);
-      assert.match(r.out, /billing\/(saída|cobrança)\.js: tier high-risk/, 'the touched list names the path itself, not its quoted form');
+      assert.match(r.out, /billing\/(saída|cobrança|a\tb)\.js: tier high-risk/, 'the touched list names the path itself, not its quoted or cut form');
     }
   });
 
