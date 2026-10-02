@@ -240,12 +240,14 @@ export function compare(before, after, renamed = new Map(), ignored = () => new 
   return out;
 }
 
-// Every git call of the scripts here. One that did not finish (output over maxBuffer, killed) left
-// partial output that would read as complete, so it throws instead. A git that exited is judged by
-// its status, even with an error beside it: one that refuses a batch leaves its stdin unread (EPIPE).
+// Every git call of the scripts here. One that did not finish (killed, not spawned) or whose output
+// passed maxBuffer (even when git exited first: status 0 beside ENOBUFS) left partial output that
+// would read as complete, so it throws instead. Any other error leaves git judged by its status: one
+// that refuses a batch exits 128 with its stdin unread (EPIPE), and the caller falls back.
 export function gitRun(cwd, args, input) {
   const r = spawnSync('git', args, { cwd, input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  if (r.status === null) throw new Error(`git ${args[0]} did not finish (${r.error ? r.error.code || r.error.message : r.signal})`);
+  const sub = args.find((a) => !a.startsWith('-') && !a.includes('='));   // past `-c name=value`
+  if (r.status === null || r.error?.code === 'ENOBUFS') throw new Error(`git ${sub} did not finish (${r.error ? r.error.code || r.error.message : r.signal})`);
   return r;
 }
 

@@ -28,11 +28,13 @@ const run = (script, args, opts = {}) => {
   return { code: r.status, out: r.stdout, err: r.stderr };
 };
 // An environment whose git, for the call naming `cut`, prints a little of the real output and dies,
-// as node kills one over maxBuffer.
-const cutGit = (cut) => {
+// as node kills one over maxBuffer; with `flood`, it exits 0 while a child writes past maxBuffer,
+// so node sees the overflow after git exited (status 0, ENOBUFS).
+const cutGit = (cut, flood = false) => {
   const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
   const bin = join(temp, `cut-git${++n}`); mkdirSync(bin);
-  writeFileSync(join(bin, 'git'), `#!/bin/sh\ncase " $* " in *" $CUT "*) "${real}" "$@" | head -c 40; kill -KILL $$;; esac\nexec "${real}" "$@"\n`, { mode: 0o755 });
+  const cutAction = flood ? 'head -c 67108900 /dev/zero & exit 0' : `"${real}" "$@" | head -c 40; kill -KILL $$`;
+  writeFileSync(join(bin, 'git'), `#!/bin/sh\ncase " $* " in *" $CUT "*) ${cutAction};; esac\nexec "${real}" "$@"\n`, { mode: 0o755 });
   return { ...process.env, CUT: cut, PATH: `${bin}:${process.env.PATH}` };
 };
 
@@ -182,7 +184,7 @@ test('surfaces: a git call that does not finish stops the inventory: partial out
   for (const cut of ['ls-files', 'check-ignore']) {
     const r = run(SURFACES, [], { cwd: d, env: cutGit(cut) });
     assert.equal(r.code, 1, `${cut}:\n${r.out}`);
-    assert.match(r.err, /git \S+ did not finish/, `${cut}:\n${r.err}`);
+    assert.match(r.err, new RegExp(`git ${cut} did not finish`), `${cut}:\n${r.err}`);
   }
 });
 
@@ -204,9 +206,13 @@ test('surfaces: a batch git refuses that outgrows the pipe buffer still falls ba
 test('hotspots: a git call that does not finish stops the ranking: no empty result stands in for it', () => {
   const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
   commit(d, { 'a.js': '1\n' }, 'one');
-  const r = run(HOTSPOTS, ['--json'], { cwd: d, env: cutGit('--verify') });
+  let r = run(HOTSPOTS, ['--json'], { cwd: d, env: cutGit('--verify') });
   assert.equal(r.code, 1, r.out);
-  assert.match(r.err, /git \S+ did not finish/);
+  assert.match(r.err, /git rev-parse did not finish/);
+  // git exited before node saw the overflow: status 0 beside ENOBUFS is still a cut output
+  r = run(HOTSPOTS, ['--json'], { cwd: d, env: cutGit('ls-files', true) });
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.err, /git ls-files did not finish \(ENOBUFS\)/);
 });
 
 test('surfaces: run through a symlinked path it still reports (an install path may hold a symlink)', () => {

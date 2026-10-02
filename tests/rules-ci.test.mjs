@@ -298,10 +298,10 @@ describe('rules CI', () => {
       // A git that, for the call named in CUT, prints a little of the real output and dies, as node kills one over maxBuffer.
       writeFileSync(join(bin, 'git'), `#!/bin/sh\ncase " $* " in *" $CUT "*) "${real}" "$@" | head -c 40; kill -KILL $$;; esac\nexec "${real}" "$@"\n`, { mode: 0o755 });
       const d = repo({ 'CLAUDE.md': 'Entry: `src/a.js`.\n', 'src/a.js': '1\n' }, (d) => write(d, 'CLAUDE.md', 'Entry: `src/a.js`, then `src/none.js`.\n'));
-      for (const cut of ['ls-tree', 'show', '--name-status', 'check-ignore', 'ls-files']) {
+      for (const [cut, sub] of [['ls-tree', 'ls-tree'], ['show', 'show'], ['--name-status', 'diff'], ['check-ignore', 'check-ignore'], ['ls-files', 'ls-files']]) {
         const r = runCi(d, ['--base', 'main', '--no-proof-required'], { CUT: cut, PATH: `${bin}:${process.env.PATH}` });
         assert.equal(r.code, 1, `${cut}:\n${r.out}`);
-        assert.match(r.out, /git \S+ did not finish/, `${cut}:\n${r.out}`);
+        assert.match(r.out, new RegExp(`git ${sub} did not finish`), `${cut}:\n${r.out}`);
       }
     });
     test('the falsifiers of the first verification: a fence closed only by a bare fence, flags with values, bare file names, quoted link titles', () => {
