@@ -343,6 +343,9 @@ describe('rules CI', () => {
         ['bun test is bun\'s own runner', { 'CLAUDE.md': 'Run `bun test`.\n', 'package.json': JSON.stringify({ scripts: { test: 'x' } }) }, (d) => write(d, 'package.json', JSON.stringify({ scripts: {} }))],
         ['a command span: `npm test` stays true when a directory named test moves', { 'CLAUDE.md': 'Run `npm test` and `make docs`.\n', 'package.json': JSON.stringify({ scripts: { test: 'x' } }), 'test/a.js': '1\n', 'docs/a.md': 'a\n' }, (d) => { git(d, 'mv', 'test', 'tests'); git(d, 'mv', 'docs', 'documentation'); }],
         ['a symlink to an absolute path leads out of the repository', { 'CLAUDE.md': 'Config: `cfg/app.json`.\n', 'etc/app/app.json': '{}\n' }, (d) => git(d, 'rm', '-q', 'etc/app/app.json'), (d) => symlinkSync('/etc/app', join(d, 'cfg'))],
+        ['a path that becomes gitignored is expected absent', { 'CLAUDE.md': 'Local secrets live in `.env`; never commit it.\n', '.env': 'X=1\n' }, (d) => { git(d, 'rm', '-q', '--cached', '.env'); write(d, '.gitignore', '.env\n'); }],
+        ['a reference the surface did not make at the base is new, even if its target existed', { 'CLAUDE.md': 'x\n', 'scripts/deploy.sh': 'x\n' }, (d) => { git(d, 'rm', '-q', 'scripts/deploy.sh'); write(d, 'CLAUDE.md', 'The old `scripts/deploy.sh` was removed; do not recreate it.\n'); }],
+        ['a bare word that names a directory is a word', { 'CLAUDE.md': 'The `build` script compiles.\n', 'package.json': JSON.stringify({ scripts: { build: 'x' } }), 'build/a.js': '1\n' }, (d) => git(d, 'mv', 'build', 'tools')],
         ['a package.json rewritten with a byte-order mark keeps its scripts', { 'CLAUDE.md': 'Lint: `npm run lint`.\n', 'package.json': JSON.stringify({ scripts: { lint: 'x' } }) }, (d) => write(d, 'package.json', '\ufeff' + JSON.stringify({ scripts: { lint: 'x' } }, null, 2))],
       ]) {
         const d = fresh(); git(d, 'init', '-q', '-b', 'main');

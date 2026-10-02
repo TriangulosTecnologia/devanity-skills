@@ -8,15 +8,16 @@
 //
 // A reference is a claim a surface makes about this repository, wherever in the text it is written
 // (prose, an example, a fenced block): a path in a code span (in a command span, each word with a
-// `/`: `npm test` names a script, not a directory called test), a
-// link target (inline or reference-style, percent-decoded), or a package script it runs
-// (`npm|pnpm|yarn|bun run <name>`, `<pm> test`). A code-span path with a `/` counts only when it
+// `/`, since `npm test` names a script, not a directory called test), a link target (inline or
+// reference-style, percent-decoded), or a package script it runs (`npm|pnpm|yarn|bun run <name>`,
+// `<pm> test` except `bun test`, bun's own runner). A code-span path with a `/` counts only when it
 // starts inside the repository (its first segment exists), so `origin/main` or another repository's
 // example path is not one; a name with no `/` (`Makefile`, `.env.example`) counts only where it
-// resolves. A path resolves as a file, a directory, an extensionless module specifier, or through a
-// symlink git records; a gitignored path is expected to be absent; with no package.json at either
-// revision there is nothing to check a script against. The CI job fails only a reference that resolved at the base,
-// so whether a text is an example never decides a verdict.
+// resolves to a file, since a directory's single-word name is also an ordinary word (`build`). A
+// path resolves as a file, a directory, an extensionless module specifier, or through a symlink git
+// records; a gitignored path is expected to be absent; with no package.json at either revision
+// there is nothing to check a script against. The CI job fails only a reference the surface made at
+// the base and that resolved there, so whether a text is an example never decides a verdict.
 //
 // Not read, by design of a parser-free reader: a path inside `--flag=value`, a Windows backslash
 // path, a reference definition inside a blockquote; an indented code block reads as prose. Scripts
@@ -168,7 +169,7 @@ function resolves(ref, from, tree) {
 function isClaim(ref, from, trees) {
   if (ref.kind === 'script') return trees.some((t) => t.scripts);
   if (ref.link) return true;
-  if (ref.bare) return trees.some((t) => resolves(ref, from, t));
+  if (ref.bare) return trees.some((t) => candidates(ref, from).some((p) => { const r = real(p, t.links); return r !== null && t.files.has(r); }));
   const bases = ref.target.startsWith('..') ? [posix.dirname(from)] : ['.', posix.dirname(from)];
   return bases.map((b) => anchor(b, ref.target)).some((a) => a && trees.some((t) => exists(a, t)));
 }
@@ -196,9 +197,9 @@ function dropIgnored(refs, ignored) {
 
 // Between two snapshots ({files, read, links}), with the diff's renames (new path → old path); a
 // symlinked surface is read as what it points to, the way an agent opening it would:
-// `broken` are references that resolved before, from where the surface then was, and do not now,
-// each with its surface's load class; `added` are new references that never resolved, gitignored
-// ones left out as the inventory leaves them out.
+// `broken` are references the surface made before and that resolved then, from where it was, and do
+// not now, each with its surface's load class; `added` are references it did not make before and
+// that do not resolve. Gitignored paths are expected absent in both, as in the inventory.
 export function compare(before, after, renamed = new Map(), ignored = () => new Set()) {
   const tb = treeOf(before.files, before.read, before.links);
   const ta = treeOf(after.files, after.read, after.links);
@@ -211,10 +212,11 @@ export function compare(before, after, renamed = new Map(), ignored = () => new 
     const prior = new Set(references(readAt(before, was)).map(key));
     for (const ref of once(references(text))) {
       if (!(isClaim(ref, was, [tb]) || isClaim(ref, path, [ta])) || resolves(ref, path, ta)) continue;
-      if (resolves(ref, was, tb)) out.broken.push({ path, load: loadClass(path, text, skills), ...ref });
-      else if (!prior.has(key(ref))) out.added.push({ path, ...ref });
+      if (!prior.has(key(ref))) out.added.push({ path, ...ref });
+      else if (resolves(ref, was, tb)) out.broken.push({ path, load: loadClass(path, text, skills), ...ref });
     }
   }
+  out.broken = dropIgnored(out.broken, ignored);
   out.added = dropIgnored(out.added, ignored);
   return out;
 }

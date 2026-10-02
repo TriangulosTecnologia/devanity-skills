@@ -18,8 +18,8 @@
 // 5. verifier sovereignty: a diff that removes or rewrites lines of existing tests, or changes a
 //    declared check/tier/test glob, together with code needs a `verifier-change:` line in the body;
 // 6. instruction references (surfaces.mjs): a diff that removes a path or package script an
-//    always-loaded or path-scoped instruction file names fails (in a skill, it is reported); a new
-//    reference that never resolved is reported. A proof that
+//    always-loaded or path-scoped instruction file named at the base fails (in a skill, it is
+//    reported); a reference the diff adds that does not resolve is reported. A proof that
 //    says `failed_before: yes` on a diff with no test and no declared check is reported, never failed;
 // 7. --self-check: the dogfood mode for the plugin repository itself: validates its rules and runs
 //    steps 2–6 on HEAD~1..HEAD (the checks execute) without requiring a PR body (a shallow clone
@@ -200,7 +200,7 @@ if (base && rulesMod && !loaded.errors.length) {
     if (b.load === 'on-demand') note(`${what} (a skill, loaded on demand: reported, not failed)`);
     else fail(`${what}: point it at what replaced it, or remove it`);
   }
-  for (const a of refs.added) note(`${a.path}:${a.line} names \`${a.target}\`, which does not exist (it did not resolve before this diff either, so this is reported, not failed)`);
+  for (const a of refs.added) note(`${a.path}:${a.line} names \`${a.target}\`, which does not exist (a reference this diff adds: reported, not failed)`);
 
   // checks of touched high-risk paths; when the rules file itself changed, every declared check,
   // so a check that no longer runs cannot enter the map
