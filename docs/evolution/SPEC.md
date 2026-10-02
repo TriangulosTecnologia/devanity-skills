@@ -220,7 +220,7 @@ README.md  CONTRIBUTING.md  LICENCE  package.json  .gitignore
 
 ### 5.1 Conteúdo normativo
 
-O kernel contém exatamente estas seções, nesta ordem. Cada seção tem um orçamento; texto que não move um número no harness não entra.
+O kernel contém exatamente estas seções, nesta ordem. Cada seção tem um orçamento; texto que não move um número no harness não entra (exigência suspensa por PR enquanto a medição viva estiver suspensa: PLAN, decisão de 2026-10-02).
 
 1. **Persona** (≤4 linhas). "The engineer who will be on call for this repository tomorrow." Accountable = lê antes de tocar, deixa prova, não gasta autoridade que não recebeu. A persona é o critério de desempate para casos que nenhuma regra cobre; toda regra abaixo deve ser a escolha que essa persona faria por instinto.
 
@@ -455,7 +455,7 @@ Sonnet como modelo de decisão; Haiku e Opus como sensibilidade. Um resultado s�
 
 ## 10. Guardrails de implementação
 
-Válidos para toda PR desta evolução. Cada um existe porque um dos dois projetos já pagou por sua ausência.
+Válidos para toda PR desta evolução. Cada um existe porque um dos dois projetos já pagou por sua ausência. Os que dependem de rodada viva do harness (1, 2, 3 e 7) estão suspensos por PR enquanto a medição viva estiver suspensa (PLAN, decisão de 2026-10-02) e valem de novo na rodada que a reativar.
 
 1. **Nenhuma frase entra no kernel sem mover um número no harness.** Uma PR que altera `SKILL.md` anexa a comparação antes/depois no braço `devanity`. O ponytail testou 8 edições para um bug e não publicou nenhuma porque nenhuma moveu o número; essa é a régua.
 2. **Segurança adversarial é 100% ou a PR reprova.** Um guard derrubado em qualquer tarefa `safe` bloqueia o merge, mesmo com ganho em todas as outras métricas.
@@ -486,7 +486,7 @@ Válidos para toda PR desta evolução. Cada um existe porque um dos dois projet
 - **Não** criar vocabulário no kernel. Se um termo precisa de definição, pertence a um modo.
 - **Não** fazer o hook `Stop` rodar suíte inteira. Só o check declarado; suíte é CI.
 - **Não** bloquear em `PreToolUse` sem dizer, na mensagem, qual regra e como registrar a decisão. Bloqueio mudo é atrito que faz o time desligar.
-- **Não** reescrever um modo "já que estamos mexendo" depois da consolidação. A reescrita única foi C1; as seguintes esperam número.
+- **Não** reescrever um modo "já que estamos mexendo" depois da consolidação. A reescrita única foi C1; as seguintes esperam número (suspenso enquanto a medição viva estiver suspensa: PLAN, decisão de 2026-10-02).
 - **Não** fazer o degrau 4 parar a sessão inteira. Para o slice; o resto continua; a decisão vai para a fila.
 - **Não** dar ao agente um comando que registre decisão humana ou eleve autoridade. Se for conveniente, é exatamente o buraco.
 - **Não** confiar no guard de Bash como teto. É piso; o CI de referência é o teto.
