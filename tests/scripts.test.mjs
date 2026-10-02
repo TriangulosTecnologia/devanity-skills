@@ -167,6 +167,20 @@ test('surfaces: with no package.json there is nothing to check a script against,
   assert.deepEqual(JSON.parse(run(SURFACES, ['--json'], { cwd: d }).out).unresolved, []);
 });
 
+test('surfaces: a git call that does not finish stops the inventory: partial output is never reported', () => {
+  const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
+  commit(d, { 'AGENTS.md': 'See `src/gone.js`.\n', 'src/a.js': '1\n' }, 'one');
+  const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+  const bin = join(temp, `cut-git${n}`); mkdirSync(bin);
+  // A git that, for the call named in CUT, prints a little of the real output and dies, as node kills one over maxBuffer.
+  writeFileSync(join(bin, 'git'), `#!/bin/sh\ncase " $* " in *" $CUT "*) "${real}" "$@" | head -c 40; kill -KILL $$;; esac\nexec "${real}" "$@"\n`, { mode: 0o755 });
+  for (const cut of ['ls-files', 'check-ignore']) {
+    const r = run(SURFACES, [], { cwd: d, env: { ...process.env, CUT: cut, PATH: `${bin}:${process.env.PATH}` } });
+    assert.equal(r.code, 1, `${cut}:\n${r.out}`);
+    assert.match(r.err, /git \S+ did not finish/, `${cut}:\n${r.err}`);
+  }
+});
+
 test('surfaces: run through a symlinked path it still reports (an install path may hold a symlink)', () => {
   const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
   commit(d, { 'AGENTS.md': 'See `src/gone.js`.\n', 'src/a.js': '1\n' }, 'one');

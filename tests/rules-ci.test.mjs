@@ -292,6 +292,18 @@ describe('rules CI', () => {
       const r = runCi(d, ['--base', 'main', '--no-proof-required']);
       assert.equal(r.code, 1, r.out); assert.match(r.out, /names `typecheck`, which resolved before this diff and does not now/);
     });
+    test('a git call that does not finish (output over maxBuffer, killed) stops the job: its partial output is never judged', () => {
+      const real = spawnSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).stdout.trim();
+      const bin = join(temp, 'cut-git'); mkdirSync(bin, { recursive: true });
+      // A git that, for the call named in CUT, prints a little of the real output and dies, as node kills one over maxBuffer.
+      writeFileSync(join(bin, 'git'), `#!/bin/sh\ncase " $* " in *" $CUT "*) "${real}" "$@" | head -c 40; kill -KILL $$;; esac\nexec "${real}" "$@"\n`, { mode: 0o755 });
+      const d = repo({ 'CLAUDE.md': 'Entry: `src/a.js`.\n', 'src/a.js': '1\n' }, (d) => write(d, 'CLAUDE.md', 'Entry: `src/a.js`, then `src/none.js`.\n'));
+      for (const cut of ['ls-tree', 'show', '--name-status', 'check-ignore', 'ls-files']) {
+        const r = runCi(d, ['--base', 'main', '--no-proof-required'], { CUT: cut, PATH: `${bin}:${process.env.PATH}` });
+        assert.equal(r.code, 1, `${cut}:\n${r.out}`);
+        assert.match(r.out, /git \S+ did not finish/, `${cut}:\n${r.out}`);
+      }
+    });
     test('the falsifiers of the first verification: a fence closed only by a bare fence, flags with values, bare file names, quoted link titles', () => {
       const claude = ['Example:', '```', '```bash', 'run `src/a.js`', '```', 'Real: `src/b.js`, `ARCHITECTURE.md`, [c](docs/c.md \'T\').', 'Build: `pnpm --filter web run build`; `npm --prefix . run lint`.', ''].join('\n');
       const base = { 'CLAUDE.md': claude, 'src/a.js': '1\n', 'src/b.js': '1\n', 'ARCHITECTURE.md': 'a\n', 'docs/c.md': 'c\n', 'package.json': JSON.stringify({ scripts: { build: 'tsc', lint: 'eslint' } }) };
