@@ -79,7 +79,7 @@ With it, the guard blocks edits to high-risk paths until a human decides, and th
 
 **Turning it down or off.** `DEVANITY_GUARDS=off` makes the guard and the oracle record without blocking. `/devanity off` stops the kernel injection and the oracle, and `/devanity on` brings them back; the guard follows `DEVANITY_GUARDS` only.
 
-**Make it binding.** The hooks run with the agent's permissions; the boundary is CI. Copy [`plugin/templates/devanity-rules.yml`](plugin/templates/devanity-rules.yml) to your `.github/workflows/` and pin `DEVANITY_REF` to a commit sha: it fails a pull request whose high-risk check fails or that carries no `devanity-proof` block, and its summary shows the reviewer the purpose and invariants of every path the change touched.
+**Make it binding.** The hooks run with the agent's permissions; the boundary is CI. Copy [`plugin/templates/devanity-rules.yml`](plugin/templates/devanity-rules.yml) to your `.github/workflows/` and pin `DEVANITY_REF` to a commit sha: it fails a pull request whose high-risk check fails, that carries no `devanity-proof` block, or that removes a path or script an always-loaded or path-scoped instruction file names on a line the diff left as it was (unless a `reference-change:` line in the PR body declares it), and its summary shows the reviewer the purpose and invariants of every path the change touched.
 
 Everything the hooks enforce, record and cannot stop: [`docs/hooks.md`](docs/hooks.md).
 

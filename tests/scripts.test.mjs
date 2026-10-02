@@ -1,5 +1,5 @@
-// Tests for the computations the modes run instead of describing them: plugin/scripts/hotspots.mjs
-// and plugin/scripts/calibrate.mjs. node:test, no dependencies.
+// Tests for the computations the modes run instead of describing them: plugin/scripts/hotspots.mjs,
+// plugin/scripts/calibrate.mjs and plugin/scripts/surfaces.mjs. node:test, no dependencies.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const HOTSPOTS = join(root, 'plugin', 'scripts', 'hotspots.mjs');
 const CALIBRATE = join(root, 'plugin', 'scripts', 'calibrate.mjs');
+const SURFACES = join(root, 'plugin', 'scripts', 'surfaces.mjs');
 
 let temp;
 before(() => { temp = mkdtempSync(join(tmpdir(), 'devanity-scripts-')); });
@@ -121,4 +122,56 @@ test('hotspots: a name that starts with a newline keeps it, and an absolute scop
   const abs = JSON.parse(run(HOTSPOTS, ['--json', '--', join(link, 'link')], { cwd: link }).out);
   assert.deepEqual(abs.files, rel.files); assert.deepEqual(rel.files.map((f) => f.path), ['link']);
   assert.equal(run(HOTSPOTS, ['--json', '--', join(link, 'gone', 'x.js')], { cwd: link }).code, 0);
+});
+
+test('surfaces: every instruction file with its load class and bytes, and each reference that resolves to nothing', () => {
+  const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
+  const claude = [
+    '# Repo', '',
+    'Run `npm run test`, then `pnpm run -w lint`.',
+    'Code lives in `src/app.js`; the old entry was `src/gone.js:12`.',
+    'Base is `origin/main`; generated output is `src/gen.js`.',
+    'See [the guide](docs/guide.md) and [the gone page](docs/missing.md#top).',
+    '', '```text', 'src/inside-a-fence.js', '```', '',
+  ].join('\n');
+  commit(d, {
+    'CLAUDE.md': claude,
+    'src/app.js': '1\n', '.gitignore': 'src/gen.js\n', 'docs/guide.md': 'g\n',
+    'package.json': JSON.stringify({ scripts: { test: 'node -e 0' } }),
+    'packages/a/CLAUDE.md': 'scoped: `lib/none.js` is an example; no lib/ here or at the root\n',
+    '.claude/rules/edit.md': '---\npaths:\n  - \'src/**\'\n---\nrule\n',
+    '.claude/rules/always.md': 'rule\n',
+    '.claude/CLAUDE.md': 'memory\n',
+    'skills/s/SKILL.md': 'see [ref](ref.md)\n', 'skills/s/ref.md': 'r\n',
+  }, 'one');
+  const r = run(SURFACES, ['--json'], { cwd: d });
+  assert.equal(r.code, 0, r.err);
+  const j = JSON.parse(r.out);
+  assert.deepEqual(j.surfaces.map((s) => [s.path, s.load]), [
+    ['.claude/CLAUDE.md', 'always'], ['.claude/rules/always.md', 'always'], ['.claude/rules/edit.md', 'scoped'], ['CLAUDE.md', 'always'],
+    ['packages/a/CLAUDE.md', 'scoped'], ['skills/s/SKILL.md', 'on-demand'], ['skills/s/ref.md', 'on-demand'],
+  ]);
+  assert.equal(j.surfaces.find((s) => s.path === 'CLAUDE.md').bytes, Buffer.byteLength(claude));
+  assert.equal(j.totals.always, Buffer.byteLength(claude) + 'rule\n'.length + 'memory\n'.length, '.claude/CLAUDE.md is project memory, loaded always');
+  assert.deepEqual(j.unresolved.map((u) => [u.path, u.line, u.kind, u.target]), [
+    ['CLAUDE.md', 3, 'script', 'lint'],
+    ['CLAUDE.md', 4, 'path', 'src/gone.js'],
+    ['CLAUDE.md', 6, 'path', 'docs/missing.md'],
+  ], 'a ref outside the repository (origin/main), a nested example under no existing directory, and a gitignored path are not claims; fenced text is not a code span');
+  assert.match(run(SURFACES, [], { cwd: d }).out, /CLAUDE\.md:4\s+path\s+src\/gone\.js/);
+});
+
+test('surfaces: with no package.json there is nothing to check a script against, so none is reported', () => {
+  const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
+  commit(d, { 'AGENTS.md': 'Run `npm run build`.\n' }, 'one');
+  assert.deepEqual(JSON.parse(run(SURFACES, ['--json'], { cwd: d }).out).unresolved, []);
+});
+
+test('surfaces: run through a symlinked path it still reports (an install path may hold a symlink)', () => {
+  const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
+  commit(d, { 'AGENTS.md': 'See `src/gone.js`.\n', 'src/a.js': '1\n' }, 'one');
+  const link = join(temp, `scripts-link${n}`); symlinkSync(dirname(SURFACES), link);
+  const r = run(join(link, 'surfaces.mjs'), ['--json'], { cwd: d });
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(JSON.parse(r.out).unresolved.map((u) => u.target), ['src/gone.js']);
 });

@@ -2,7 +2,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -266,6 +266,195 @@ describe('rules CI', () => {
     assert.ok(text.includes('x'.repeat(299)), 'the invariant is in the summary');
     assert.ok(!text.includes('\uFFFD'), 'a lone surrogate is written as U+FFFD: the cut split a character');
     assert.ok(!text.includes('\u001b'), 'a terminal escape in the map does not reach the summary');
+  });
+
+  describe('instruction references', () => {
+    const repo = (base, change) => {
+      const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+      write(d, 'devanity.rules.json', JSON.stringify({ version: 1 }));
+      for (const [rel, text] of Object.entries(base)) write(d, rel, text);
+      commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature');
+      change(d); commitAll(d, 'change');
+      return d;
+    };
+    test('a diff that removes what an instruction file names fails; moving the reference with it passes', () => {
+      const base = { 'CLAUDE.md': 'Entry: `src/old.js`.\n', 'src/old.js': '1\n' };
+      let d = repo(base, (d) => git(d, 'rm', '-q', 'src/old.js'));
+      let r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 1, r.out); assert.match(r.out, /CLAUDE\.md:1 names `src\/old\.js`, which resolved before this diff and does not now/);
+      d = repo(base, (d) => { git(d, 'mv', 'src/old.js', 'src/new.js'); write(d, 'CLAUDE.md', 'Entry: `src/new.js`.\n'); });
+      r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out);
+    });
+    test('a removed package script that an instruction file runs fails', () => {
+      const d = repo({ 'CLAUDE.md': 'Typecheck: `npm run typecheck`.\n', 'package.json': JSON.stringify({ scripts: { typecheck: 'tsc' } }) },
+        (d) => write(d, 'package.json', JSON.stringify({ scripts: {} })));
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 1, r.out); assert.match(r.out, /names `typecheck`, which resolved before this diff and does not now/);
+    });
+    test('the falsifiers of the first verification: a fence closed only by a bare fence, flags with values, bare file names, quoted link titles', () => {
+      const claude = ['Example:', '```', '```bash', 'run `src/a.js`', '```', 'Real: `src/b.js`, `ARCHITECTURE.md`, [c](docs/c.md \'T\').', 'Build: `pnpm --filter web run build`; `npm --prefix . run lint`.', ''].join('\n');
+      const base = { 'CLAUDE.md': claude, 'src/a.js': '1\n', 'src/b.js': '1\n', 'ARCHITECTURE.md': 'a\n', 'docs/c.md': 'c\n', 'package.json': JSON.stringify({ scripts: { build: 'tsc', lint: 'eslint' } }) };
+      const d = repo(base, (d) => { for (const f of ['src/a.js', 'src/b.js', 'ARCHITECTURE.md', 'docs/c.md']) git(d, 'rm', '-q', f); write(d, 'package.json', JSON.stringify({ scripts: {} })); });
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 1, r.out);
+      for (const t of ['src/a.js', 'src/b.js', 'ARCHITECTURE.md', 'docs/c.md', 'build', 'lint']) assert.match(r.out, new RegExp(`names \`${t.replace(/[.]/g, '\\.')}\`, which resolved before this diff and does not now:`), `${t} must fail:\n${r.out}`);
+    });
+    test('the falsifiers of the second verification: CRLF, inline triple backticks, stems, moved surfaces, symlinks, nested CLAUDE.md in a skill, command spans, two commands, reference links', () => {
+      const cases = [
+        ['CRLF line endings', { 'CLAUDE.md': 'Ex:\r\n\r\nReal: `src/b.js`\r\n', 'src/b.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/b.js'), 'src/b.js'],
+        ['a line of inline triple backticks opens no fence', { 'CLAUDE.md': '```x``` is inline\nSee `src/a.js`.\n', 'src/a.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/a.js'), 'src/a.js'],
+        ['a sibling .example does not stand in for the file', { 'CLAUDE.md': 'Config: `config/app.json`.\n', 'config/app.json': '{}\n', 'config/app.json.example': '{}\n' }, (d) => git(d, 'rm', '-q', 'config/app.json'), 'config/app.json'],
+        ['a surface moved to another directory keeps its old references', { 'CLAUDE.md': 'See [a](docs/a.md).\n', 'docs/a.md': 'a\n' }, (d) => { mkdirSync(join(d, 'sub'), { recursive: true }); git(d, 'mv', 'CLAUDE.md', 'sub/CLAUDE.md'); }, 'docs/a.md'],
+        ['through a symlinked directory', { 'CLAUDE.md': 'Setup: `docs/setup.md`.\n', 'documentation/setup.md': 's\n' }, (d) => git(d, 'rm', '-q', 'documentation/setup.md'), 'docs/setup.md', null, (d) => symlinkSync('documentation', join(d, 'docs'))],
+        ['a symlink whose target is gone', { 'CLAUDE.md': 'Tool: `bin/tool`.\n', 'tools/tool': 't\n' }, (d) => git(d, 'rm', '-q', 'tools/tool'), 'bin/tool', null, (d) => { mkdirSync(join(d, 'bin')); symlinkSync('../tools/tool', join(d, 'bin', 'tool')); }],
+        ['a CLAUDE.md beside a SKILL.md is the directory\'s instructions, not the skill', { 'skills/x/SKILL.md': 's\n', 'skills/x/CLAUDE.md': 'Code: `src/a.js`.\n', 'src/a.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/a.js'), 'src/a.js'],
+        ['a path argument in a command span', { 'CLAUDE.md': 'Run `node scripts/build.mjs --all`.\n', 'scripts/build.mjs': '1\n' }, (d) => git(d, 'rm', '-q', 'scripts/build.mjs'), 'scripts/build.mjs'],
+        ['two commands in one sentence', { 'CLAUDE.md': 'Run npm run test:e2e, then npm run lint.\n', 'package.json': JSON.stringify({ scripts: { 'test:e2e': 'x', lint: 'y' } }) }, (d) => write(d, 'package.json', JSON.stringify({ scripts: { 'test:e2e': 'x' } })), 'lint'],
+        ['a reference-style link', { 'CLAUDE.md': 'See the [guide][g].\n\n[g]: docs/x.md\n', 'docs/x.md': 'x\n' }, (d) => git(d, 'rm', '-q', 'docs/x.md'), 'docs/x.md'],
+        ['a held reference in a fenced example, a blockquote or a list item: what it names is gone either way', { 'CLAUDE.md': '> ```md\n> Run `src/a.js`\n> ```\n- ```md\n  See `src/b.js`\n  ```\n', 'src/a.js': '1\n', 'src/b.js': '1\n' }, (d) => { git(d, 'rm', '-q', 'src/a.js'); git(d, 'rm', '-q', 'src/b.js'); }, 'src/b.js'],
+        ['a bare name with no extension', { 'CLAUDE.md': 'Targets live in `Makefile`.\n', 'Makefile': 'all:\n' }, (d) => git(d, 'rm', '-q', 'Makefile'), 'Makefile'],
+        ['a dotfile', { 'CLAUDE.md': 'Copy `.env.example`.\n', '.env.example': 'X=1\n' }, (d) => git(d, 'rm', '-q', '.env.example'), '.env.example'],
+        ['a line suffix on a bare name', { 'CLAUDE.md': 'See `ARCHITECTURE.md:12`.\n', 'ARCHITECTURE.md': 'a\n' }, (d) => git(d, 'rm', '-q', 'ARCHITECTURE.md'), 'ARCHITECTURE.md'],
+        ['a percent-encoded link', { 'CLAUDE.md': '[setup](docs/My%20Setup.md)\n', 'docs/My Setup.md': 's\n' }, (d) => git(d, 'rm', '-q', 'docs/My Setup.md'), 'docs/My Setup.md'],
+        ['an angle-bracket link with a space', { 'CLAUDE.md': '[g](<docs/My Guide.md>)\n', 'docs/My Guide.md': 'g\n' }, (d) => git(d, 'rm', '-q', 'docs/My Guide.md'), 'docs/My Guide.md'],
+        ['a scoped surface moved to another directory, read from where it was', { 'sub/CLAUDE.md': 'Use `lib/x.js`.\n', 'sub/lib/x.js': '1\n' }, (d) => { mkdirSync(join(d, 'other'), { recursive: true }); git(d, 'mv', 'sub/CLAUDE.md', 'other/CLAUDE.md'); }, 'lib/x.js'],
+        ['a surface that is itself a symlink', { 'docs/agent-guide.md': 'Code: `src/a.js`.\n', 'src/a.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/a.js'), 'src/a.js', null, (d) => symlinkSync('docs/agent-guide.md', join(d, 'CLAUDE.md'))],
+        ['a double-backtick code span', { 'CLAUDE.md': 'See ``src/a.js``.\n', 'src/a.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/a.js'), 'src/a.js'],
+        ['route segments with brackets, parentheses and a scope', { 'CLAUDE.md': 'Pages: `app/[slug]/page.tsx`, `app/(auth)/page.tsx`, `packages/@acme/ui/index.ts`.\n', 'app/[slug]/page.tsx': '1\n', 'app/(auth)/page.tsx': '1\n', 'packages/@acme/ui/index.ts': '1\n' }, (d) => git(d, 'rm', '-q', 'app/[slug]/page.tsx'), 'app/[slug]/page.tsx'],
+        ['a symlinked surface whose target goes through a symlinked directory', { 'documentation/guide.md': 'Code: `src/a.js`.\n', 'src/a.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/a.js'), 'src/a.js', null, (d) => { symlinkSync('documentation', join(d, 'docs')); symlinkSync('docs/guide.md', join(d, 'CLAUDE.md')); }],
+        ['a `..`-relative span one level down', { 'sub/CLAUDE.md': 'Shared: `../src/x.js`.\n', 'src/x.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/x.js'), '../src/x.js'],
+      ];
+      for (const [name, base, change, broken, quiet, link] of cases) {
+        const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+        write(d, 'devanity.rules.json', JSON.stringify({ version: 1 }));
+        for (const [rel, text] of Object.entries(base)) write(d, rel, text);
+        if (link) link(d);
+        commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature'); change(d); commitAll(d, 'change');
+        const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+        assert.equal(r.code, 1, `${name}:\n${r.out}`);
+        assert.match(r.out, new RegExp(`names \`${broken.replace(/[.[\]()]/g, '\\$&')}\`, which resolved before this diff and does not now:`), `${name}:\n${r.out}`);
+        if (quiet) assert.doesNotMatch(r.out, new RegExp(`names \`${quiet.replace(/[.]/g, '\\.')}\``), `${name}:\n${r.out}`);
+      }
+    });
+    test('no false failure: a root file named R does not misread renames, and `bun test` is no package script', () => {
+      for (const [name, base, change, link] of [
+        ['a root file named R', { 'R': 'r\n', 'foo.md': 'f\n', 'sub/CLAUDE.md': '[x](foo.md)\n' }, (d) => { write(d, 'R', 'r2\n'); write(d, 'sub/CLAUDE.md', '[x](foo.md)\nmore\n'); }],
+        ['bun test is bun\'s own runner', { 'CLAUDE.md': 'Run `bun test`.\n', 'package.json': JSON.stringify({ scripts: { test: 'x' } }) }, (d) => write(d, 'package.json', JSON.stringify({ scripts: {} }))],
+        ['a command span: `npm test` stays true when a directory named test moves', { 'CLAUDE.md': 'Run `npm test` and `make docs`.\n', 'package.json': JSON.stringify({ scripts: { test: 'x' } }), 'test/a.js': '1\n', 'docs/a.md': 'a\n' }, (d) => { git(d, 'mv', 'test', 'tests'); git(d, 'mv', 'docs', 'documentation'); }],
+        ['a symlink to an absolute path leads out of the repository', { 'CLAUDE.md': 'Config: `cfg/app.json`.\n', 'etc/app/app.json': '{}\n' }, (d) => git(d, 'rm', '-q', 'etc/app/app.json'), (d) => symlinkSync('/etc/app', join(d, 'cfg'))],
+        ['a path that becomes gitignored is expected absent', { 'CLAUDE.md': 'Local secrets live in `.env`; never commit it.\n', '.env': 'X=1\n' }, (d) => { git(d, 'rm', '-q', '--cached', '.env'); write(d, '.gitignore', '.env\n'); }],
+        ['a reference the surface did not make at the base is new, even if its target existed', { 'CLAUDE.md': 'x\n', 'scripts/deploy.sh': 'x\n' }, (d) => { git(d, 'rm', '-q', 'scripts/deploy.sh'); write(d, 'CLAUDE.md', 'The old `scripts/deploy.sh` was removed; do not recreate it.\n'); }],
+        ['a bare word that names a directory is a word', { 'CLAUDE.md': 'The `build` script compiles.\n', 'package.json': JSON.stringify({ scripts: { build: 'x' } }), 'build/a.js': '1\n' }, (d) => git(d, 'mv', 'build', 'tools')],
+        ['a line the diff rewrites to record a removal is the author\'s statement', { 'CLAUDE.md': 'Deploy with `scripts/deploy.sh`.\nRun `npm test`.\n', 'scripts/deploy.sh': 'x\n', 'package.json': JSON.stringify({ scripts: { test: 'x' } }) }, (d) => { git(d, 'rm', '-q', 'scripts/deploy.sh'); write(d, 'package.json', JSON.stringify({ scripts: {} })); write(d, 'CLAUDE.md', 'Deploy with `make deploy`; the old `scripts/deploy.sh` was removed.\n`npm test` no longer exists.\n'); }],
+        ['gitignored paths reached through a symlink, and in the same batch a plain one', { 'CLAUDE.md': 'Local: `cfg/local.json` and `.env`.\n', 'config/local.json': '{}\n', 'config/a.json': '{}\n', '.env': 'X=1\n' }, (d) => { git(d, 'rm', '-q', '--cached', 'config/local.json', '.env'); write(d, '.gitignore', 'config/local.json\n.env\n'); }, (d) => symlinkSync('config', join(d, 'cfg'))],
+        ['an untracked build directory under a dir/ ignore pattern', { 'CLAUDE.md': 'Build output: [dist](dist/), and `packages/web/dist/`.\n', 'dist/index.js': '1\n', 'packages/web/dist/a.js': '1\n' }, (d) => { git(d, 'rm', '-rq', '--cached', 'dist', 'packages/web/dist'); write(d, '.gitignore', 'dist/\n'); }],
+        ['a directory replaced by a symlink written with a trailing slash', { 'CLAUDE.md': 'See [the docs](docs/).\n', 'docs/guide.md': 'g\n' }, (d) => { git(d, 'mv', 'docs', 'documentation'); symlinkSync('documentation/', join(d, 'docs')); git(d, 'add', 'docs'); }],
+        ['rules loaded on request (Cursor without globs, Copilot without applyTo) are reported', { '.cursor/rules/r.mdc': '---\ndescription: x\nalwaysApply: false\n---\n`src/old.ts`\n', '.github/instructions/i.instructions.md': '`src/old.ts`\n', 'src/old.ts': '1\n' }, (d) => git(d, 'rm', '-q', 'src/old.ts')],
+        ['Cursor\'s default rule template (empty globs) and an empty Copilot applyTo load on request', { '.cursor/rules/r.mdc': '---\ndescription: \nglobs: \nalwaysApply: false\n---\nUse `src/old.ts`.\n', '.github/instructions/i.instructions.md': '---\napplyTo:\ndescription: x\n---\nUse `src/old.ts`.\n', 'src/old.ts': '1\n' }, (d) => git(d, 'rm', '-q', 'src/old.ts')],
+        ['a gitignored path git would quote (non-ASCII)', { 'CLAUDE.md': 'Output: `gen/saída.json`.\n', 'gen/saída.json': '{}\n', 'gen/keep.json': '{}\n' }, (d) => { git(d, 'rm', '-q', '--cached', 'gen/saída.json'); write(d, '.gitignore', 'gen/saída.json\n'); }],
+        ['a package.json rewritten with a byte-order mark keeps its scripts', { 'CLAUDE.md': 'Lint: `npm run lint`.\n', 'package.json': JSON.stringify({ scripts: { lint: 'x' } }) }, (d) => write(d, 'package.json', '\ufeff' + JSON.stringify({ scripts: { lint: 'x' } }, null, 2))],
+      ]) {
+        const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+        write(d, 'devanity.rules.json', JSON.stringify({ version: 1 }));
+        for (const [rel, text] of Object.entries(base)) write(d, rel, text);
+        if (link) link(d);
+        commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature'); change(d); commitAll(d, 'change');
+        const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+        assert.equal(r.code, 0, `${name}:\n${r.out}`);
+      }
+    });
+    test('a reference on an untouched line still fails when it also sits on a rewritten one', () => {
+      const d = repo({ 'CLAUDE.md': 'Entry: `src/old.js`.\nAlso `src/old.js`.\n', 'src/old.js': '1\n' }, (d) => { git(d, 'rm', '-q', 'src/old.js'); write(d, 'CLAUDE.md', 'Entry was `src/old.js`.\nAlso `src/old.js`.\n'); });
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 1, r.out); assert.match(r.out, /CLAUDE\.md:2 names `src\/old\.js`/);
+    });
+    test('a `reference-change:` line in the PR body declares a break for review instead of failing, like `verifier-change:`', () => {
+      const d = repo({ 'CLAUDE.md': 'Entry: `src/old.js`.\n', 'src/old.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/old.js'));
+      const body = join(temp, `rbody${n}.md`);
+      writeFileSync(body, 'reference-change: the entry moved to the wiki\n\n```\ndevanity-proof:\n  check: true\n  failed_before: n/a\n  passed_after: yes\n  status: NOT_VERIFIED: docs only\n  pending: 0\n```\n');
+      const r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+      assert.equal(r.code, 0, r.out); assert.match(r.out, /names `src\/old\.js`.*declared by reference-change/);
+    });
+    test('an empty declaration line declares nothing, for reference-change and verifier-change alike', () => {
+      const proof = '```\ndevanity-proof:\n  check: true\n  failed_before: n/a\n  passed_after: yes\n  status: NOT_VERIFIED: x\n  pending: 0\n```\n';
+      let d = repo({ 'CLAUDE.md': 'Entry: `src/old.js`.\n', 'src/old.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/old.js'));
+      const body = join(temp, `ebody${n}.md`);
+      writeFileSync(body, `reference-change:\n\n## Notes\n${proof}`);
+      let r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+      assert.equal(r.code, 1, r.out);
+      d = repo({ 'src/a.js': '1\n', 'src/a.test.js': 'line one\nline two\n' }, (d) => { write(d, 'src/a.js', '2\n'); write(d, 'src/a.test.js', 'line one\n'); });
+      writeFileSync(body, `verifier-change:\n\n## Notes\n${proof}`);
+      r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+      assert.equal(r.code, 1, r.out); assert.match(r.out, /edits existing checks/);
+    });
+    test('reading details: a column suffix, a sentence-ending period, a script name containing a package manager', () => {
+      const d = repo({ 'CLAUDE.md': 'At `src/a.ts:12:5`. Run npm test. Then npm run build-bun.\n', 'src/a.ts': '1\n', 'package.json': JSON.stringify({ scripts: { test: 'x', 'build-bun': 'y' } }) },
+        (d) => { git(d, 'rm', '-q', 'src/a.ts'); write(d, 'package.json', JSON.stringify({ scripts: {} })); });
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      for (const t of ['src/a.ts', 'test', 'build-bun']) assert.match(r.out, new RegExp(`names \`${t.replace(/[.]/g, '\\.')}\`, which resolved before`), `${t}:\n${r.out}`);
+    });
+    test('a path inside a submodule is assumed present: its content is not in this repository', () => {
+      const d = repo({ 'CLAUDE.md': 'See `vendor/lib/README.md`.\n', 'vendor/lib/README.md': 'r\n' }, () => {});
+      const sha = git(d, 'rev-parse', 'HEAD').stdout.trim();
+      git(d, 'rm', '-rq', 'vendor/lib');
+      git(d, 'update-index', '--add', '--cacheinfo', `160000,${sha},vendor/lib`);
+      write(d, '.gitmodules', '[submodule "lib"]\n\tpath = vendor/lib\n\turl = ../lib\n'); git(d, 'add', '.gitmodules');
+      git(d, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-qm', 'submodule');
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out);
+    });
+    test('the job and the inventory agree: a new gitignored reference is neither reported nor failed', () => {
+      const d = repo({ 'CLAUDE.md': 'x\n', '.gitignore': 'config/local.json\n', 'config/a.json': '{}\n' }, (d) => write(d, 'CLAUDE.md', 'x\nLocal: `config/local.json`.\n'));
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out); assert.doesNotMatch(r.out, /config\/local\.json/);
+    });
+    test('a bare file name is a claim only when it resolves: a generic mention of a file this repository lacks is not reported', () => {
+      const d = repo({ 'AGENTS.md': 'x\n' }, (d) => write(d, 'AGENTS.md', 'x\nA `CLAUDE.md` grown into a manual.\n'));
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out); assert.doesNotMatch(r.out, /CLAUDE\.md/);
+    });
+    test('a break inside a skill (loaded on demand, often vendored) is reported, not failed', () => {
+      const d = repo({ 'skills/x/SKILL.md': 'Build: `pnpm run build`.\n', 'package.json': JSON.stringify({ scripts: { build: 'tsc' } }) },
+        (d) => write(d, 'package.json', JSON.stringify({ scripts: {} })));
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out); assert.match(r.out, /skills\/x\/SKILL\.md:1 names `build`, which resolved before this diff and does not now \(loaded on demand: reported, not failed\)/);
+    });
+    test('a new reference that resolves to nothing is reported, not failed: it never held', () => {
+      const d = repo({ 'CLAUDE.md': 'x\n', 'src/a.js': '1\n' }, (d) => write(d, 'CLAUDE.md', 'x\nSee `src/nope.js`.\n'));
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out); assert.match(r.out, /CLAUDE\.md:2 names `src\/nope\.js`, which does not exist/);
+    });
+  });
+
+  test('a proof that claims a check failed first, on a diff no check could measure, is reported, never failed', () => {
+    const body = join(temp, `pbody${n}.md`);
+    writeFileSync(body, '```\ndevanity-proof:\n  check: npm test\n  failed_before: yes\n  passed_after: yes\n  status: VERIFIED\n  pending: 0\n```\n');
+    let d = seed({ rules: { version: 1 }, changes: { 'src/a.js': '1\n' } });
+    let r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+    assert.equal(r.code, 0, r.out); assert.match(r.out, /failed_before: yes.*nothing in this diff could have measured it/);
+    d = seed({ rules: { version: 1 }, changes: { 'src/a.js': '1\n', 'src/a.test.js': '1\n' } });
+    r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+    assert.equal(r.code, 0, r.out); assert.doesNotMatch(r.out, /could have measured/, 'a changed test is an oracle the claim can rest on');
+  });
+
+  test('a changed path git would quote or that holds a tab (non-ASCII, a rename into one) is the real path: its high-risk check runs', () => {
+    for (const change of [(d) => write(d, 'billing/saída.js', '1\n'), (d) => git(d, 'mv', 'billing/charge.js', 'billing/cobrança.js'), (d) => write(d, 'billing/a\tb.js', '1\n')]) {
+      const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+      write(d, 'devanity.rules.json', JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', check: 'exit 3' } } }));
+      write(d, 'billing/charge.js', 'module.exports = 1;\n');
+      commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature'); change(d); commitAll(d, 'change');
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 1, r.out); assert.match(r.out, /check failed: exit 3/);
+      assert.match(r.out, /billing\/(saída|cobrança|a\tb)\.js: tier high-risk/, 'the touched list names the path itself, not its quoted or cut form');
+    }
+  });
+
+  test('the workflow template re-runs when the PR body is edited, so a declaration line added after a failure counts', () => {
+    const yml = readFileSync(join(root, 'plugin', 'templates', 'devanity-rules.yml'), 'utf8');
+    assert.match(yml, /^\s*pull_request:\s*\n(?:\s*#.*\n)*\s*types:\s*\[([^\]]*)\]/m);
+    const types = /^\s*pull_request:\s*\n(?:\s*#.*\n)*\s*types:\s*\[([^\]]*)\]/m.exec(yml)[1].split(',').map((t) => t.trim());
+    for (const t of ['opened', 'synchronize', 'reopened', 'edited']) assert.ok(types.includes(t), `${t} missing from ${types}`);
   });
 
   test('the old script path still runs, for a workflow copied before the script moved into the plugin', () => {

@@ -26,7 +26,7 @@ A test earns its place by protecting a contract a user depends on: the guard blo
 
 ## Evaluation
 
-Kernel text changes only with a number from the harness: compare observable behavior, never instruction elegance, and turn a real failure into a regression task (a good and a bad reference) before or with its fix. Schema validation alone is not evidence of behavioral effectiveness. What is measured and against which competitor is the axis table in [`evals/README.md`](evals/README.md); the numbers come from [`evals/harness/`](evals/harness/): real headless Claude Code sessions on seeded repositories, scored on the files they leave behind. Dated results are in [`evals/results/`](evals/results/), and [`evals/RUNBOOK.md`](evals/RUNBOOK.md) is how a round is run.
+Live harness rounds are suspended while the repository changes several times a day (PLAN, decision of 2026-10-02): kernel and mode text lands on the offline checks above, and no effectiveness claim is made without a round. A real failure still becomes a regression task (a good and a bad reference, proven by `--selftest`) before or with its fix. Schema validation alone is not evidence of behavioral effectiveness. What is measured and against which competitor is the axis table in [`evals/README.md`](evals/README.md); the numbers come from [`evals/harness/`](evals/harness/): real headless Claude Code sessions on seeded repositories, scored on the files they leave behind. Dated results are in [`evals/results/`](evals/results/), and [`evals/RUNBOOK.md`](evals/RUNBOOK.md) is how a round is run.
 
 ## Shared Change protocol
 
@@ -39,7 +39,7 @@ plugin/              the installable unit, and all the marketplace ships:
   skills/devanity/   the skill: SKILL.md (kernel), modes/ (one file per verb), reference/
   agents/            worker (evidence) and verifier (independent proof)
   hooks/             kernel injection, commands, guard, proof oracle, ledger
-  scripts/           the reference CI job, and the computations the modes run (hotspots, calibrate)
+  scripts/           the reference CI job, and the computations the modes run (hotspots, calibrate, surfaces)
   templates/         the workflow a consumer copies (init proposes it)
   .claude-plugin/    the plugin manifest; LICENCE, a copy of the root one
 scripts/             the repository validator and the AGENTS.md generator

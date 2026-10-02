@@ -17,8 +17,13 @@
 //    unless --no-proof-required;
 // 5. verifier sovereignty: a diff that removes or rewrites lines of existing tests, or changes a
 //    declared check/tier/test glob, together with code needs a `verifier-change:` line in the body;
-// 6. --self-check: the dogfood mode for the plugin repository itself: validates its rules and runs
-//    steps 2–5 on HEAD~1..HEAD (the checks execute) without requiring a PR body (a shallow clone
+// 6. instruction references (surfaces.mjs): a diff that removes a path or package script an
+//    always-loaded or path-scoped instruction file named at the base, on a line the diff left as it
+//    was, fails (loaded on demand, on a rewritten line, or declared by a `reference-change:` line
+//    in the PR body, it is reported); a reference the diff adds that does not resolve is reported. A proof that
+//    says `failed_before: yes` on a diff with no test and no declared check is reported, never failed;
+// 7. --self-check: the dogfood mode for the plugin repository itself: validates its rules and runs
+//    steps 2–6 on HEAD~1..HEAD (the checks execute) without requiring a PR body (a shallow clone
 //    with no parent validates the rules and reports an empty change set).
 //
 // Exit 1 with a list of failures, 0 otherwise. Node >= 18, no dependencies.
@@ -28,6 +33,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { compare, gitIgnored, surfacesOf } from './surfaces.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : def; };
@@ -57,6 +63,34 @@ function git(...a) {
   return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
 }
 
+// File contents at a revision, untrimmed (line numbers count from the first byte), or null.
+function show(rev, path) {
+  const r = spawnSync('git', ['show', `${rev}:${path}`], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return r.status === 0 ? r.stdout : null;
+}
+
+// The files at a revision, how to read them, and the symlinks (path → target) and submodules git
+// records there.
+function snapshot(rev) {
+  const r = spawnSync('git', ['ls-tree', '-r', '-z', rev], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const entries = (r.stdout || '').split('\0').filter(Boolean).map((l) => [l.slice(0, 6), l.slice(l.indexOf('\t') + 1)]);
+  const links = new Map(entries.filter(([mode]) => mode === '120000').map(([, p]) => [p, show(rev, p)]));
+  const modules = new Set(entries.filter(([mode]) => mode === '160000').map(([, p]) => p));
+  return { files: entries.map(([, p]) => p), read: (p) => show(rev, p), links, modules };
+}
+
+// The diff's renames, new path → old path. `-z` output is a status token, then one path, or two
+// for a rename or copy: read it as records, so a file named `R` is a path, never a status.
+function renames(from) {
+  const out = (spawnSync('git', ['diff', '--name-status', '-M', '-z', from, 'HEAD'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout || '').split('\0');
+  const map = new Map();
+  for (let i = 0; i + 1 < out.length;) {
+    const status = out[i];
+    if (/^[RC]/.test(status)) { if (status[0] === 'R') map.set(out[i + 2], out[i + 1]); i += 3; } else i += 2;
+  }
+  return map;
+}
+
 function resolveBase() {
   if (selfCheck) return git('rev-parse', '--verify', '-q', 'HEAD~1').ok ? 'HEAD~1' : null;
   const asked = opt('--base', null);
@@ -66,18 +100,26 @@ function resolveBase() {
   return null;
 }
 
-// [{path, added}] between the merge base of `base` and HEAD.
-function changedFiles(base) {
+// The merge base of `base` and HEAD: what the diff is measured from.
+function fromRev(base) {
   const mb = git('merge-base', base, 'HEAD');
-  const from = mb.ok && mb.out ? mb.out : base;
-  const r = git('diff', '--numstat', '-M', from, 'HEAD');
-  if (!r.ok) { fail(`git diff failed: ${r.err}`); return []; }
+  return mb.ok && mb.out ? mb.out : base;
+}
+
+// [{path, added, deleted}] between the merge base of `base` and HEAD. `-z` keeps every UTF-8 path as
+// it is (without it git C-quotes a non-ASCII name); a rename is `added\tdeleted\t` then the old and
+// the new path as their own records, and the new path is the one touched. Only the first two tabs
+// separate fields: a path may hold one.
+function changedFiles(base) {
+  const r = spawnSync('git', ['diff', '--numstat', '-z', '-M', fromRev(base), 'HEAD'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (r.status !== 0) { fail(`git diff failed: ${(r.stderr || '').trim()}`); return []; }
+  const records = (r.stdout || '').split('\0');
   const files = [];
-  for (const line of r.out.split('\n')) {
-    if (!line.trim()) continue;
-    const [added, deleted, rawPath] = line.split('\t');
-    if (rawPath === undefined) continue;
-    const path = rawPath.includes(' => ') ? rawPath.replace(/\{?([^{]*) => ([^}]*)\}?/, '$2').replace(/\/\//g, '/') : rawPath;
+  for (let i = 0; i < records.length; i++) {
+    const m = /^([^\t]*)\t([^\t]*)\t([\s\S]*)$/.exec(records[i]);
+    if (!m) continue;
+    const [, added, deleted, rawPath] = m;
+    const path = rawPath === '' ? records[(i += 2)] : rawPath;
     files.push({ path, added: added === '-' ? 0 : parseInt(added, 10) || 0, deleted: deleted === '-' ? 0 : parseInt(deleted, 10) || 0 });
   }
   return files;
@@ -101,8 +143,12 @@ function hasProofBlock(text) {
   const i = lines.findIndex((l) => /^\s*devanity-proof\s*:\s*$/.test(l));
   if (i < 0) return { present: false };
   const block = lines.slice(i + 1).join('\n');
-  return { present: true, status: /^\s*status\s*:\s*(\S.*)$/m.exec(block)?.[1] || null };
+  const field = (name) => new RegExp(`^[ \\t]*${name}[ \\t]*:[ \\t]*(\\S.*?)[ \\t]*$`, 'm').exec(block)?.[1] || null;   // one line: an empty field never takes the next
+  return { present: true, status: field('status'), check: field('check'), failedBefore: field('failed_before') };
 }
+
+// Whether a PR body declares `<name>: <why>`: the reason on the same line, never the next one's.
+const declares = (body, name) => body !== null && new RegExp(`^[ \\t]*${name}[ \\t]*:[ \\t]*\\S`, 'm').test(body);
 
 function runCheck(command) {
   const [bin, a] = process.platform === 'win32' ? ['cmd', ['/d', '/s', '/c', command]] : ['sh', ['-c', command]];
@@ -151,6 +197,25 @@ if (base && rulesMod && !loaded.errors.length) {
   const tracked = git('ls-files').out.split('\n').filter(Boolean);
   for (const p of rules.paths) if (!tracked.some((f) => p.re.test(f))) fail(`devanity.rules.json: ${p.glob} matches no tracked file (a map entry for a path that is gone)`);
 
+  // instruction references: what an instruction file names must still exist after the diff. Only a
+  // reference that held at the base can break, so a path that never existed never fails;
+  // a skill (loaded on demand, often vendored) is reported, since its examples name scripts and
+  // paths of no repository in particular.
+  const before = snapshot(fromRev(base));
+  const after = snapshot('HEAD');
+  const refs = compare(before, after, renames(fromRev(base)), gitIgnored(root));
+  // A `reference-change: <why>` line in the PR body declares the breaks for review, as
+  // `verifier-change:` does for a verifier: a residual false failure costs one visible line.
+  const declaredRefs = declares(selfCheck ? null : prBody(), 'reference-change');
+  for (const b of refs.broken) {
+    const what = `${b.path}:${b.line} names \`${b.target}\`, which resolved before this diff and does not now`;
+    if (b.load === 'on-demand') note(`${what} (loaded on demand: reported, not failed)`);
+    else if (!b.stale) note(`${what} (its line was rewritten in this diff: the author's statement, reported, not failed)`);
+    else if (declaredRefs) note(`${what} (declared by reference-change in the PR body)`);
+    else fail(`${what}: point it at what replaced it, remove it, or declare it with a \`reference-change: <why>\` line in the PR body`);
+  }
+  for (const a of refs.added) note(`${a.path}:${a.line} names \`${a.target}\`, which does not exist (a reference this diff adds: reported, not failed)`);
+
   // checks of touched high-risk paths; when the rules file itself changed, every declared check,
   // so a check that no longer runs cannot enter the map
   const rulesChanged = touched.some((t) => t.path === rulesMod.FILE);
@@ -171,8 +236,7 @@ if (base && rulesMod && !loaded.errors.length) {
   // Both sides are compared as the loader reads them (defaults filled, keys sorted), so a reordered or
   // spelled-out-default file is not a change; an invalid one always is.
   if (rulesChanged) {
-    const mb = git('merge-base', base, 'HEAD');
-    const before = git('show', `${mb.ok && mb.out ? mb.out : base}:${rulesMod.FILE}`);
+    const prior = git('show', `${fromRev(base)}:${rulesMod.FILE}`);
     const sorted = (_, v) => (v && typeof v === 'object' && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) : v);
     const judges = (text) => {
       const parsed = rulesMod.parseRules(text);
@@ -181,7 +245,7 @@ if (base && rulesMod && !loaded.errors.length) {
       const raw = JSON.parse(text);
       return JSON.stringify([r.paths.map((p) => [p.glob, p.rule.tier, p.rule.check || null, p.rule.delta || null]).sort(), r.tests.map((t) => t.glob).sort(), r.defaults, r.commands, r.autonomy, raw.verifiers || null], sorted);
     };
-    if (!before.ok || judges(before.out) !== judges(readFileSync(join(root, rulesMod.FILE), 'utf8'))) verifierEdits.push(rulesMod.FILE);
+    if (!prior.ok || judges(prior.out) !== judges(readFileSync(join(root, rulesMod.FILE), 'utf8'))) verifierEdits.push(rulesMod.FILE);
   }
   // The files the declared checks read (map `verifiers`: package scripts, runner config) judge too.
   const verifierRes = (loaded.raw && Array.isArray(loaded.raw.verifiers) ? loaded.raw.verifiers : []).map((g) => rulesMod.globToRegExp(g));
@@ -190,7 +254,7 @@ if (base && rulesMod && !loaded.errors.length) {
   const codeTouched = touched.some((t) => !isVerifier(t.path) && !/\.md$/i.test(t.path));
   if (verifierEdits.length && codeTouched) {
     const body = selfCheck ? null : prBody();
-    const declaredChange = body !== null && /^\s*verifier-change\s*:\s*\S/m.test(body);
+    const declaredChange = declares(body, 'verifier-change');
     if (declaredChange) note(`verifier-change declared for ${verifierEdits.join(', ')}`);
     else if (body === null) note(`the diff edits existing checks with code (${verifierEdits.join(', ')}); no PR body to hold the verifier-change line`);
     else fail(`the diff edits existing checks together with the code they judge (${verifierEdits.join(', ')}): add a \`verifier-change: <why>\` line to the PR body so review treats it as a verifier change`);
@@ -205,7 +269,8 @@ if (base && rulesMod && !loaded.errors.length) {
   // invariant can neither forge a line of this summary nor open a code fence around the rest.
   const md = (text) => Array.from(String(text == null ? '' : text).replace(/[\s\u0000-\u001F\u007F-\u009F]+/g, ' ').trim()).slice(0, 300).join('')   // code points: never half a character
     .replace(/[\\`*_[\]|~#]/g, (c) => `\\${c}`).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const instruction = (p) => /(^|\/)(CLAUDE|AGENTS|GEMINI)\.md$|(^|\/)\.claude\/|(^|\/)SKILL\.md$|^\.cursorrules$/.test(p);
+  const surfaces = new Set([...surfacesOf(before.files), ...surfacesOf(after.files)]);
+  const instruction = (p) => surfaces.has(p) || /(^|\/)\.claude\//.test(p);
   const stakes = new Map();
   for (const t of touched) {
     const r = t.rule;
@@ -244,7 +309,13 @@ if (base && rulesMod && !loaded.errors.length) {
       const p = hasProofBlock(body);
       if (!p.present) fail('the diff touches a normal or high-risk path (rung 3+) but the PR body has no `devanity-proof:` block');
       else if (!p.status) fail('the PR body has a `devanity-proof:` block without a `status:` line');
-      else note(`devanity-proof in PR body: status ${p.status}`);
+      else {
+        note(`devanity-proof in PR body: status ${p.status}`);
+        // A claim that a check failed first needs an oracle the diff carries or the map declares.
+        // Observed only: an existing test can legitimately be the one that failed.
+        const oracle = touched.some((t) => rulesMod.isTestPath(rules, t.path) || (t.rule.check && t.rule.check === p.check));
+        if (p.failedBefore === 'yes' && !oracle) note('the proof says `failed_before: yes`, but the diff changes no test and its `check` is no declared check of a touched path: nothing in this diff could have measured it (reported, never failed)');
+      }
     }
   } else if (needsProof && selfCheck) note('self-check: proof block in PR body not required');
 }
