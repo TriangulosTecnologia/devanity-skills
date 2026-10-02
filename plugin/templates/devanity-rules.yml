@@ -11,6 +11,9 @@ name: devanity-rules
 
 on:
   pull_request:
+    # `edited`: a `verifier-change:` or `reference-change:` line added to the body after a failure
+    # counts on the next run; a re-run of an old run reuses the old body.
+    types: [opened, synchronize, reopened, edited]
 
 jobs:
   rules:

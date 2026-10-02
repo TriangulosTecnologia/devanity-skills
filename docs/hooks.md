@@ -225,7 +225,7 @@ node plugin/scripts/devanity-rules-ci.mjs [--base <ref>] [--pr-body-file <path>]
 
 ### Wiring it in a consumer repository
 
-Copy `plugin/templates/devanity-rules.yml` (what `/devanity init` proposes) into your `.github/workflows/`, and pin `DEVANITY_REF` to a full commit sha (no release tag exists yet). The job checks out with `fetch-depth: 0` (the merge base must exist), sets up Node 22, clones the plugin into `$RUNNER_TEMP/devanity`, and runs the script with `--base origin/<base branch>`; the PR body comes from the event payload.
+Copy `plugin/templates/devanity-rules.yml` (what `/devanity init` proposes) into your `.github/workflows/`, and pin `DEVANITY_REF` to a full commit sha (no release tag exists yet). The job runs on `opened`, `synchronize`, `reopened` and `edited` (a declaration line added to the body after a failure counts on the next run), checks out with `fetch-depth: 0` (the merge base must exist), sets up Node 22, clones the plugin into `$RUNNER_TEMP/devanity`, and runs the script with `--base origin/<base branch>`; the PR body comes from the event payload.
 
 This repository's own rules (`devanity.rules.json`) are its map: `plugin/hooks/**`, `plugin/templates/**`, `scripts/**` and both `.claude-plugin/` directories high-risk (they run in every user's session, gate CI, or publish the plugin); the skill, the kernel, the agents and the harness normal, each with the check that validates it; `docs/**`, `evals/results/**` and `README.md` trivial. No instruction file is trivial: the loader rejects a `trivial` glob that covers one (`CLAUDE.md`, `AGENTS.md`, `.claude/**`, skills, agents).
 

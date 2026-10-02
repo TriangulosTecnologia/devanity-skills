@@ -106,17 +106,18 @@ function fromRev(base) {
   return mb.ok && mb.out ? mb.out : base;
 }
 
-// [{path, added}] between the merge base of `base` and HEAD.
+// [{path, added, deleted}] between the merge base of `base` and HEAD. `-z` keeps every path as its
+// bytes (without it git C-quotes a non-ASCII name); a rename is `added\tdeleted\t` then the old and
+// the new path as their own records, and the new path is the one touched.
 function changedFiles(base) {
-  const from = fromRev(base);
-  const r = git('diff', '--numstat', '-M', from, 'HEAD');
-  if (!r.ok) { fail(`git diff failed: ${r.err}`); return []; }
+  const r = spawnSync('git', ['diff', '--numstat', '-z', '-M', fromRev(base), 'HEAD'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  if (r.status !== 0) { fail(`git diff failed: ${(r.stderr || '').trim()}`); return []; }
+  const records = (r.stdout || '').split('\0');
   const files = [];
-  for (const line of r.out.split('\n')) {
-    if (!line.trim()) continue;
-    const [added, deleted, rawPath] = line.split('\t');
+  for (let i = 0; i < records.length; i++) {
+    const [added, deleted, rawPath] = records[i].split('\t');
     if (rawPath === undefined) continue;
-    const path = rawPath.includes(' => ') ? rawPath.replace(/\{?([^{]*) => ([^}]*)\}?/, '$2').replace(/\/\//g, '/') : rawPath;
+    const path = rawPath === '' ? records[(i += 2)] : rawPath;
     files.push({ path, added: added === '-' ? 0 : parseInt(added, 10) || 0, deleted: deleted === '-' ? 0 : parseInt(deleted, 10) || 0 });
   }
   return files;

@@ -438,6 +438,25 @@ describe('rules CI', () => {
     assert.equal(r.code, 0, r.out); assert.doesNotMatch(r.out, /could have measured/, 'a changed test is an oracle the claim can rest on');
   });
 
+  test('a changed path git would quote (non-ASCII, a rename into one) is the real path: its high-risk check runs', () => {
+    for (const change of [(d) => write(d, 'billing/saída.js', '1\n'), (d) => git(d, 'mv', 'billing/charge.js', 'billing/cobrança.js')]) {
+      const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+      write(d, 'devanity.rules.json', JSON.stringify({ version: 1, paths: { 'billing/**': { tier: 'high-risk', check: 'exit 3' } } }));
+      write(d, 'billing/charge.js', 'module.exports = 1;\n');
+      commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature'); change(d); commitAll(d, 'change');
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 1, r.out); assert.match(r.out, /check failed: exit 3/);
+      assert.match(r.out, /billing\/(saída|cobrança)\.js: tier high-risk/, 'the touched list names the path itself, not its quoted form');
+    }
+  });
+
+  test('the workflow template re-runs when the PR body is edited, so a declaration line added after a failure counts', () => {
+    const yml = readFileSync(join(root, 'plugin', 'templates', 'devanity-rules.yml'), 'utf8');
+    assert.match(yml, /^\s*pull_request:\s*\n(?:\s*#.*\n)*\s*types:\s*\[([^\]]*)\]/m);
+    const types = /^\s*pull_request:\s*\n(?:\s*#.*\n)*\s*types:\s*\[([^\]]*)\]/m.exec(yml)[1].split(',').map((t) => t.trim());
+    for (const t of ['opened', 'synchronize', 'reopened', 'edited']) assert.ok(types.includes(t), `${t} missing from ${types}`);
+  });
+
   test('the old script path still runs, for a workflow copied before the script moved into the plugin', () => {
     const d = seed({ rules: { version: 1, paths: { 'docs/**': { tier: 'trivial' } } }, changes: { 'docs/a.md': 'b\n' } });
     const r = spawnSync(process.execPath, [join(root, 'scripts', 'devanity-rules-ci.mjs'), '--root', d, '--base', 'main'], { cwd: d, encoding: 'utf8', env: { ...process.env, GITHUB_EVENT_PATH: '', NODE_TEST_CONTEXT: '' } });
