@@ -3,7 +3,7 @@
 #
 # What it does on every pull request: validates devanity.rules.json, checks the per-path delta
 # budgets of the diff, runs the `check` of every touched high-risk path, fails a diff that removes a
-# path or package script an always-loaded instruction file names, and requires a `devanity-proof:` block in the
+# path or package script an always-loaded or path-scoped instruction file names, and requires a `devanity-proof:` block in the
 # PR body when the diff touches a normal or high-risk path. It binds once it is a required status check.
 # The devanity repository dogfoods the same script in --self-check mode from its validate.yml.
 

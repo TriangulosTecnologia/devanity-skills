@@ -242,9 +242,11 @@ export function compare(before, after, renamed = new Map(), ignored = () => new 
 // The subset of paths git ignores. A batch git refuses (exit 128) is asked path by path, so one
 // unanswerable path never cancels the filter for the rest.
 export const gitIgnored = (root) => (paths) => {
-  const ask = (list) => spawnSync('git', ['check-ignore', '--stdin'], { cwd: root, input: list.join('\n'), encoding: 'utf8' });
+  // -z both ways: without it git quotes a name with non-ASCII bytes, `"` or `\`, which then
+  // never matches the raw path asked.
+  const ask = (list) => spawnSync('git', ['check-ignore', '-z', '--stdin'], { cwd: root, input: list.join('\0'), encoding: 'utf8' });
   const r = ask(paths);
-  const lines = (x) => (x.stdout || '').split('\n').filter(Boolean);
+  const lines = (x) => (x.stdout || '').split('\0').filter(Boolean);
   return new Set(r.status === 0 || r.status === 1 ? lines(r) : paths.flatMap((p) => lines(ask([p]))));
 };
 
