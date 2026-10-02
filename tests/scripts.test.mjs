@@ -166,3 +166,12 @@ test('surfaces: with no package.json there is nothing to check a script against,
   commit(d, { 'AGENTS.md': 'Run `npm run build`.\n' }, 'one');
   assert.deepEqual(JSON.parse(run(SURFACES, ['--json'], { cwd: d }).out).unresolved, []);
 });
+
+test('surfaces: run through a symlinked path it still reports (an install path may hold a symlink)', () => {
+  const d = join(temp, `r${++n}`); mkdirSync(d); git(d, 'init', '-q');
+  commit(d, { 'AGENTS.md': 'See `src/gone.js`.\n', 'src/a.js': '1\n' }, 'one');
+  const link = join(temp, `scripts-link${n}`); symlinkSync(dirname(SURFACES), link);
+  const r = run(join(link, 'surfaces.mjs'), ['--json'], { cwd: d });
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(JSON.parse(r.out).unresolved.map((u) => u.target), ['src/gone.js']);
+});

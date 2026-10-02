@@ -26,7 +26,7 @@
 // resolve against the union of every package.json, so one removed from a workspace that another
 // still defines is not a break. Node >= 18, no dependencies.
 
-import { readFileSync, readlinkSync } from 'node:fs';
+import { readFileSync, readlinkSync, realpathSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { posix, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,8 +37,9 @@ const HOST = /(^|\/)(CLAUDE|AGENTS|GEMINI)\.md$/;
 const skillDirs = (files) => files.filter((f) => SKILL.test(f)).map((f) => posix.dirname(f)).filter((d) => d !== '.');
 const inSkill = (path, skills) => skills.some((d) => path.startsWith(`${d}/`));
 
-// What an agent reads as instructions: the Deep baseline's list (reference/baseline.md), skill
-// trees included (the files a SKILL.md sits beside are what it references).
+// What an agent reads as instructions: the Deep baseline's list (reference/baseline.md) but
+// `.devin/rules/**`, whose loading rule is not documented, with skill trees included (the files a
+// SKILL.md sits beside are what it references).
 function isSurface(path, skills) {
   if (HOST.test(path) || SKILL.test(path)) return true;
   if (/^(\.cursorrules|\.windsurfrules|\.github\/copilot-instructions\.md)$/.test(path)) return true;
@@ -271,7 +272,9 @@ function inventory(root) {
   return { surfaces: surfaces.map(({ text, ...s }) => s), totals, unresolved };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+// Run as a script, also through a symlinked path: node resolves the module to its real path.
+const invoked = () => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch (e) { return false; } };
+if (process.argv[1] && invoked()) {
   const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' });
   if (top.status !== 0) { process.stderr.write('surfaces: not a git repository\n'); process.exit(1); }
   const r = inventory(top.stdout.trim());
