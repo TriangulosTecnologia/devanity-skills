@@ -303,6 +303,9 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       'grep -rn ssh scripts/ deploy',
       'pytest -k eval deploy',
       "cat > x.sh <<'EOF'\ngit push --force\nEOF\nbash -n x.sh",
+      'echo "git push --force is banned" && which bash',
+      'grep -rln "git push --force" . | head; type zsh',
+      'man bash; echo "pnpm deploy:vm"',
     ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
   });
 
@@ -333,6 +336,12 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ['bash <(echo "git push --force")', 'merge'],
       ...['sudo ./deploy.sh', 'FOO=1 ./deploy.sh', 'env FOO=1 ./deploy.sh', 'time ./deploy.sh', 'nohup ./deploy.sh', 'nice -n 5 ./deploy.sh', 'timeout 60 ./deploy.sh', '"./deploy.sh"'].map((cmd) => [cmd, 'deploy']),
       ['"git" push --force', 'merge'],
+      ['$(pwd)/deploy.sh prod', 'deploy'],
+      ['`pwd`/deploy.sh', 'deploy'],
+      ...['stdbuf -oL bash x.sh', 'setsid bash x.sh', 'flock /tmp/l bash x.sh', 'echo x.sh | xargs bash', 'cat x.sh | busybox sh', 'cd scripts && bash x.sh', 'mv x.sh d/ && bash d/x.sh']
+        .map((run) => [`cat > ./scripts/x.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
+      ...['trap "git push --force" EXIT', 'echo "git push --force" | at now', 'env -S "git push --force"', 'su -c "git push --force"', 'echo "git push --force" | su -c bash', 'git rebase -x "git push --force" main']
+        .map((cmd) => [cmd, 'merge']),
     ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
     for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"']) {
       assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), 'billing/x.py');
@@ -350,10 +359,13 @@ describe('guard: the shell reader stays inside the hook budget', () => {
       ["cat > a.sh <<'E'\nx\nE\n".repeat(4000) + 'git push --force', 'merge'],
       ['x <<< a '.repeat(20000) + '; git push --force origin main', 'merge'],
       ['cat <<E '.repeat(20000) + '\n' + 'E\n'.repeat(20000) + 'git push', 'commit'],
-      ['git' + ' --git-dir=a'.repeat(40) + ' push', 'commit'],
-      ['git' + ' -c'.repeat(60) + ' push', 'commit'],
+      ['git' + ' --git-dir=a'.repeat(12) + ' push', 'commit'],
+      ['git' + ' -c'.repeat(24) + ' push', 'commit'],
+      ['git' + ' --git-dir=a'.repeat(40) + ' push', null],   // past 16 global options: no pattern rescans the run
       ['git push x '.repeat(16000), 'commit'],
       ['make a '.repeat(100000), null],
+      ['git' + ' -git'.repeat(20000), null],
+      [' -c git'.repeat(20000), null],
     ]) {
       const started = Date.now();
       assert.equal(rules.commandAuthority(loaded, cmd), need);
