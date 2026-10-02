@@ -19,8 +19,8 @@
 //    declared check/tier/test glob, together with code needs a `verifier-change:` line in the body;
 // 6. instruction references (surfaces.mjs): a diff that removes a path or package script an
 //    always-loaded or path-scoped instruction file named at the base, on a line the diff left as it
-//    was, fails (in a skill, or on a rewritten line, it is reported); a reference the diff adds
-//    that does not resolve is reported. A proof that
+//    was, fails (loaded on demand, on a rewritten line, or declared by a `reference-change:` line
+//    in the PR body, it is reported); a reference the diff adds that does not resolve is reported. A proof that
 //    says `failed_before: yes` on a diff with no test and no declared check is reported, never failed;
 // 7. --self-check: the dogfood mode for the plugin repository itself: validates its rules and runs
 //    steps 2–6 on HEAD~1..HEAD (the checks execute) without requiring a PR body (a shallow clone
@@ -198,11 +198,15 @@ if (base && rulesMod && !loaded.errors.length) {
   const before = snapshot(fromRev(base));
   const after = snapshot('HEAD');
   const refs = compare(before, after, renames(fromRev(base)), gitIgnored(root));
+  // A `reference-change: <why>` line in the PR body declares the breaks for review, as
+  // `verifier-change:` does for a verifier: a residual false failure costs one visible line.
+  const declaredRefs = (() => { const b = selfCheck ? null : prBody(); return b !== null && /^\s*reference-change\s*:\s*\S/m.test(b); })();
   for (const b of refs.broken) {
     const what = `${b.path}:${b.line} names \`${b.target}\`, which resolved before this diff and does not now`;
-    if (b.load === 'on-demand') note(`${what} (a skill, loaded on demand: reported, not failed)`);
+    if (b.load === 'on-demand') note(`${what} (loaded on demand: reported, not failed)`);
     else if (!b.stale) note(`${what} (its line was rewritten in this diff: the author's statement, reported, not failed)`);
-    else fail(`${what}: point it at what replaced it, or remove it`);
+    else if (declaredRefs) note(`${what} (declared by reference-change in the PR body)`);
+    else fail(`${what}: point it at what replaced it, remove it, or declare it with a \`reference-change: <why>\` line in the PR body`);
   }
   for (const a of refs.added) note(`${a.path}:${a.line} names \`${a.target}\`, which does not exist (a reference this diff adds: reported, not failed)`);
 

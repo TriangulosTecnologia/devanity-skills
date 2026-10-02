@@ -57,8 +57,10 @@ function loadClass(path, text, skills) {
   if (SKILL.test(path) || inSkill(path, skills) || /(^|\/)\.(claude\/(skills|agents)|agents\/skills)\//.test(path)) return 'on-demand';
   const fm = frontmatter(text);
   if (/(^|\/)\.claude\/rules\//.test(path)) return /^paths\s*:/m.test(fm) ? 'scoped' : 'always';
-  if (/(^|\/)\.github\/instructions\//.test(path)) return /^applyTo\s*:\s*["']?\*\*["']?\s*$/m.test(fm) ? 'always' : 'scoped';
-  if (/(^|\/)\.cursor\/rules\//.test(path)) return /^alwaysApply\s*:\s*true\b/m.test(fm) ? 'always' : 'scoped';
+  // Copilot applies an instructions file by `applyTo`, and none without it; Cursor applies a rule
+  // always, by `globs`, or only when requested.
+  if (/(^|\/)\.github\/instructions\//.test(path)) return /^applyTo\s*:\s*["']?\*\*["']?\s*$/m.test(fm) ? 'always' : /^applyTo\s*:\s*\S/m.test(fm) ? 'scoped' : 'on-demand';
+  if (/(^|\/)\.cursor\/rules\//.test(path)) return /^alwaysApply\s*:\s*true\b/m.test(fm) ? 'always' : /^globs\s*:\s*\S/m.test(fm) ? 'scoped' : 'on-demand';
   return 'always';   // .cursorrules, .windsurfrules, .github/copilot-instructions.md
 }
 
@@ -67,7 +69,7 @@ function normalizePath(raw, link) {
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t) || /^(mailto|tel|data|javascript):/i.test(t)) return null;   // a URL
   t = t.replace(link ? /[#?].*$/ : /#.*$/, '');
   if (link) { try { t = decodeURIComponent(t); } catch (e) { /* not percent-encoded */ } }
-  t = t.replace(/^\.\//, '').replace(/:\d+(?:-\d+)?$/, '').replace(/\/+$/, '');
+  t = t.replace(/^\.\//, '').replace(/(?::\d+(?:-\d+)?)+$/, '').replace(/\/+$/, '');   // `a.ts:12`, `a.ts:12:5`, `a.ts:3-9`
   // A link target may hold spaces (`<docs/My Guide.md>`); a code-span word cannot.
   if (!t || t.startsWith('/') || t.startsWith('-') || (!link && /\s/.test(t)) || /[*?{}<>|=,;'"`!$~^\\]/.test(t)) return null;
   if (/(^|\/)\.{3,}(\/|$)/.test(t) || /^\.\.(\/\.\.)*$/.test(t)) return null;   // a placeholder (`src/.../x.ts`) or only `..`
@@ -85,13 +87,13 @@ function scriptOf(pm, rest) {
     else if (!ws[i].includes('=') && VALUED[pm].includes(ws[i])) i++;
   }
   // `bun test` is bun's own runner, not the package script.
-  const name = (words[0] === 'run' ? words[1] : words[0] === 'test' && pm !== 'bun' ? 'test' : '') || '';
-  const clean = name.replace(/[.,:;!?]+$/, '');
+  const word = (w) => (w || '').replace(/[.,:;!?]+$/, '');
+  const clean = word(words[0]) === 'run' ? word(words[1]) : word(words[0]) === 'test' && pm !== 'bun' ? 'test' : '';
   return /^[A-Za-z0-9][\w:.-]*$/.test(clean) ? clean : null;
 }
 
 // One command per match: it ends at the next package manager, a backtick, a separator or a comma.
-const PM = /\b(npm|pnpm|yarn|bun)\b([^`\n;|&,()]*?)(?=\b(?:npm|pnpm|yarn|bun)\b|[`;|&,()]|$)/g;
+const PM = /(?<![\w./-])(npm|pnpm|yarn|bun)(?![\w./-])([^`\n;|&,()]*?)(?=(?<![\w./-])(?:npm|pnpm|yarn|bun)(?![\w./-])|[`;|&,()]|$)/g;
 
 // [{kind: 'path'|'script', target, line, text, link, bare}] in source order; `text` is the line.
 function references(text) {
@@ -145,7 +147,7 @@ function real(p, links, hops = 0) {
   for (let i = 1; i <= segs.length; i++) {
     const head = segs.slice(0, i).join('/');
     if (links.has(head) && links.get(head).startsWith('/')) return null;
-    if (links.has(head)) return real(posix.normalize(posix.join(posix.dirname(head), links.get(head), ...segs.slice(i))), links, hops + 1);
+    if (links.has(head)) return real(posix.normalize(posix.join(posix.dirname(head), links.get(head), ...segs.slice(i))).replace(/\/+$/, ''), links, hops + 1);
   }
   return p;
 }
@@ -196,7 +198,8 @@ const once = (refs) => { const seen = new Set(); return refs.filter((r) => !seen
 // absent). Each reading is asked with its symlinks resolved, as git can only answer for real paths;
 // `ignored(paths)` answers the subset git ignores.
 function dropIgnored(refs, ignored, tree) {
-  const as = (r) => (r.kind === 'path' ? candidates(r, r.path).map((p) => real(p, tree.links)).filter((p) => p !== null) : []);
+  // A directory pattern (`dist/`) matches only a path git is told is a directory: ask both forms.
+  const as = (r) => (r.kind === 'path' ? candidates(r, r.path).map((p) => real(p, tree.links)).filter((p) => p !== null).flatMap((p) => [p, `${p}/`]) : []);
   const hit = ignored(refs.flatMap(as));
   return refs.filter((r) => !as(r).some((p) => hit.has(p)));
 }
@@ -222,7 +225,11 @@ export function compare(before, after, renamed = new Map(), ignored = () => new 
     for (const ref of once(references(text))) {
       if (!(isClaim(ref, was, [tb]) || isClaim(ref, path, [ta])) || resolves(ref, path, ta)) continue;
       if (!prior.has(key(ref))) out.added.push({ path, ...ref });
-      else if (resolves(ref, was, tb)) out.broken.push({ path, load: loadClass(path, text, skills), stale: kept.has(ref.text), ...ref });
+      else if (resolves(ref, was, tb)) {
+        // Stale when any line naming it is one the diff left as it was; report that line.
+        const at = references(text).find((r) => key(r) === key(ref) && kept.has(r.text));
+        out.broken.push({ path, load: loadClass(path, text, skills), stale: Boolean(at), ...ref, ...(at ? { line: at.line, text: at.text } : {}) });
+      }
     }
   }
   out.broken = dropIgnored(out.broken, ignored, ta);
