@@ -25,10 +25,11 @@ const DEFAULT_TESTS = ['test_*', '*_test.*', '*.test.*', '*.spec.*', 'tests/**']
 const ARG = '(?:"[^"]*"|\'[^\']*\'|\\S+)';
 const GIT = `\\bgit(?:\\s+-[Cc]\\s+${ARG}|\\s+--(?:git-dir|work-tree|namespace|exec-path|config-env)(?:=|\\s+)${ARG}|\\s+--?[\\w-]+(?:=${ARG})?)*\\s+`;
 const BUILTIN_COMMANDS = {
-  [`${GIT}commit\\b`]: 'commit',
-  [`${GIT}push\\b`]: 'commit',
-  [`${GIT}push\\b[^;&|]*\\s(?:--force(?:-with-lease)?|-[a-zA-Z]*f[a-zA-Z]*|\\+\\S+)(?=\\s|$)`]: 'merge',   // a forced push rewrites shared history (-f, -fu, +ref)
-  [`${GIT}merge\\b`]: 'merge',
+  // A subcommand ends where its name does: `git merge-base`, `merge-tree` and `commit-graph` only read.
+  [`${GIT}commit(?![\\w-])`]: 'commit',
+  [`${GIT}push(?![\\w-])`]: 'commit',
+  [`${GIT}push(?![\\w-])[^;&|]*\\s(?:--force(?:-with-lease)?|-[a-zA-Z]*f[a-zA-Z]*|\\+\\S+)(?=\\s|$)`]: 'merge',   // a forced push rewrites shared history (-f, -fu, +ref)
+  [`${GIT}merge(?![\\w-])`]: 'merge',
   '\\bgh\\s+pr\\s+merge\\b': 'merge',
   'terraform\\s+apply': 'deploy',
   'kubectl\\s+(apply|delete)': 'deploy',
@@ -183,13 +184,196 @@ function isTestPath(rules, rel) {
   return rules.tests.some((t) => t.re.test(rel) || (!t.glob.includes('/') && t.re.test(base)));
 }
 
-// The authority a Bash command needs (highest matching pattern), or null when none matches.
+// ---- what a Bash command runs -------------------------------------------------------------------
+// The simple commands a shell runs for `src`, in order, each {op, words, writes, shown}: a word's
+// `value` is its text without quotes, `writes` the targets of its `>` redirects, and `shown` the
+// command with each quoted part as "" (a quoted argument is data, not a command word). Heredoc
+// bodies, here-strings and comments are data, unless a shell or ssh in the same pipeline reads
+// them, or the command runs the file a heredoc was written to (`cat > x.sh <<EOF … bash x.sh`);
+// `$( )`, backticks, `<( )`, `>( )`, `sh -c <script>`, `eval` and ssh's remote command run. Lenient:
+// an unterminated quote or substitution ends with the text (bash would run none of it).
+const RUNS_SCRIPT = /^(?:(?:ba|z|da|k)?sh|ssh)$/;
+const SSH_VALUED = /^-[bcDEeFIiJLlmOopQRSWw]$/;
+// Words that open or close a compound command: the command proper is the word after them.
+const RESERVED = new Set(['if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'while', 'until', 'for', 'case', 'esac', '!', '{', '}']);
+const baseName = (w) => w.value.split('/').pop();
+
+function shellCommands(src) {
+  const out = [];
+  out.scripts = [];   // heredocs written to a file: {targets, body}
+  parseShell(String(src || ''), 0, false, out);
+  const bare = (p) => String(p || '').replace(/^\.\//, '');
+  while (out.scripts.length) {
+    const { targets, body } = out.scripts.shift();
+    if (out.some((c) => targets.some((t) => bare(t) === bare(scriptRun(c))))) parseShell(body, 0, false, out);
+  }
+  delete out.scripts;
+  return out;
+}
+
+// Reads `s` from `i` into `out`; with `inner`, stops after the `)` that closes a substitution.
+// Returns the index where it stopped.
+function parseShell(s, i, inner, out) {
+  let cmd = null; let word = null; let redirect = null; let op = ';'; let depth = 0;
+  let pipeline = []; const heredocs = []; const feeds = [];
+  const w = () => (word = word || { value: '', shown: '', quoted: false });
+  const startCmd = () => { if (!cmd) { cmd = { op, words: [], writes: [] }; pipeline.push(cmd); } return cmd; };
+  const endWord = () => {
+    if (!word) return;
+    const r = redirect; redirect = null;
+    if (!r) { if (word.quoted || (cmd && cmd.words.length) || !RESERVED.has(word.value)) startCmd().words.push(word); }
+    else if (r === 'write') startCmd().writes.push(word.value);
+    else if (r === 'heredoc' || r === 'heredoc-') heredocs.push({ delim: word.value, strip: r === 'heredoc-', expand: !word.quoted, pipe: pipeline, cmd: startCmd() });
+    else if (r === 'herestring') feeds.push({ body: word.value, expand: false, pipe: pipeline });
+    word = null;
+  };
+  const endCmd = (next) => {
+    endWord(); redirect = null;
+    if (cmd && (cmd.words.length || cmd.writes.length)) {
+      cmd.shown = [...cmd.words.map((x) => x.shown), ...cmd.writes.map((t) => `> ${t}`)].join(' ');
+      out.push(cmd);
+      runsInside(cmd, out);
+    }
+    cmd = null; op = next;
+    if (next !== '|' && next !== '|&') pipeline = [];
+  };
+  const resolveFeeds = () => {
+    for (const f of feeds.splice(0)) {
+      if (f.pipe.some((c) => c.words.some((x) => !x.quoted && RUNS_SCRIPT.test(baseName(x))))) parseShell(f.body, 0, false, out);
+      else {
+        if (f.expand) substitutionsIn(f.body, out);
+        if (f.cmd && f.cmd.writes.length) out.scripts.push({ targets: f.cmd.writes, body: f.body });
+      }
+    }
+  };
+  // `$( )`, `<( )` and `>( )` from j (at the `(`): the commands inside, and the index after.
+  const sub = (j) => parseShell(s, j + 1, true, out);
+  // A double-quoted string from j (at the `"`): its text into the word, and the index after.
+  const dquote = (j) => {
+    const x = w(); x.quoted = true; x.shown += '""';
+    for (j++; j < s.length && s[j] !== '"'; j++) {
+      if (s[j] === '\\') { j++; if (s[j] !== '\n') x.value += '$`"\\'.includes(s[j]) ? s[j] : `\\${s[j] || ''}`; }
+      else if (s[j] === '$' && s[j + 1] === '(') { const k = sub(j + 1); x.value += s.slice(j, k); j = k - 1; }
+      else if (s[j] === '`') { const k = backtick(j); x.value += s.slice(j, k); j = k - 1; }
+      else x.value += s[j];
+    }
+    return j + 1;
+  };
+  const backtick = (j) => {
+    let k = j + 1;
+    while (k < s.length && s[k] !== '`') k += s[k] === '\\' ? 2 : 1;
+    parseShell(s.slice(j + 1, k).replace(/\\(.)/g, '$1'), 0, false, out);
+    return k + 1;
+  };
+
+  while (i < s.length) {
+    const c = s[i];
+    if (c === ' ' || c === '\t') { endWord(); i++; }
+    else if (c === '\n') {
+      endCmd(';'); i++;
+      for (const h of heredocs.splice(0)) {
+        const lines = [];
+        while (i < s.length) {
+          const e = s.indexOf('\n', i); const line = s.slice(i, e < 0 ? s.length : e);
+          i = e < 0 ? s.length : e + 1;
+          if ((h.strip ? line.replace(/^\t+/, '') : line) === h.delim) break;
+          lines.push(line);
+        }
+        feeds.push({ body: lines.join('\n'), expand: h.expand, pipe: h.pipe, cmd: h.cmd });
+      }
+      resolveFeeds();
+    } else if (c === '#' && !word) { const e = s.indexOf('\n', i); i = e < 0 ? s.length : e; }
+    else if (c === ';') { endCmd(';'); i += s[i + 1] === ';' ? 2 : 1; }
+    else if (c === '&' && s[i + 1] === '&') { endCmd('&&'); i += 2; }
+    else if (c === '|' && s[i + 1] === '|') { endCmd('||'); i += 2; }
+    else if (c === '|') { const both = s[i + 1] === '&'; endCmd(both ? '|&' : '|'); i += both ? 2 : 1; }
+    else if (c === '&' && s[i + 1] !== '>') { endCmd('&'); i++; }
+    else if (c === '(' && !word) { endCmd(';'); depth++; i++; }
+    else if (c === ')') {
+      if (depth) { endCmd(';'); depth--; i++; }
+      else if (inner) { i++; break; }
+      else { endCmd(';'); i++; }
+    } else if ((c === '<' || c === '>') && s[i + 1] === '(') { const k = sub(i + 1); w().value += s.slice(i, k); w().shown += '$()'; i = k; }
+    else if (c === '<' || c === '>' || (c === '&' && s[i + 1] === '>') || (/\d/.test(c) && !word && /^\d+[<>]/.test(s.slice(i, i + 12)))) {
+      endWord();
+      const m = /^(?:\d*|&)(<<<|<<-|<<|<&|<|>>|>\||>&|>|&>>|&>)/.exec(s.slice(i));
+      const tok = m[1]; i += m[0].length;
+      if (tok === '<<<') redirect = 'herestring';
+      else if (tok === '<<' || tok === '<<-') redirect = tok === '<<' ? 'heredoc' : 'heredoc-';
+      else if (tok === '<' || tok === '<&') redirect = 'in';
+      else if (tok === '>&' && /^[\d-]/.test(s[i] || '')) { i++; while (/\d/.test(s[i] || '')) i++; }   // a descriptor copy writes no file
+      else redirect = 'write';
+    } else if (c === "'") {
+      const e = s.indexOf("'", i + 1); const end = e < 0 ? s.length : e;
+      const x = w(); x.value += s.slice(i + 1, end); x.shown += '""'; x.quoted = true; i = end + 1;
+    } else if (c === '$' && s[i + 1] === "'") {
+      let k = i + 2; while (k < s.length && s[k] !== "'") k += s[k] === '\\' ? 2 : 1;
+      const x = w(); x.value += s.slice(i + 2, k); x.shown += '""'; x.quoted = true; i = k + 1;
+    } else if (c === '"') i = dquote(i);
+    else if (c === '$' && s[i + 1] === '(') { const k = sub(i + 1); w().value += s.slice(i, k); w().shown += '$()'; i = k; }
+    else if (c === '$' && s[i + 1] === '{') { const e = s.indexOf('}', i); const end = e < 0 ? s.length : e + 1; w().value += s.slice(i, end); w().shown += s.slice(i, end); i = end; }
+    else if (c === '`') { const k = backtick(i); w().value += s.slice(i, k); w().shown += '$()'; i = k; }
+    else if (c === '\\') {
+      if (s[i + 1] !== '\n') { const x = w(); x.value += s[i + 1] || ''; x.shown += '""'; x.quoted = true; }
+      i += 2;
+    } else { const x = w(); x.value += c; x.shown += c; i++; }
+  }
+  endCmd(';');
+  for (const h of heredocs.splice(0)) feeds.push({ body: '', expand: false, pipe: h.pipe });
+  resolveFeeds();
+  return i;
+}
+
+// The file a command runs as a script: its command word, or the first operand of a shell, `source`
+// or `.` (`git add x.sh` names the file, it does not run it).
+function scriptRun(cmd) {
+  const v = cmd.words.map((x) => x.value);
+  let k = 0;
+  while (k < v.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(v[k]) || v[k] === 'sudo' || v[k] === 'env')) k++;
+  if (!/^(?:(?:ba|z|da|k)?sh|source|\.)$/.test((v[k] || '').split('/').pop())) return v[k];
+  return v.slice(k + 1).find((a) => !a.startsWith('-'));
+}
+
+// What a finished command runs besides itself: `sh -c <script>`, `eval <args>`, ssh's remote command.
+function runsInside(cmd, out) {
+  const v = cmd.words.map((x) => x.value);
+  for (let j = 0; j < v.length; j++) {
+    if (cmd.words[j].quoted) continue;   // `grep "bash" x` names a shell, it does not start one
+    const name = baseName(cmd.words[j]);
+    if (name === 'eval') { parseShell(v.slice(j + 1).join(' '), 0, false, out); return; }
+    if (name === 'ssh') {
+      let k = j + 1;
+      while (k < v.length && v[k].startsWith('-')) k += SSH_VALUED.test(v[k]) ? 2 : 1;
+      if (k + 1 < v.length) parseShell(v.slice(k + 1).join(' '), 0, false, out);
+      return;
+    }
+    if (RUNS_SCRIPT.test(name)) {
+      const c = v.findIndex((a, k) => k > j && /^-[A-Za-z]*c[A-Za-z]*$/.test(a));   // -c, or -lc, -ec, …
+      if (c >= 0 && c + 1 < v.length) parseShell(v[c + 1], 0, false, out);
+      return;
+    }
+  }
+}
+
+// `$( )` and backticks inside an unquoted heredoc body: the shell expands them, so they run.
+function substitutionsIn(body, out) {
+  for (let j = 0; j < body.length; j++) {
+    if (body[j] === '\\') j++;
+    else if (body[j] === '$' && body[j + 1] === '(') j = parseShell(body, j + 2, true, out) - 1;
+    else if (body[j] === '`') { const e = body.indexOf('`', j + 1); const end = e < 0 ? body.length : e; parseShell(body.slice(j + 1, end), 0, false, out); j = end; }
+  }
+}
+
+// The command as the shell runs it, for the `commands` patterns: each simple command after the
+// operator that joins it to the one before.
+const commandText = (command) => shellCommands(command).map((c, i) => (i ? `${c.op} ${c.shown}` : c.shown)).join(' ');
+
+// The authority a Bash command needs (highest matching pattern), or null when none matches. The
+// patterns read what the shell runs, so text that is data (`grep "git push" docs`, a heredoc
+// written to a file, a comment) never matches.
 function commandAuthority(rules, command) {
   let need = null;
-  // A command word inside a quoted argument (`grep "git push" docs`) is data, not a command; the
-  // raw text still counts when a shell or eval will run the quoted string.
-  const raw = String(command || '');
-  const text = /\b(?:sh|bash|zsh|eval|xargs)\b/.test(raw) ? raw : raw.replace(/"(?:[^"\\]|\\.)*"|'[^']*'/g, '""');
+  const text = commandText(command);
   for (const [re, a] of Object.entries(rules.commands)) {
     let hit = false;
     try { hit = new RegExp(re).test(text); } catch (e) { hit = false; }
@@ -200,5 +384,5 @@ function commandAuthority(rules, command) {
 
 module.exports = {
   AUTHORITIES, AUTONOMY_AUTHORITIES, FILE, TIERS,
-  authorityRank, commandAuthority, globToRegExp, isTestPath, loadRules, parseRules, relPath, ruleFor, validate,
+  authorityRank, commandAuthority, globToRegExp, isTestPath, loadRules, parseRules, relPath, ruleFor, shellCommands, validate,
 };

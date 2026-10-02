@@ -5,8 +5,8 @@
 //
 //   (a) a file tool on a `high-risk` path with no human decision covering it in the ledger → block
 //   (b) a Bash command that writes into such a path (redirect, tee, sed -i, mv, cp, rm, git
-//       checkout --, git restore, truncate, dd of=, install) → same rule; heuristic, a floor,
-//       the reference CI job is the ceiling
+//       checkout --, git restore, truncate, dd of=, install) → same rule; read over what the shell
+//       runs (rules.shellCommands), still a heuristic: a floor, the reference CI job is the ceiling
 //   (c) a Bash command that needs more authority than the session holds → block
 //
 // Blocking form (Claude Code hooks reference, checked 2026-09-24 against 2.1.281): exit 2 blocks
@@ -70,24 +70,20 @@ function suggestId(rel) {
 
 const WRITERS = new Set(['tee', 'mv', 'cp', 'rm', 'truncate', 'install', 'dd', 'sed', 'git']);
 
-function unquote(tok) { return tok.replace(/^['"]|['"]$/g, ''); }
 function looksLikePath(tok) {
   if (!tok || tok.startsWith('-') || /^[a-z]+:\/\//i.test(tok) || tok === '/dev/null') return false;
   return tok.includes('/') || /\.[A-Za-z0-9]+$/.test(tok);
 }
 
-// Repository-relative paths a command may write to. Splits on `;`, `&&`, `||`, `|`, then reads
-// each simple command: redirect targets always count; for writer commands, every path-like
-// argument counts (sed only with -i; git only for checkout -- / restore; dd only of=).
+// Repository-relative paths a command may write to, over each simple command the shell runs
+// (rules.shellCommands: a heredoc body or a quoted argument is data, a later line or `$( )` runs):
+// redirect targets always count; for writer commands, every path-like argument counts (sed only
+// with -i; git only for checkout -- / restore; dd only of=).
 function writtenPaths(command) {
   const out = new Set();
-  const spaced = String(command || '').replace(/(\d?>>?)/g, ' $1 ');
-  for (const segment of spaced.split(/;|&&|\|\||\|/)) {
-    const toks = segment.trim().split(/\s+/).filter(Boolean).map(unquote);
-    if (!toks.length) continue;
-    for (let i = 0; i < toks.length; i++) {
-      if (/^\d?>>?$/.test(toks[i]) && toks[i + 1]) { out.add(toks[i + 1]); i++; }
-    }
+  for (const c of rules.shellCommands(command)) {
+    c.writes.forEach((t) => out.add(t));
+    const toks = c.words.map((w) => w.value);
     let k = 0;
     while (k < toks.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[k]) || toks[k] === 'sudo' || toks[k] === 'env')) k++;
     const cmd = toks[k];

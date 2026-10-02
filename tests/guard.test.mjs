@@ -287,6 +287,40 @@ describe('guard: confirming-gate fixes (phase V)', () => {
   });
 });
 
+describe('guard: what the shell runs, not what the text says (field report: 5 of 8 blocks were false)', () => {
+  test('heredoc bodies, comments, quoted text and look-alike subcommands are data: nothing to block', async () => {
+    const d = repo();
+    for (const cmd of [
+      "cat > docs/ops.md <<'EOF'\nAfter merge, run pnpm deploy:vm.\nEOF",
+      "cat > src/ci.yml <<'EOF'\n      - run: git push --force origin verified\nEOF",
+      'git fetch origin main && git merge-base origin/main HEAD',
+      'node -e "console.log(1)"   # never git push --force here',
+      'bash test/static.sh && grep -n "git push --force" src/x.py',
+      "git commit -m \"$(cat <<'EOF'\nci: deploy gate; don't git push --force\nEOF\n)\"",
+      "cat > docs/ops.md <<'EOF'\nRestore: cp src/x.py billing/x.py\necho hi > billing/x.py\nEOF",
+      'grep -n "=> billing/x.py" src/x.py',
+      "cat > docs/ops.md <<'EOF'\nRun pnpm deploy:vm.\nEOF\ngit add docs/ops.md && cat docs/ops.md",
+    ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
+  });
+
+  test('what the shell does run still counts: a later line, a substitution, a script fed to a shell or ssh', async () => {
+    const d = repo();
+    for (const [cmd, need] of [
+      ['cd src\n./deploy.sh prod', 'deploy'],
+      ['echo "$(git push --force origin main)"', 'merge'],
+      ["cat <<'EOF' | bash\ngit push --force origin main\nEOF", 'merge'],
+      ["ssh host <<'EOF'\n./deploy.sh\nEOF", 'deploy'],
+      ["bash -c 'npm run deploy'", 'deploy'],
+      ['bash -lc "pnpm deploy:vm"', 'deploy'],
+      ['if true; then ./deploy.sh; fi', 'deploy'],
+      ["cat > run.sh <<'EOF'\n./deploy.sh prod\nEOF\nbash run.sh", 'deploy'],
+    ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
+    for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"']) {
+      assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), 'billing/x.py');
+    }
+  });
+});
+
 describe('guard: enforcement by install origin (f) (g) (h)', () => {
   test('no rules file: everything is normal, nothing blocks, no event', async () => {
     const d = repo({ rules: null });
