@@ -306,6 +306,8 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       'echo "git push --force is banned" && which bash',
       'grep -rln "git push --force" . | head; type zsh',
       'man bash; echo "pnpm deploy:vm"',
+      'cp billing/x.py /tmp/x.bak',
+      'cp -p billing/x.py src/x.py',
     ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
   });
 
@@ -342,8 +344,11 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
         .map((run) => [`cat > ./scripts/x.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
       ...['trap "git push --force" EXIT', 'echo "git push --force" | at now', 'env -S "git push --force"', 'su -c "git push --force"', 'echo "git push --force" | su -c bash', 'git rebase -x "git push --force" main']
         .map((cmd) => [cmd, 'merge']),
+      ['command bash -c "git push --force origin main"', 'merge'],
+      ['echo "git push --force" | command bash', 'merge'],
+      ['xargs "bash" -c "git push --force"', 'merge'],
     ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
-    for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"']) {
+    for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"', 'cp src/x.py billing/x.py', 'cp -t billing/ src/x.py', 'install -m 644 src/x.py billing/x.py', 'mv billing/x.py src/x.py']) {
       assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), 'billing/x.py');
     }
   });
@@ -371,6 +376,16 @@ describe('guard: the shell reader stays inside the hook budget', () => {
       assert.equal(rules.commandAuthority(loaded, cmd), need);
       assert.ok(Date.now() - started < 1000, `${cmd.slice(0, 30)}…: ${Date.now() - started} ms`);
     }
+  });
+});
+
+describe('guard: a command naming many guarded paths', () => {
+  test('300 high-risk paths block in about the time of one: the ledger is located once per run', async () => {
+    const d = repo();
+    const started = Date.now();
+    const r = await run(GUARD, { input: bash(d, `rm ${Array.from({ length: 300 }, (_, k) => `billing/f${k}.py`).join(' ')}`), cwd: d, timeoutMs: 10000 });
+    assertBlocked(r, 'billing/f0.py', 'billing/f299.py');
+    assert.ok(Date.now() - started < 2000, `${Date.now() - started} ms`);
   });
 });
 

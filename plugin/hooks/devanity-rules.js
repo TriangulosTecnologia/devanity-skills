@@ -242,6 +242,7 @@ function commandAt(v) {
   let k = 0;
   for (;;) {
     while (k < v.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(v[k])) k++;
+    if (v[k] === 'command' && !/^-[vV]$/.test(v[k + 1] || '')) { k++; while (/^-p$/.test(v[k] || '')) k++; continue; }   // `command -v x` names x
     if (!PREFIXES.has(v[k])) return k;
     const [valued, operands] = PREFIXES.get(v[k]); k++;
     while (k < v.length && v[k].startsWith('-')) k += valued && valued.test(v[k]) ? 2 : 1;
@@ -278,7 +279,9 @@ function analyse(cmd) {
     || (name === 'git' && (rest.some((a) => /^(?:-x|--exec)(?:=|$)/.test(a)) || /^bisect run\b/.test(rest.slice(0, 2).join(' '))))) { cmd.interprets = true; return; }
   // a shell at the command word, or unquoted anywhere after it: whatever runs it (`xargs`, `stdbuf`,
   // `flock`, `docker exec -i c`, `busybox`), the shell runs its operand, its -c or its stdin
-  const j = SHELL.test(name) ? at : NAMERS.has(name) ? -1 : cmd.words.findIndex((x, k) => k > at && !x.quoted && SHELL.test(base(x.value)));
+  // (a quoted shell word counts only with its -c: `xargs "bash" -c …`)
+  const j = SHELL.test(name) ? at : NAMERS.has(name) ? -1
+    : cmd.words.findIndex((x, k) => k > at && SHELL.test(base(x.value)) && (!x.quoted || /^-[A-Za-z]*c[A-Za-z]*$/.test(v[k + 1] || '')));
   if (j < 0) return;
   const a = shellArgs(v, j);
   cmd.script = a.noexec ? null : a.operand;
@@ -289,7 +292,7 @@ function analyse(cmd) {
 // Reads `s` from `i` into `out`; with `inner`, stops after the `)` that closes a substitution.
 // Returns the index where it stopped.
 function parseShell(s, i, inner, out) {
-  if (!inner) out.work += s.length - i;   // a new text read (a `$( )` continues the one being read)
+  if (!inner) out.work += s.length - i + 64;   // a new text read, and its fixed cost (a `$( )` continues the one being read)
   if (out.depth >= MAX_DEPTH || out.work > out.budget) {
     out.push({ op: ';', words: [], at: 0, writes: [], reads: [], files: [], shown: '', interprets: true });   // dynamic: the raw text counts
     return s.length;
