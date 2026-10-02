@@ -68,9 +68,20 @@ function show(rev, path) {
   return r.status === 0 ? r.stdout : null;
 }
 
+// The files at a revision, how to read them, and the symlinks git records there (path → target).
 function snapshot(rev) {
-  const r = spawnSync('git', ['ls-tree', '-r', '-z', '--name-only', rev], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  return { files: (r.stdout || '').split('\0').filter(Boolean), read: (p) => show(rev, p) };
+  const r = spawnSync('git', ['ls-tree', '-r', '-z', rev], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const entries = (r.stdout || '').split('\0').filter(Boolean).map((l) => [l.slice(0, 6), l.slice(l.indexOf('\t') + 1)]);
+  const links = new Map(entries.filter(([mode]) => mode === '120000').map(([, p]) => [p, show(rev, p)]));
+  return { files: entries.map(([, p]) => p), read: (p) => show(rev, p), links };
+}
+
+// The diff's renames, new path → old path.
+function renames(from) {
+  const out = (spawnSync('git', ['diff', '--name-status', '-M', '-z', from, 'HEAD'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout || '').split('\0');
+  const map = new Map();
+  for (let i = 0; i < out.length; i++) if (/^R\d*$/.test(out[i])) { map.set(out[i + 2], out[i + 1]); i += 2; }
+  return map;
 }
 
 function resolveBase() {
@@ -178,10 +189,10 @@ if (base && rulesMod && !loaded.errors.length) {
   // a skill (loaded on demand, often vendored) is reported, since its examples name scripts and
   // paths of no repository in particular.
   const before = snapshot(fromRev(base));
-  const after = { ...snapshot('HEAD'), disk: root };   // HEAD is checked out: a symlinked directory resolves on disk
-  const refs = compare(before, after);
+  const after = snapshot('HEAD');
+  const refs = compare(before, after, renames(fromRev(base)));
   for (const b of refs.broken) {
-    const what = `${b.path}:${b.line} names \`${b.target}\`, which this diff removes`;
+    const what = `${b.path}:${b.line} names \`${b.target}\`, which resolved before this diff and does not now`;
     if (b.load === 'on-demand') note(`${what} (a skill, loaded on demand: reported, not failed)`);
     else fail(`${what}: point it at what replaced it, or remove it`);
   }

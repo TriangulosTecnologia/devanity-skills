@@ -6,47 +6,50 @@
 //
 //   node surfaces.mjs [--json]
 //
-// A reference is a claim a surface makes about this repository: a code span or a link naming a
-// path, or a package script it runs (`npm|pnpm|yarn|bun run <name>`, `<pm> test`). A code span is a
-// path only when it starts inside the repository (its first segment exists), so `origin/main` or an
-// example path of some other repository is not one; a bare file name (`ARCHITECTURE.md`) is one
-// only where it resolves, so a generic mention of a file the repository lacks is not; code spans
-// inside fenced blocks are examples.
-// A path resolves as a file, a directory, a module specifier without its extension, or, in a working
-// tree, anything on disk (so a symlinked directory counts); a gitignored path is expected to be
-// absent, and with no package.json there is nothing to check a script against. Node >= 18, no
-// dependencies.
+// A reference is a claim a surface makes about this repository: a path in a code span (also each
+// word of a command span), a link target (inline or reference-style), or a package script it runs
+// (`npm|pnpm|yarn|bun run <name>`, `<pm> test`). A code-span path counts only when it starts inside
+// the repository (its first segment exists), so `origin/main` or another repository's example path
+// is not one; a bare file name (`ARCHITECTURE.md`) counts only where it resolves; code spans inside
+// fenced blocks are examples, and scripts count wherever they appear. A path resolves as a file, a
+// directory, an extensionless module specifier, or through a symlink git records; a gitignored path
+// is expected to be absent; with no package.json there is nothing to check a script against.
+// Node >= 18, no dependencies.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { readFileSync, readlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { posix, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SKILL = /(^|\/)SKILL\.md$/;
+const HOST = /(^|\/)(CLAUDE|AGENTS|GEMINI)\.md$/;
 
 const skillDirs = (files) => files.filter((f) => SKILL.test(f)).map((f) => posix.dirname(f)).filter((d) => d !== '.');
+const inSkill = (path, skills) => skills.some((d) => path.startsWith(`${d}/`));
 
 // What an agent reads as instructions: the Deep baseline's list (reference/baseline.md), skill
 // trees included (the files a SKILL.md sits beside are what it references).
 function isSurface(path, skills) {
-  if (/(^|\/)(CLAUDE|AGENTS|GEMINI|SKILL)\.md$/.test(path)) return true;
+  if (HOST.test(path) || SKILL.test(path)) return true;
   if (/^(\.cursorrules|\.windsurfrules|\.github\/copilot-instructions\.md)$/.test(path)) return true;
   if (/(^|\/)\.(claude\/(rules|skills|agents)|github\/instructions|cursor\/rules|agents\/skills)\/.+\.mdc?$/.test(path)) return true;
-  return /\.md$/.test(path) && skills.some((d) => path.startsWith(`${d}/`));
+  return /\.md$/.test(path) && inSkill(path, skills);
 }
 
 export const surfacesOf = (files) => { const skills = skillDirs(files); return files.filter((f) => isSurface(f, skills)).sort(); };
 
 const frontmatter = (text) => /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] || '';
 
-// When the surface's bytes are paid: on every turn, only while working under a path, or when invoked.
+// When the surface's bytes are paid: on every turn, only while working under a path, or when
+// invoked. A host file (CLAUDE.md, AGENTS.md, GEMINI.md) loads by where it sits, even in a skill.
 function loadClass(path, text, skills) {
-  if (SKILL.test(path) || skills.some((d) => path.startsWith(`${d}/`)) || /(^|\/)\.(claude\/(skills|agents)|agents\/skills)\//.test(path)) return 'on-demand';
+  if (HOST.test(path)) return path.includes('/') ? 'scoped' : 'always';
+  if (SKILL.test(path) || inSkill(path, skills) || /(^|\/)\.(claude\/(skills|agents)|agents\/skills)\//.test(path)) return 'on-demand';
   const fm = frontmatter(text);
   if (/(^|\/)\.claude\/rules\//.test(path)) return /^paths\s*:/m.test(fm) ? 'scoped' : 'always';
   if (/(^|\/)\.github\/instructions\//.test(path)) return /^applyTo\s*:\s*["']?\*\*["']?\s*$/m.test(fm) ? 'always' : 'scoped';
   if (/(^|\/)\.cursor\/rules\//.test(path)) return /^alwaysApply\s*:\s*true\b/m.test(fm) ? 'always' : 'scoped';
-  return path.includes('/') && path !== '.github/copilot-instructions.md' ? 'scoped' : 'always';
+  return 'always';   // .cursorrules, .windsurfrules, .github/copilot-instructions.md
 }
 
 function normalizePath(raw, link) {
@@ -61,46 +64,52 @@ function normalizePath(raw, link) {
 // Flags that take the next word as their value, per package manager (`pnpm -w` takes none).
 const VALUED = { npm: ['--prefix', '-w', '--workspace'], pnpm: ['--filter', '-F', '-C', '--dir'], yarn: ['--cwd'], bun: ['--cwd', '--filter'] };
 
-// The package script a command line runs, past the flags before and after `run`.
+// The package script a command runs, past the flags before and after `run`.
 function scriptOf(pm, rest) {
   const words = [];
   for (let ws = rest.trim().split(/\s+/), i = 0; i < ws.length; i++) {
     if (!ws[i].startsWith('-')) words.push(ws[i]);
     else if (!ws[i].includes('=') && VALUED[pm].includes(ws[i])) i++;
   }
-  const name = words[0] === 'run' ? words[1] : words[0] === 'test' ? 'test' : null;
-  return name && /^[A-Za-z0-9][\w:.-]*$/.test(name) ? name.replace(/[.:]+$/, '') : null;
+  const name = (words[0] === 'run' ? words[1] : words[0] === 'test' ? 'test' : '') || '';
+  const clean = name.replace(/[.,:;!?]+$/, '');
+  return /^[A-Za-z0-9][\w:.-]*$/.test(clean) ? clean : null;
 }
 
-// [{kind: 'path'|'script', target, line, link}] in source order.
+// One command per match: it ends at the next package manager, a backtick, a separator or a comma.
+const PM = /\b(npm|pnpm|yarn|bun)\b([^`\n;|&,()]*?)(?=\b(?:npm|pnpm|yarn|bun)\b|[`;|&,()]|$)/g;
+
+// [{kind: 'path'|'script', target, line, link, bare}] in source order.
 function references(text) {
   const refs = [];
+  const path = (raw, line, link) => {
+    const t = normalizePath(raw, link);
+    if (t) refs.push({ kind: 'path', target: t, line, link, bare: !link && !t.includes('/') });
+  };
   let fence = null;
-  String(text).split('\n').forEach((line, i) => {
-    for (const m of line.matchAll(/\b(npm|pnpm|yarn|bun)\b([^`\n;|&]*)/g)) {
+  String(text).split(/\r?\n/).forEach((line, i) => {
+    const n = i + 1;
+    for (const m of line.matchAll(PM)) {
       const name = scriptOf(m[1], m[2]);
-      if (name) refs.push({ kind: 'script', target: name, line: i + 1, link: false });
+      if (name) refs.push({ kind: 'script', target: name, line: n, link: false, bare: false });
     }
+    // A fence opens on ``` or ~~~ (a backtick fence's info string has no backtick) and closes only
+    // on a bare fence of the same character, at least as long: inside one, "```bash" is content.
     const f = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
-    // A closing fence carries no info string: inside a fence, "```bash" is content.
     if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !f[2].trim()) fence = null; return; }
-    if (f) { fence = f[1]; return; }
-    for (const m of line.matchAll(/`([^`]+)`/g)) {
-      const t = normalizePath(m[1], false);
-      if (t) refs.push({ kind: 'path', target: t, line: i + 1, link: false, bare: !t.includes('/') });
-    }
-    for (const m of line.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g)) {
-      const t = normalizePath(m[1], true);
-      if (t) refs.push({ kind: 'path', target: t, line: i + 1, link: true });
-    }
+    if (f && !(f[1][0] === '`' && f[2].includes('`'))) { fence = f[1]; return; }
+    for (const m of line.matchAll(/`([^`]+)`/g)) for (const word of m[1].trim().split(/\s+/)) path(word, n, false);
+    for (const m of line.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g)) path(m[1], n, true);
+    const def = /^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?/.exec(line);
+    if (def) path(def[1], n, true);
   });
   return refs;
 }
 
 // A snapshot of the repository a reference is resolved against: files, the directories they sit
-// in, their paths without the extension, the union of every package.json's scripts (null when there
-// is no package.json), and the directory on disk when the snapshot is the working tree.
-function treeOf(files, read, disk = null) {
+// in, extensionless module paths, the symlinks git records (path → target), and the union of every
+// package.json's scripts (null when there is no package.json).
+function treeOf(files, read, links) {
   const dirs = new Set();
   const stems = new Set();
   for (const f of files) {
@@ -113,10 +122,19 @@ function treeOf(files, read, disk = null) {
     scripts = scripts || new Set();
     try { for (const k of Object.keys(JSON.parse(read(f) || '{}').scripts || {})) scripts.add(k); } catch (e) { /* unparsable: no scripts */ }
   }
-  return { files: new Set(files), dirs, stems, scripts, disk };
+  return { files: new Set(files), dirs, stems, links, scripts };
 }
 
-const exists = (p, tree) => !p.startsWith('..') && (tree.files.has(p) || tree.dirs.has(p) || tree.stems.has(p) || Boolean(tree.disk && existsSync(join(tree.disk, p))));
+// A path exists when it, or the target of the first symlink on its way, does (8 hops at most).
+function exists(p, tree, hops = 0) {
+  if (hops > 8 || p.startsWith('..')) return false;
+  const segs = p.split('/');
+  for (let i = 1; i <= segs.length; i++) {
+    const head = segs.slice(0, i).join('/');
+    if (tree.links.has(head)) return exists(posix.normalize(posix.join(posix.dirname(head), tree.links.get(head), ...segs.slice(i))), tree, hops + 1);
+  }
+  return tree.files.has(p) || tree.dirs.has(p) || (!posix.extname(p) && tree.stems.has(p));
+}
 
 // The repository paths a path reference can mean: a link is relative to its file; a code span is
 // read from the root first, then from the file's directory.
@@ -142,20 +160,21 @@ function isClaim(ref, from, trees) {
 const key = (r) => `${r.kind}\0${r.link}\0${r.target}`;
 const once = (refs) => { const seen = new Set(); return refs.filter((r) => !seen.has(key(r)) && seen.add(key(r))); };
 
-// Between two snapshots ({files, read, disk?}): `broken` are references that resolved before and do
-// not now (the diff removed what they name), each with its surface's load class; `added` are new
-// references that never resolved.
-export function compare(before, after) {
-  const tb = treeOf(before.files, before.read, before.disk);
-  const ta = treeOf(after.files, after.read, after.disk);
+// Between two snapshots ({files, read, links}), with the diff's renames (new path → old path):
+// `broken` are references that resolved before, from where the surface then was, and do not now,
+// each with its surface's load class; `added` are new references that never resolved.
+export function compare(before, after, renamed = new Map()) {
+  const tb = treeOf(before.files, before.read, before.links);
+  const ta = treeOf(after.files, after.read, after.links);
   const skills = skillDirs(after.files);
   const out = { broken: [], added: [] };
   for (const path of surfacesOf(after.files)) {
+    const was = renamed.get(path) || path;
     const text = after.read(path) || '';
-    const prior = new Set(references(before.read(path) || '').map(key));
+    const prior = new Set(references(before.read(was) || '').map(key));
     for (const ref of once(references(text))) {
       if (!isClaim(ref, path, [tb, ta]) || resolves(ref, path, ta)) continue;
-      if (resolves(ref, path, tb)) out.broken.push({ path, load: loadClass(path, text, skills), ...ref });
+      if (resolves(ref, was, tb)) out.broken.push({ path, load: loadClass(path, text, skills), ...ref });
       else if (!prior.has(key(ref))) out.added.push({ path, ...ref });
     }
   }
@@ -163,10 +182,13 @@ export function compare(before, after) {
 }
 
 function inventory(root) {
-  const ls = (...a) => (spawnSync('git', ['ls-files', '-z', ...a], { cwd: root, encoding: 'utf8' }).stdout || '').split('\0').filter(Boolean);
-  const files = [...new Set([...ls(), ...ls('--others', '--exclude-standard')])];
+  const git = (...a) => spawnSync('git', a, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout || '';
+  const staged = git('ls-files', '-s', '-z').split('\0').filter(Boolean).map((l) => [l.slice(0, 6), l.slice(l.indexOf('\t') + 1)]);
+  const files = [...new Set([...staged.map(([, p]) => p), ...git('ls-files', '-z', '--others', '--exclude-standard').split('\0').filter(Boolean)])];
+  const links = new Map();
+  for (const [mode, p] of staged) if (mode === '120000') { try { links.set(p, readlinkSync(join(root, p))); } catch (e) { /* removed from disk */ } }
   const read = (p) => { try { return readFileSync(join(root, p), 'utf8'); } catch (e) { return null; } };
-  const tree = treeOf(files, read, root);
+  const tree = treeOf(files, read, links);
   const skills = skillDirs(files);
   const surfaces = surfacesOf(files).map((path) => {
     const text = read(path) || '';
