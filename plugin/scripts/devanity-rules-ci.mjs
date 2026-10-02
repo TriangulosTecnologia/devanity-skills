@@ -32,7 +32,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { compare, surfacesOf } from './surfaces.mjs';
+import { compare, gitIgnored, surfacesOf } from './surfaces.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : def; };
@@ -194,7 +194,7 @@ if (base && rulesMod && !loaded.errors.length) {
   // paths of no repository in particular.
   const before = snapshot(fromRev(base));
   const after = snapshot('HEAD');
-  const refs = compare(before, after, renames(fromRev(base)));
+  const refs = compare(before, after, renames(fromRev(base)), gitIgnored(root));
   for (const b of refs.broken) {
     const what = `${b.path}:${b.line} names \`${b.target}\`, which resolved before this diff and does not now`;
     if (b.load === 'on-demand') note(`${what} (a skill, loaded on demand: reported, not failed)`);

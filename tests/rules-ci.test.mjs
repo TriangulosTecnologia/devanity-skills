@@ -338,14 +338,26 @@ describe('rules CI', () => {
       }
     });
     test('no false failure: a root file named R does not misread renames, and `bun test` is no package script', () => {
-      for (const [name, base, change] of [
+      for (const [name, base, change, link] of [
         ['a root file named R', { 'R': 'r\n', 'foo.md': 'f\n', 'sub/CLAUDE.md': '[x](foo.md)\n' }, (d) => { write(d, 'R', 'r2\n'); write(d, 'sub/CLAUDE.md', '[x](foo.md)\nmore\n'); }],
         ['bun test is bun\'s own runner', { 'CLAUDE.md': 'Run `bun test`.\n', 'package.json': JSON.stringify({ scripts: { test: 'x' } }) }, (d) => write(d, 'package.json', JSON.stringify({ scripts: {} }))],
+        ['a command span: `npm test` stays true when a directory named test moves', { 'CLAUDE.md': 'Run `npm test` and `make docs`.\n', 'package.json': JSON.stringify({ scripts: { test: 'x' } }), 'test/a.js': '1\n', 'docs/a.md': 'a\n' }, (d) => { git(d, 'mv', 'test', 'tests'); git(d, 'mv', 'docs', 'documentation'); }],
+        ['a symlink to an absolute path leads out of the repository', { 'CLAUDE.md': 'Config: `cfg/app.json`.\n', 'etc/app/app.json': '{}\n' }, (d) => git(d, 'rm', '-q', 'etc/app/app.json'), (d) => symlinkSync('/etc/app', join(d, 'cfg'))],
+        ['a package.json rewritten with a byte-order mark keeps its scripts', { 'CLAUDE.md': 'Lint: `npm run lint`.\n', 'package.json': JSON.stringify({ scripts: { lint: 'x' } }) }, (d) => write(d, 'package.json', '\ufeff' + JSON.stringify({ scripts: { lint: 'x' } }, null, 2))],
       ]) {
-        const d = repo(base, change);
+        const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+        write(d, 'devanity.rules.json', JSON.stringify({ version: 1 }));
+        for (const [rel, text] of Object.entries(base)) write(d, rel, text);
+        if (link) link(d);
+        commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature'); change(d); commitAll(d, 'change');
         const r = runCi(d, ['--base', 'main', '--no-proof-required']);
         assert.equal(r.code, 0, `${name}:\n${r.out}`);
       }
+    });
+    test('the job and the inventory agree: a new gitignored reference is neither reported nor failed', () => {
+      const d = repo({ 'CLAUDE.md': 'x\n', '.gitignore': 'config/local.json\n', 'config/a.json': '{}\n' }, (d) => write(d, 'CLAUDE.md', 'x\nLocal: `config/local.json`.\n'));
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out); assert.doesNotMatch(r.out, /config\/local\.json/);
     });
     test('a bare file name is a claim only when it resolves: a generic mention of a file this repository lacks is not reported', () => {
       const d = repo({ 'AGENTS.md': 'x\n' }, (d) => write(d, 'AGENTS.md', 'x\nA `CLAUDE.md` grown into a manual.\n'));

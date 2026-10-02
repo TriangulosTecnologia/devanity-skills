@@ -141,17 +141,18 @@ test('surfaces: every instruction file with its load class and bytes, and each r
     'packages/a/CLAUDE.md': 'scoped: `lib/none.js` is an example; no lib/ here or at the root\n',
     '.claude/rules/edit.md': '---\npaths:\n  - \'src/**\'\n---\nrule\n',
     '.claude/rules/always.md': 'rule\n',
+    '.claude/CLAUDE.md': 'memory\n',
     'skills/s/SKILL.md': 'see [ref](ref.md)\n', 'skills/s/ref.md': 'r\n',
   }, 'one');
   const r = run(SURFACES, ['--json'], { cwd: d });
   assert.equal(r.code, 0, r.err);
   const j = JSON.parse(r.out);
   assert.deepEqual(j.surfaces.map((s) => [s.path, s.load]), [
-    ['.claude/rules/always.md', 'always'], ['.claude/rules/edit.md', 'scoped'], ['CLAUDE.md', 'always'],
+    ['.claude/CLAUDE.md', 'always'], ['.claude/rules/always.md', 'always'], ['.claude/rules/edit.md', 'scoped'], ['CLAUDE.md', 'always'],
     ['packages/a/CLAUDE.md', 'scoped'], ['skills/s/SKILL.md', 'on-demand'], ['skills/s/ref.md', 'on-demand'],
   ]);
   assert.equal(j.surfaces.find((s) => s.path === 'CLAUDE.md').bytes, Buffer.byteLength(claude));
-  assert.equal(j.totals.always, Buffer.byteLength(claude) + 'rule\n'.length);
+  assert.equal(j.totals.always, Buffer.byteLength(claude) + 'rule\n'.length + 'memory\n'.length, '.claude/CLAUDE.md is project memory, loaded always');
   assert.deepEqual(j.unresolved.map((u) => [u.path, u.line, u.kind, u.target]), [
     ['CLAUDE.md', 3, 'script', 'lint'],
     ['CLAUDE.md', 4, 'path', 'src/gone.js'],

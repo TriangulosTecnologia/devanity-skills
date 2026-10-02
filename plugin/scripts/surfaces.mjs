@@ -7,7 +7,8 @@
 //   node surfaces.mjs [--json]
 //
 // A reference is a claim a surface makes about this repository, wherever in the text it is written
-// (prose, an example, a fenced block): a path in a code span (also each word of a command span), a
+// (prose, an example, a fenced block): a path in a code span (in a command span, each word with a
+// `/`: `npm test` names a script, not a directory called test), a
 // link target (inline or reference-style, percent-decoded), or a package script it runs
 // (`npm|pnpm|yarn|bun run <name>`, `<pm> test`). A code-span path with a `/` counts only when it
 // starts inside the repository (its first segment exists), so `origin/main` or another repository's
@@ -49,7 +50,7 @@ const frontmatter = (text) => /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] || '
 // When the surface's bytes are paid: on every turn, only while working under a path, or when
 // invoked. A host file (CLAUDE.md, AGENTS.md, GEMINI.md) loads by where it sits, even in a skill.
 function loadClass(path, text, skills) {
-  if (HOST.test(path)) return path.includes('/') ? 'scoped' : 'always';
+  if (HOST.test(path)) return !path.includes('/') || path === '.claude/CLAUDE.md' ? 'always' : 'scoped';   // .claude/CLAUDE.md is project memory
   if (SKILL.test(path) || inSkill(path, skills) || /(^|\/)\.(claude\/(skills|agents)|agents\/skills)\//.test(path)) return 'on-demand';
   const fm = frontmatter(text);
   if (/(^|\/)\.claude\/rules\//.test(path)) return /^paths\s*:/m.test(fm) ? 'scoped' : 'always';
@@ -103,7 +104,10 @@ function references(text) {
       if (name) refs.push({ kind: 'script', target: name, line: n, link: false, bare: false });
     }
     // A code span opens and closes on backtick runs of one length (`x`, ``x``).
-    for (const m of line.matchAll(/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/g)) for (const word of m[2].trim().split(/\s+/)) path(word, n, false);
+    for (const m of line.matchAll(/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/g)) {
+      const words = m[2].trim().split(/\s+/);
+      for (const word of words) if (words.length === 1 || word.includes('/')) path(word, n, false);
+    }
     for (const m of line.matchAll(/\]\(\s*(?:<([^>\n]+)>|([^)\s]+))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g)) path(m[1] || m[2], n, true);
     const def = /^\s{0,3}\[[^\]]+\]:\s*(?:<([^>\n]+)>|(\S+))/.exec(line);
     if (def) path(def[1] || def[2], n, true);
@@ -125,18 +129,19 @@ function treeOf(files, read, links) {
   let scripts = null;
   for (const f of files.filter((p) => posix.basename(p) === 'package.json')) {
     scripts = scripts || new Set();
-    try { for (const k of Object.keys(JSON.parse(read(f) || '{}').scripts || {})) scripts.add(k); } catch (e) { /* unparsable: no scripts */ }
+    try { for (const k of Object.keys(JSON.parse((read(f) || '{}').replace(/^\uFEFF/, '')).scripts || {})) scripts.add(k); } catch (e) { /* unparsable: no scripts */ }
   }
   return { files: new Set(files), dirs, stems, links, scripts };
 }
 
 // The path with every symlink on its way replaced by its target, as git records them (8 hops at
-// most), or null when it climbs out of the repository or loops.
+// most), or null when it climbs out of the repository (an absolute target included) or loops.
 function real(p, links, hops = 0) {
   if (hops > 8 || p.startsWith('..')) return null;
   const segs = p.split('/');
   for (let i = 1; i <= segs.length; i++) {
     const head = segs.slice(0, i).join('/');
+    if (links.has(head) && links.get(head).startsWith('/')) return null;
     if (links.has(head)) return real(posix.normalize(posix.join(posix.dirname(head), links.get(head), ...segs.slice(i))), links, hops + 1);
   }
   return p;
@@ -181,11 +186,20 @@ function anchor(base, target) {
 const key = (r) => `${r.kind}\0${r.link}\0${r.target}`;
 const once = (refs) => { const seen = new Set(); return refs.filter((r) => !seen.has(key(r)) && seen.add(key(r))); };
 
+// Unresolved references without those whose every reading is a gitignored path (expected absent).
+// `ignored(paths)` answers the subset git ignores.
+function dropIgnored(refs, ignored) {
+  const as = (r) => (r.kind === 'path' ? candidates(r, r.path).filter((p) => !p.startsWith('..')) : []);
+  const hit = ignored(refs.flatMap(as));
+  return refs.filter((r) => !as(r).some((p) => hit.has(p)));
+}
+
 // Between two snapshots ({files, read, links}), with the diff's renames (new path → old path); a
 // symlinked surface is read as what it points to, the way an agent opening it would:
 // `broken` are references that resolved before, from where the surface then was, and do not now,
-// each with its surface's load class; `added` are new references that never resolved.
-export function compare(before, after, renamed = new Map()) {
+// each with its surface's load class; `added` are new references that never resolved, gitignored
+// ones left out as the inventory leaves them out.
+export function compare(before, after, renamed = new Map(), ignored = () => new Set()) {
   const tb = treeOf(before.files, before.read, before.links);
   const ta = treeOf(after.files, after.read, after.links);
   const skills = skillDirs(after.files);
@@ -201,8 +215,11 @@ export function compare(before, after, renamed = new Map()) {
       else if (!prior.has(key(ref))) out.added.push({ path, ...ref });
     }
   }
+  out.added = dropIgnored(out.added, ignored);
   return out;
 }
+
+export const gitIgnored = (root) => (paths) => new Set((spawnSync('git', ['check-ignore', '--stdin'], { cwd: root, input: paths.join('\n'), encoding: 'utf8' }).stdout || '').split('\n').filter(Boolean));
 
 function inventory(root) {
   const git = (...a) => spawnSync('git', a, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout || '';
@@ -217,12 +234,8 @@ function inventory(root) {
     const text = read(path) || '';
     return { path, load: loadClass(path, text, skills), bytes: Buffer.byteLength(text), text };
   });
-  // Each unresolved path with the repository paths it could mean, so a gitignored one drops out.
-  let unresolved = surfaces.flatMap((s) => once(references(s.text)).filter((r) => isClaim(r, s.path, [tree]) && !resolves(r, s.path, tree))
-    .map((r) => ({ path: s.path, line: r.line, kind: r.kind, target: r.target, as: r.kind === 'path' ? candidates(r, s.path) : [] })));
-  const asked = unresolved.flatMap((u) => u.as).filter((p) => !p.startsWith('..'));
-  const ignored = new Set((spawnSync('git', ['check-ignore', '--stdin'], { cwd: root, input: asked.join('\n'), encoding: 'utf8' }).stdout || '').split('\n').filter(Boolean));
-  unresolved = unresolved.filter((u) => !u.as.some((p) => ignored.has(p))).map(({ as, ...u }) => u).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line));
+  const unresolved = dropIgnored(surfaces.flatMap((s) => once(references(s.text)).filter((r) => isClaim(r, s.path, [tree]) && !resolves(r, s.path, tree)).map((r) => ({ path: s.path, ...r }))), gitIgnored(root))
+    .map(({ path, line, kind, target }) => ({ path, line, kind, target })).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line));
   const totals = { always: 0, scoped: 0, 'on-demand': 0 };
   for (const s of surfaces) totals[s.load] += s.bytes;
   return { surfaces: surfaces.map(({ text, ...s }) => s), totals, unresolved };
