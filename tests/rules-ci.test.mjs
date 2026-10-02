@@ -318,6 +318,11 @@ describe('rules CI', () => {
         ['a line suffix on a bare name', { 'CLAUDE.md': 'See `ARCHITECTURE.md:12`.\n', 'ARCHITECTURE.md': 'a\n' }, (d) => git(d, 'rm', '-q', 'ARCHITECTURE.md'), 'ARCHITECTURE.md'],
         ['a percent-encoded link', { 'CLAUDE.md': '[setup](docs/My%20Setup.md)\n', 'docs/My Setup.md': 's\n' }, (d) => git(d, 'rm', '-q', 'docs/My Setup.md'), 'docs/My Setup.md'],
         ['an angle-bracket link with a space', { 'CLAUDE.md': '[g](<docs/My Guide.md>)\n', 'docs/My Guide.md': 'g\n' }, (d) => git(d, 'rm', '-q', 'docs/My Guide.md'), 'docs/My Guide.md'],
+        ['a scoped surface moved to another directory, read from where it was', { 'sub/CLAUDE.md': 'Use `lib/x.js`.\n', 'sub/lib/x.js': '1\n' }, (d) => { mkdirSync(join(d, 'other'), { recursive: true }); git(d, 'mv', 'sub/CLAUDE.md', 'other/CLAUDE.md'); }, 'lib/x.js'],
+        ['a surface that is itself a symlink', { 'docs/agent-guide.md': 'Code: `src/a.js`.\n', 'src/a.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/a.js'), 'src/a.js', null, (d) => symlinkSync('docs/agent-guide.md', join(d, 'CLAUDE.md'))],
+        ['a double-backtick code span', { 'CLAUDE.md': 'See ``src/a.js``.\n', 'src/a.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/a.js'), 'src/a.js'],
+        ['route segments with brackets, parentheses and a scope', { 'CLAUDE.md': 'Pages: `app/[slug]/page.tsx`, `app/(auth)/page.tsx`, `packages/@acme/ui/index.ts`.\n', 'app/[slug]/page.tsx': '1\n', 'app/(auth)/page.tsx': '1\n', 'packages/@acme/ui/index.ts': '1\n' }, (d) => git(d, 'rm', '-q', 'app/[slug]/page.tsx'), 'app/[slug]/page.tsx'],
+        ['a `..`-relative span one level down', { 'sub/CLAUDE.md': 'Shared: `../src/x.js`.\n', 'src/x.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/x.js'), '../src/x.js'],
       ];
       for (const [name, base, change, broken, quiet, link] of cases) {
         const d = fresh(); git(d, 'init', '-q', '-b', 'main');
@@ -327,7 +332,7 @@ describe('rules CI', () => {
         commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature'); change(d); commitAll(d, 'change');
         const r = runCi(d, ['--base', 'main', '--no-proof-required']);
         assert.equal(r.code, 1, `${name}:\n${r.out}`);
-        assert.match(r.out, new RegExp(`names \`${broken.replace(/[.]/g, '\\.')}\`, which resolved before this diff and does not now:`), `${name}:\n${r.out}`);
+        assert.match(r.out, new RegExp(`names \`${broken.replace(/[.[\]()]/g, '\\$&')}\`, which resolved before this diff and does not now:`), `${name}:\n${r.out}`);
         if (quiet) assert.doesNotMatch(r.out, new RegExp(`names \`${quiet.replace(/[.]/g, '\\.')}\``), `${name}:\n${r.out}`);
       }
     });

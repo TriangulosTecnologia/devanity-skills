@@ -15,7 +15,12 @@
 // resolves. A path resolves as a file, a directory, an extensionless module specifier, or through a
 // symlink git records; a gitignored path is expected to be absent; with no package.json there is
 // nothing to check a script against. The CI job fails only a reference that resolved at the base,
-// so whether a text is an example never decides a verdict. Node >= 18, no dependencies.
+// so whether a text is an example never decides a verdict.
+//
+// Not read, by design of a parser-free reader: a path inside `--flag=value`, a Windows backslash
+// path, a reference definition inside a blockquote; an indented code block reads as prose. Scripts
+// resolve against the union of every package.json, so one removed from a workspace that another
+// still defines is not a break. Node >= 18, no dependencies.
 
 import { readFileSync, readlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -60,7 +65,7 @@ function normalizePath(raw, link) {
   if (link) { try { t = decodeURIComponent(t); } catch (e) { /* not percent-encoded */ } }
   t = t.replace(/^\.\//, '').replace(/:\d+(?:-\d+)?$/, '').replace(/\/+$/, '');
   // A link target may hold spaces (`<docs/My Guide.md>`); a code-span word cannot.
-  if (!t || t.startsWith('/') || t.startsWith('-') || (!link && /\s/.test(t)) || /[*?[\]{}<>|()=,;'"`!$~^@\\]/.test(t)) return null;
+  if (!t || t.startsWith('/') || t.startsWith('-') || (!link && /\s/.test(t)) || /[*?{}<>|=,;'"`!$~^\\]/.test(t)) return null;
   if (/(^|\/)\.{3,}(\/|$)/.test(t) || /^\.\.(\/\.\.)*$/.test(t)) return null;   // a placeholder (`src/.../x.ts`) or only `..`
   return t;
 }
@@ -96,7 +101,8 @@ function references(text) {
       const name = scriptOf(m[1], m[2]);
       if (name) refs.push({ kind: 'script', target: name, line: n, link: false, bare: false });
     }
-    for (const m of line.matchAll(/(?<!`)`([^`]+)`(?!`)/g)) for (const word of m[1].trim().split(/\s+/)) path(word, n, false);
+    // A code span opens and closes on backtick runs of one length (`x`, ``x``).
+    for (const m of line.matchAll(/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/g)) for (const word of m[2].trim().split(/\s+/)) path(word, n, false);
     for (const m of line.matchAll(/\]\(\s*(?:<([^>\n]+)>|([^)\s]+))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g)) path(m[1] || m[2], n, true);
     const def = /^\s{0,3}\[[^\]]+\]:\s*(?:<([^>\n]+)>|(\S+))/.exec(line);
     if (def) path(def[1] || def[2], n, true);
@@ -151,8 +157,18 @@ function isClaim(ref, from, trees) {
   if (ref.kind === 'script') return trees.some((t) => t.scripts);
   if (ref.link) return true;
   if (ref.bare) return trees.some((t) => resolves(ref, from, t));
-  const first = ref.target.split('/')[0];
-  return trees.some((t) => exists(first, t) || exists(posix.join(posix.dirname(from), first), t));
+  const bases = ref.target.startsWith('..') ? [posix.dirname(from)] : ['.', posix.dirname(from)];
+  return bases.map((b) => anchor(b, ref.target)).some((a) => a && trees.some((t) => exists(a, t)));
+}
+
+// The first segment a relative path names below its base, past any leading `..` (`sub` + `../src/x`
+// → `src`), or null when it climbs out of the repository.
+function anchor(base, target) {
+  const segs = target.split('/');
+  let k = 0;
+  while (segs[k] === '..') k++;
+  const a = posix.join(base, ...segs.slice(0, k + 1));
+  return a.startsWith('..') || a === '.' ? null : a;
 }
 
 const key = (r) => `${r.kind}\0${r.link}\0${r.target}`;
@@ -171,7 +187,7 @@ export function compare(before, after, renamed = new Map()) {
     const text = after.read(path) || '';
     const prior = new Set(references(before.read(was) || '').map(key));
     for (const ref of once(references(text))) {
-      if (!isClaim(ref, path, [tb, ta]) || resolves(ref, path, ta)) continue;
+      if (!(isClaim(ref, was, [tb]) || isClaim(ref, path, [ta])) || resolves(ref, path, ta)) continue;
       if (resolves(ref, was, tb)) out.broken.push({ path, load: loadClass(path, text, skills), ...ref });
       else if (!prior.has(key(ref))) out.added.push({ path, ...ref });
     }

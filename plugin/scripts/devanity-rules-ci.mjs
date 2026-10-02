@@ -29,7 +29,7 @@
 
 import { existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { compare, surfacesOf } from './surfaces.mjs';
@@ -73,7 +73,9 @@ function snapshot(rev) {
   const r = spawnSync('git', ['ls-tree', '-r', '-z', rev], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   const entries = (r.stdout || '').split('\0').filter(Boolean).map((l) => [l.slice(0, 6), l.slice(l.indexOf('\t') + 1)]);
   const links = new Map(entries.filter(([mode]) => mode === '120000').map(([, p]) => [p, show(rev, p)]));
-  return { files: entries.map(([, p]) => p), read: (p) => show(rev, p), links };
+  // A symlinked surface reads as what it points to, as an agent opening it would (8 hops at most).
+  const read = (p, hops = 0) => (links.has(p) && hops < 8 ? read(posix.normalize(posix.join(posix.dirname(p), links.get(p))), hops + 1) : show(rev, p));
+  return { files: entries.map(([, p]) => p), read, links };
 }
 
 // The diff's renames, new path → old path.

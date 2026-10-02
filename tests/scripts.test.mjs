@@ -138,7 +138,7 @@ test('surfaces: every instruction file with its load class and bytes, and each r
     'CLAUDE.md': claude,
     'src/app.js': '1\n', '.gitignore': 'src/gen.js\n', 'docs/guide.md': 'g\n',
     'package.json': JSON.stringify({ scripts: { test: 'node -e 0' } }),
-    'packages/a/CLAUDE.md': 'scoped\n',
+    'packages/a/CLAUDE.md': 'scoped: `lib/none.js` is an example; no lib/ here or at the root\n',
     '.claude/rules/edit.md': '---\npaths:\n  - \'src/**\'\n---\nrule\n',
     '.claude/rules/always.md': 'rule\n',
     'skills/s/SKILL.md': 'see [ref](ref.md)\n', 'skills/s/ref.md': 'r\n',
@@ -156,7 +156,7 @@ test('surfaces: every instruction file with its load class and bytes, and each r
     ['CLAUDE.md', 3, 'script', 'lint'],
     ['CLAUDE.md', 4, 'path', 'src/gone.js'],
     ['CLAUDE.md', 6, 'path', 'docs/missing.md'],
-  ], 'a ref outside the repository (origin/main) and a gitignored path are not claims; fenced text is not a code span');
+  ], 'a ref outside the repository (origin/main), a nested example under no existing directory, and a gitignored path are not claims; fenced text is not a code span');
   assert.match(run(SURFACES, [], { cwd: d }).out, /CLAUDE\.md:4\s+path\s+src\/gone\.js/);
 });
 
