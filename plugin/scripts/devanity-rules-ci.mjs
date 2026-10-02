@@ -185,7 +185,7 @@ if (base && rulesMod && !loaded.errors.length) {
   for (const p of rules.paths) if (!tracked.some((f) => p.re.test(f))) fail(`devanity.rules.json: ${p.glob} matches no tracked file (a map entry for a path that is gone)`);
 
   // instruction references: what an instruction file names must still exist after the diff. Only a
-  // reference that held at the base can break, so an example path that never existed never fails;
+  // reference that held at the base can break, so a path that never existed never fails;
   // a skill (loaded on demand, often vendored) is reported, since its examples name scripts and
   // paths of no repository in particular.
   const before = snapshot(fromRev(base));
@@ -196,7 +196,7 @@ if (base && rulesMod && !loaded.errors.length) {
     if (b.load === 'on-demand') note(`${what} (a skill, loaded on demand: reported, not failed)`);
     else fail(`${what}: point it at what replaced it, or remove it`);
   }
-  for (const a of refs.added) note(`${a.path}:${a.line} names \`${a.target}\`, which does not exist (it never held, so this is reported, not failed)`);
+  for (const a of refs.added) note(`${a.path}:${a.line} names \`${a.target}\`, which does not exist (it did not resolve before this diff either, so this is reported, not failed)`);
 
   // checks of touched high-risk paths; when the rules file itself changed, every declared check,
   // so a check that no longer runs cannot enter the map

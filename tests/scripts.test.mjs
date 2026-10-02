@@ -156,7 +156,7 @@ test('surfaces: every instruction file with its load class and bytes, and each r
     ['CLAUDE.md', 3, 'script', 'lint'],
     ['CLAUDE.md', 4, 'path', 'src/gone.js'],
     ['CLAUDE.md', 6, 'path', 'docs/missing.md'],
-  ], 'a ref outside the repository (origin/main), a gitignored path and a fenced path are not claims');
+  ], 'a ref outside the repository (origin/main) and a gitignored path are not claims; fenced text is not a code span');
   assert.match(run(SURFACES, [], { cwd: d }).out, /CLAUDE\.md:4\s+path\s+src\/gone\.js/);
 });
 

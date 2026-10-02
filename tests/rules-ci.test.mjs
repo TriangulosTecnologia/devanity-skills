@@ -298,12 +298,11 @@ describe('rules CI', () => {
       const d = repo(base, (d) => { for (const f of ['src/a.js', 'src/b.js', 'ARCHITECTURE.md', 'docs/c.md']) git(d, 'rm', '-q', f); write(d, 'package.json', JSON.stringify({ scripts: {} })); });
       const r = runCi(d, ['--base', 'main', '--no-proof-required']);
       assert.equal(r.code, 1, r.out);
-      for (const t of ['src/b.js', 'ARCHITECTURE.md', 'docs/c.md', 'build', 'lint']) assert.match(r.out, new RegExp(`names \`${t.replace(/[.]/g, '\\.')}\`, which resolved before this diff and does not now:`), `${t} must fail:\n${r.out}`);
-      assert.doesNotMatch(r.out, /names `src\/a\.js`/, 'a code span inside a fence is an example, even after a line that opens like a fence');
+      for (const t of ['src/a.js', 'src/b.js', 'ARCHITECTURE.md', 'docs/c.md', 'build', 'lint']) assert.match(r.out, new RegExp(`names \`${t.replace(/[.]/g, '\\.')}\`, which resolved before this diff and does not now:`), `${t} must fail:\n${r.out}`);
     });
     test('the falsifiers of the second verification: CRLF, inline triple backticks, stems, moved surfaces, symlinks, nested CLAUDE.md in a skill, command spans, two commands, reference links', () => {
       const cases = [
-        ['CRLF: a fenced example stays an example', { 'CLAUDE.md': 'Ex:\r\n```\r\n`src/a.js`\r\n```\r\nReal: `src/b.js`\r\n', 'src/a.js': '1\n', 'src/b.js': '1\n' }, (d) => { git(d, 'rm', '-q', 'src/a.js'); git(d, 'rm', '-q', 'src/b.js'); }, 'src/b.js', 'src/a.js'],
+        ['CRLF line endings', { 'CLAUDE.md': 'Ex:\r\n\r\nReal: `src/b.js`\r\n', 'src/b.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/b.js'), 'src/b.js'],
         ['a line of inline triple backticks opens no fence', { 'CLAUDE.md': '```x``` is inline\nSee `src/a.js`.\n', 'src/a.js': '1\n' }, (d) => git(d, 'rm', '-q', 'src/a.js'), 'src/a.js'],
         ['a sibling .example does not stand in for the file', { 'CLAUDE.md': 'Config: `config/app.json`.\n', 'config/app.json': '{}\n', 'config/app.json.example': '{}\n' }, (d) => git(d, 'rm', '-q', 'config/app.json'), 'config/app.json'],
         ['a surface moved to another directory keeps its old references', { 'CLAUDE.md': 'See [a](docs/a.md).\n', 'docs/a.md': 'a\n' }, (d) => { mkdirSync(join(d, 'sub'), { recursive: true }); git(d, 'mv', 'CLAUDE.md', 'sub/CLAUDE.md'); }, 'docs/a.md'],
@@ -313,6 +312,12 @@ describe('rules CI', () => {
         ['a path argument in a command span', { 'CLAUDE.md': 'Run `node scripts/build.mjs --all`.\n', 'scripts/build.mjs': '1\n' }, (d) => git(d, 'rm', '-q', 'scripts/build.mjs'), 'scripts/build.mjs'],
         ['two commands in one sentence', { 'CLAUDE.md': 'Run npm run test:e2e, then npm run lint.\n', 'package.json': JSON.stringify({ scripts: { 'test:e2e': 'x', lint: 'y' } }) }, (d) => write(d, 'package.json', JSON.stringify({ scripts: { 'test:e2e': 'x' } })), 'lint'],
         ['a reference-style link', { 'CLAUDE.md': 'See the [guide][g].\n\n[g]: docs/x.md\n', 'docs/x.md': 'x\n' }, (d) => git(d, 'rm', '-q', 'docs/x.md'), 'docs/x.md'],
+        ['a held reference in a fenced example, a blockquote or a list item: what it names is gone either way', { 'CLAUDE.md': '> ```md\n> Run `src/a.js`\n> ```\n- ```md\n  See `src/b.js`\n  ```\n', 'src/a.js': '1\n', 'src/b.js': '1\n' }, (d) => { git(d, 'rm', '-q', 'src/a.js'); git(d, 'rm', '-q', 'src/b.js'); }, 'src/b.js'],
+        ['a bare name with no extension', { 'CLAUDE.md': 'Targets live in `Makefile`.\n', 'Makefile': 'all:\n' }, (d) => git(d, 'rm', '-q', 'Makefile'), 'Makefile'],
+        ['a dotfile', { 'CLAUDE.md': 'Copy `.env.example`.\n', '.env.example': 'X=1\n' }, (d) => git(d, 'rm', '-q', '.env.example'), '.env.example'],
+        ['a line suffix on a bare name', { 'CLAUDE.md': 'See `ARCHITECTURE.md:12`.\n', 'ARCHITECTURE.md': 'a\n' }, (d) => git(d, 'rm', '-q', 'ARCHITECTURE.md'), 'ARCHITECTURE.md'],
+        ['a percent-encoded link', { 'CLAUDE.md': '[setup](docs/My%20Setup.md)\n', 'docs/My Setup.md': 's\n' }, (d) => git(d, 'rm', '-q', 'docs/My Setup.md'), 'docs/My Setup.md'],
+        ['an angle-bracket link with a space', { 'CLAUDE.md': '[g](<docs/My Guide.md>)\n', 'docs/My Guide.md': 'g\n' }, (d) => git(d, 'rm', '-q', 'docs/My Guide.md'), 'docs/My Guide.md'],
       ];
       for (const [name, base, change, broken, quiet, link] of cases) {
         const d = fresh(); git(d, 'init', '-q', '-b', 'main');

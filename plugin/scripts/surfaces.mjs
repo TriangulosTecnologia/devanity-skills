@@ -6,15 +6,16 @@
 //
 //   node surfaces.mjs [--json]
 //
-// A reference is a claim a surface makes about this repository: a path in a code span (also each
-// word of a command span), a link target (inline or reference-style), or a package script it runs
-// (`npm|pnpm|yarn|bun run <name>`, `<pm> test`). A code-span path counts only when it starts inside
-// the repository (its first segment exists), so `origin/main` or another repository's example path
-// is not one; a bare file name (`ARCHITECTURE.md`) counts only where it resolves; code spans inside
-// fenced blocks are examples, and scripts count wherever they appear. A path resolves as a file, a
-// directory, an extensionless module specifier, or through a symlink git records; a gitignored path
-// is expected to be absent; with no package.json there is nothing to check a script against.
-// Node >= 18, no dependencies.
+// A reference is a claim a surface makes about this repository, wherever in the text it is written
+// (prose, an example, a fenced block): a path in a code span (also each word of a command span), a
+// link target (inline or reference-style, percent-decoded), or a package script it runs
+// (`npm|pnpm|yarn|bun run <name>`, `<pm> test`). A code-span path with a `/` counts only when it
+// starts inside the repository (its first segment exists), so `origin/main` or another repository's
+// example path is not one; a name with no `/` (`Makefile`, `.env.example`) counts only where it
+// resolves. A path resolves as a file, a directory, an extensionless module specifier, or through a
+// symlink git records; a gitignored path is expected to be absent; with no package.json there is
+// nothing to check a script against. The CI job fails only a reference that resolved at the base,
+// so whether a text is an example never decides a verdict. Node >= 18, no dependencies.
 
 import { readFileSync, readlinkSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -54,11 +55,14 @@ function loadClass(path, text, skills) {
 
 function normalizePath(raw, link) {
   let t = raw.trim();
-  if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return null;   // a URL scheme
-  t = t.replace(link ? /[#?].*$/ : /#.*$/, '').replace(/^\.\//, '').replace(/:\d+(?:-\d+)?$/, '').replace(/\/+$/, '');
-  if (!t || t.startsWith('/') || t.startsWith('-') || /[\s*?[\]{}<>|()=,;'"`!$~^@\\]/.test(t)) return null;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(t) || /^(mailto|tel|data|javascript):/i.test(t)) return null;   // a URL
+  t = t.replace(link ? /[#?].*$/ : /#.*$/, '');
+  if (link) { try { t = decodeURIComponent(t); } catch (e) { /* not percent-encoded */ } }
+  t = t.replace(/^\.\//, '').replace(/:\d+(?:-\d+)?$/, '').replace(/\/+$/, '');
+  // A link target may hold spaces (`<docs/My Guide.md>`); a code-span word cannot.
+  if (!t || t.startsWith('/') || t.startsWith('-') || (!link && /\s/.test(t)) || /[*?[\]{}<>|()=,;'"`!$~^@\\]/.test(t)) return null;
   if (/(^|\/)\.{3,}(\/|$)/.test(t) || /^\.\.(\/\.\.)*$/.test(t)) return null;   // a placeholder (`src/.../x.ts`) or only `..`
-  return link || t.includes('/') || /^[^.][^/]*\.[A-Za-z0-9]+$/.test(t) ? t : null;
+  return t;
 }
 
 // Flags that take the next word as their value, per package manager (`pnpm -w` takes none).
@@ -86,22 +90,16 @@ function references(text) {
     const t = normalizePath(raw, link);
     if (t) refs.push({ kind: 'path', target: t, line, link, bare: !link && !t.includes('/') });
   };
-  let fence = null;
   String(text).split(/\r?\n/).forEach((line, i) => {
     const n = i + 1;
     for (const m of line.matchAll(PM)) {
       const name = scriptOf(m[1], m[2]);
       if (name) refs.push({ kind: 'script', target: name, line: n, link: false, bare: false });
     }
-    // A fence opens on ``` or ~~~ (a backtick fence's info string has no backtick) and closes only
-    // on a bare fence of the same character, at least as long: inside one, "```bash" is content.
-    const f = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
-    if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length && !f[2].trim()) fence = null; return; }
-    if (f && !(f[1][0] === '`' && f[2].includes('`'))) { fence = f[1]; return; }
-    for (const m of line.matchAll(/`([^`]+)`/g)) for (const word of m[1].trim().split(/\s+/)) path(word, n, false);
-    for (const m of line.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g)) path(m[1], n, true);
-    const def = /^\s{0,3}\[[^\]]+\]:\s*<?([^\s>]+)>?/.exec(line);
-    if (def) path(def[1], n, true);
+    for (const m of line.matchAll(/(?<!`)`([^`]+)`(?!`)/g)) for (const word of m[1].trim().split(/\s+/)) path(word, n, false);
+    for (const m of line.matchAll(/\]\(\s*(?:<([^>\n]+)>|([^)\s]+))(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?\s*\)/g)) path(m[1] || m[2], n, true);
+    const def = /^\s{0,3}\[[^\]]+\]:\s*(?:<([^>\n]+)>|(\S+))/.exec(line);
+    if (def) path(def[1] || def[2], n, true);
   });
   return refs;
 }
@@ -133,7 +131,7 @@ function exists(p, tree, hops = 0) {
     const head = segs.slice(0, i).join('/');
     if (tree.links.has(head)) return exists(posix.normalize(posix.join(posix.dirname(head), tree.links.get(head), ...segs.slice(i))), tree, hops + 1);
   }
-  return tree.files.has(p) || tree.dirs.has(p) || (!posix.extname(p) && tree.stems.has(p));
+  return tree.files.has(p) || tree.dirs.has(p) || (p.includes('/') && !posix.extname(p) && tree.stems.has(p));
 }
 
 // The repository paths a path reference can mean: a link is relative to its file; a code span is
