@@ -17,10 +17,12 @@
 // path resolves as a file, a directory, an extensionless module specifier, or through a symlink git
 // records; a gitignored path is expected to be absent; with no package.json at either revision
 // there is nothing to check a script against. The CI job fails only a reference the surface made at
-// the base and that resolved there, so whether a text is an example never decides a verdict.
+// the base, that resolved there, and whose line the diff left as it was: a reference left stale
+// silently, never a line its author rewrote. Whether a text is an example never decides a verdict.
 //
 // Not read, by design of a parser-free reader: a path inside `--flag=value`, a Windows backslash
-// path, a reference definition inside a blockquote; an indented code block reads as prose. Scripts
+// path, a reference definition inside a blockquote; an indented code block reads as prose; a path
+// inside a submodule is assumed present, since its content is not in this repository. Scripts
 // resolve against the union of every package.json, so one removed from a workspace that another
 // still defines is not a break. Node >= 18, no dependencies.
 
@@ -91,18 +93,18 @@ function scriptOf(pm, rest) {
 // One command per match: it ends at the next package manager, a backtick, a separator or a comma.
 const PM = /\b(npm|pnpm|yarn|bun)\b([^`\n;|&,()]*?)(?=\b(?:npm|pnpm|yarn|bun)\b|[`;|&,()]|$)/g;
 
-// [{kind: 'path'|'script', target, line, link, bare}] in source order.
+// [{kind: 'path'|'script', target, line, text, link, bare}] in source order; `text` is the line.
 function references(text) {
   const refs = [];
   const path = (raw, line, link) => {
     const t = normalizePath(raw, link);
-    if (t) refs.push({ kind: 'path', target: t, line, link, bare: !link && !t.includes('/') });
+    if (t) refs.push({ kind: 'path', target: t, line: line.n, text: line.text, link, bare: !link && !t.includes('/') });
   };
   String(text).split(/\r?\n/).forEach((line, i) => {
-    const n = i + 1;
+    const n = { n: i + 1, text: line };
     for (const m of line.matchAll(PM)) {
       const name = scriptOf(m[1], m[2]);
-      if (name) refs.push({ kind: 'script', target: name, line: n, link: false, bare: false });
+      if (name) refs.push({ kind: 'script', target: name, line: i + 1, text: line, link: false, bare: false });
     }
     // A code span opens and closes on backtick runs of one length (`x`, ``x``).
     for (const m of line.matchAll(/(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)/g)) {
@@ -117,9 +119,9 @@ function references(text) {
 }
 
 // A snapshot of the repository a reference is resolved against: files, the directories they sit
-// in, extensionless module paths, the symlinks git records (path → target), and the union of every
-// package.json's scripts (null when there is no package.json).
-function treeOf(files, read, links) {
+// in, extensionless module paths, the symlinks git records (path → target), its submodules, and the
+// union of every package.json's scripts (null when there is no package.json).
+function treeOf(files, read, links, modules) {
   const dirs = new Set();
   const stems = new Set();
   for (const f of files) {
@@ -132,7 +134,7 @@ function treeOf(files, read, links) {
     scripts = scripts || new Set();
     try { for (const k of Object.keys(JSON.parse((read(f) || '{}').replace(/^\uFEFF/, '')).scripts || {})) scripts.add(k); } catch (e) { /* unparsable: no scripts */ }
   }
-  return { files: new Set(files), dirs, stems, links, scripts };
+  return { files: new Set(files), dirs, stems, links, modules, scripts };
 }
 
 // The path with every symlink on its way replaced by its target, as git records them (8 hops at
@@ -150,7 +152,10 @@ function real(p, links, hops = 0) {
 
 function exists(p, tree) {
   const r = real(p, tree.links);
-  return r !== null && (tree.files.has(r) || tree.dirs.has(r) || (r.includes('/') && !posix.extname(r) && tree.stems.has(r)));
+  if (r === null) return false;
+  const segs = r.split('/');
+  if (segs.some((_, i) => tree.modules.has(segs.slice(0, i + 1).join('/')))) return true;   // inside a submodule
+  return tree.files.has(r) || tree.dirs.has(r) || (r.includes('/') && !posix.extname(r) && tree.stems.has(r));
 }
 
 // The repository paths a path reference can mean: a link is relative to its file; a code span is
@@ -187,10 +192,11 @@ function anchor(base, target) {
 const key = (r) => `${r.kind}\0${r.link}\0${r.target}`;
 const once = (refs) => { const seen = new Set(); return refs.filter((r) => !seen.has(key(r)) && seen.add(key(r))); };
 
-// Unresolved references without those whose every reading is a gitignored path (expected absent).
+// Unresolved references without those that any reading takes to a gitignored path (expected
+// absent). Each reading is asked with its symlinks resolved, as git can only answer for real paths;
 // `ignored(paths)` answers the subset git ignores.
-function dropIgnored(refs, ignored) {
-  const as = (r) => (r.kind === 'path' ? candidates(r, r.path).filter((p) => !p.startsWith('..')) : []);
+function dropIgnored(refs, ignored, tree) {
+  const as = (r) => (r.kind === 'path' ? candidates(r, r.path).map((p) => real(p, tree.links)).filter((p) => p !== null) : []);
   const hit = ignored(refs.flatMap(as));
   return refs.filter((r) => !as(r).some((p) => hit.has(p)));
 }
@@ -198,30 +204,40 @@ function dropIgnored(refs, ignored) {
 // Between two snapshots ({files, read, links}), with the diff's renames (new path → old path); a
 // symlinked surface is read as what it points to, the way an agent opening it would:
 // `broken` are references the surface made before and that resolved then, from where it was, and do
-// not now, each with its surface's load class; `added` are references it did not make before and
-// that do not resolve. Gitignored paths are expected absent in both, as in the inventory.
+// not now, each with its surface's load class and whether its line is unchanged from the base
+// (`stale`); `added` are references it did not make before and that do not resolve. Gitignored
+// paths are expected absent in both, as in the inventory.
 export function compare(before, after, renamed = new Map(), ignored = () => new Set()) {
-  const tb = treeOf(before.files, before.read, before.links);
-  const ta = treeOf(after.files, after.read, after.links);
+  const tb = treeOf(before.files, before.read, before.links, before.modules);
+  const ta = treeOf(after.files, after.read, after.links, after.modules);
   const skills = skillDirs(after.files);
   const out = { broken: [], added: [] };
   for (const path of surfacesOf(after.files)) {
     const was = renamed.get(path) || path;
     const readAt = (snap, p) => { const r = real(p, snap.links); return r === null ? '' : snap.read(r) || ''; };
     const text = readAt(after, path);
-    const prior = new Set(references(readAt(before, was)).map(key));
+    const baseText = readAt(before, was);
+    const prior = new Set(references(baseText).map(key));
+    const kept = new Set(baseText.split(/\r?\n/));
     for (const ref of once(references(text))) {
       if (!(isClaim(ref, was, [tb]) || isClaim(ref, path, [ta])) || resolves(ref, path, ta)) continue;
       if (!prior.has(key(ref))) out.added.push({ path, ...ref });
-      else if (resolves(ref, was, tb)) out.broken.push({ path, load: loadClass(path, text, skills), ...ref });
+      else if (resolves(ref, was, tb)) out.broken.push({ path, load: loadClass(path, text, skills), stale: kept.has(ref.text), ...ref });
     }
   }
-  out.broken = dropIgnored(out.broken, ignored);
-  out.added = dropIgnored(out.added, ignored);
+  out.broken = dropIgnored(out.broken, ignored, ta);
+  out.added = dropIgnored(out.added, ignored, ta);
   return out;
 }
 
-export const gitIgnored = (root) => (paths) => new Set((spawnSync('git', ['check-ignore', '--stdin'], { cwd: root, input: paths.join('\n'), encoding: 'utf8' }).stdout || '').split('\n').filter(Boolean));
+// The subset of paths git ignores. A batch git refuses (exit 128) is asked path by path, so one
+// unanswerable path never cancels the filter for the rest.
+export const gitIgnored = (root) => (paths) => {
+  const ask = (list) => spawnSync('git', ['check-ignore', '--stdin'], { cwd: root, input: list.join('\n'), encoding: 'utf8' });
+  const r = ask(paths);
+  const lines = (x) => (x.stdout || '').split('\n').filter(Boolean);
+  return new Set(r.status === 0 || r.status === 1 ? lines(r) : paths.flatMap((p) => lines(ask([p]))));
+};
 
 function inventory(root) {
   const git = (...a) => spawnSync('git', a, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout || '';
@@ -229,14 +245,15 @@ function inventory(root) {
   const files = [...new Set([...staged.map(([, p]) => p), ...git('ls-files', '-z', '--others', '--exclude-standard').split('\0').filter(Boolean)])];
   const links = new Map();
   for (const [mode, p] of staged) if (mode === '120000') { try { links.set(p, readlinkSync(join(root, p))); } catch (e) { /* removed from disk */ } }
+  const modules = new Set(staged.filter(([mode]) => mode === '160000').map(([, p]) => p));
   const read = (p) => { try { return readFileSync(join(root, p), 'utf8'); } catch (e) { return null; } };
-  const tree = treeOf(files, read, links);
+  const tree = treeOf(files, read, links, modules);
   const skills = skillDirs(files);
   const surfaces = surfacesOf(files).map((path) => {
     const text = read(path) || '';
     return { path, load: loadClass(path, text, skills), bytes: Buffer.byteLength(text), text };
   });
-  const unresolved = dropIgnored(surfaces.flatMap((s) => once(references(s.text)).filter((r) => isClaim(r, s.path, [tree]) && !resolves(r, s.path, tree)).map((r) => ({ path: s.path, ...r }))), gitIgnored(root))
+  const unresolved = dropIgnored(surfaces.flatMap((s) => once(references(s.text)).filter((r) => isClaim(r, s.path, [tree]) && !resolves(r, s.path, tree)).map((r) => ({ path: s.path, ...r }))), gitIgnored(root), tree)
     .map(({ path, line, kind, target }) => ({ path, line, kind, target })).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : a.line - b.line));
   const totals = { always: 0, scoped: 0, 'on-demand': 0 };
   for (const s of surfaces) totals[s.load] += s.bytes;

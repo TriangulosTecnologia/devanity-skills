@@ -346,6 +346,8 @@ describe('rules CI', () => {
         ['a path that becomes gitignored is expected absent', { 'CLAUDE.md': 'Local secrets live in `.env`; never commit it.\n', '.env': 'X=1\n' }, (d) => { git(d, 'rm', '-q', '--cached', '.env'); write(d, '.gitignore', '.env\n'); }],
         ['a reference the surface did not make at the base is new, even if its target existed', { 'CLAUDE.md': 'x\n', 'scripts/deploy.sh': 'x\n' }, (d) => { git(d, 'rm', '-q', 'scripts/deploy.sh'); write(d, 'CLAUDE.md', 'The old `scripts/deploy.sh` was removed; do not recreate it.\n'); }],
         ['a bare word that names a directory is a word', { 'CLAUDE.md': 'The `build` script compiles.\n', 'package.json': JSON.stringify({ scripts: { build: 'x' } }), 'build/a.js': '1\n' }, (d) => git(d, 'mv', 'build', 'tools')],
+        ['a line the diff rewrites to record a removal is the author\'s statement', { 'CLAUDE.md': 'Deploy with `scripts/deploy.sh`.\nRun `npm test`.\n', 'scripts/deploy.sh': 'x\n', 'package.json': JSON.stringify({ scripts: { test: 'x' } }) }, (d) => { git(d, 'rm', '-q', 'scripts/deploy.sh'); write(d, 'package.json', JSON.stringify({ scripts: {} })); write(d, 'CLAUDE.md', 'Deploy with `make deploy`; the old `scripts/deploy.sh` was removed.\n`npm test` no longer exists.\n'); }],
+        ['gitignored paths reached through a symlink, and in the same batch a plain one', { 'CLAUDE.md': 'Local: `cfg/local.json` and `.env`.\n', 'config/local.json': '{}\n', 'config/a.json': '{}\n', '.env': 'X=1\n' }, (d) => { git(d, 'rm', '-q', '--cached', 'config/local.json', '.env'); write(d, '.gitignore', 'config/local.json\n.env\n'); }, (d) => symlinkSync('config', join(d, 'cfg'))],
         ['a package.json rewritten with a byte-order mark keeps its scripts', { 'CLAUDE.md': 'Lint: `npm run lint`.\n', 'package.json': JSON.stringify({ scripts: { lint: 'x' } }) }, (d) => write(d, 'package.json', '\ufeff' + JSON.stringify({ scripts: { lint: 'x' } }, null, 2))],
       ]) {
         const d = fresh(); git(d, 'init', '-q', '-b', 'main');
@@ -356,6 +358,16 @@ describe('rules CI', () => {
         const r = runCi(d, ['--base', 'main', '--no-proof-required']);
         assert.equal(r.code, 0, `${name}:\n${r.out}`);
       }
+    });
+    test('a path inside a submodule is assumed present: its content is not in this repository', () => {
+      const d = repo({ 'CLAUDE.md': 'See `vendor/lib/README.md`.\n', 'vendor/lib/README.md': 'r\n' }, () => {});
+      const sha = git(d, 'rev-parse', 'HEAD').stdout.trim();
+      git(d, 'rm', '-rq', 'vendor/lib');
+      git(d, 'update-index', '--add', '--cacheinfo', `160000,${sha},vendor/lib`);
+      write(d, '.gitmodules', '[submodule "lib"]\n\tpath = vendor/lib\n\turl = ../lib\n'); git(d, 'add', '.gitmodules');
+      git(d, '-c', 'user.email=a@b', '-c', 'user.name=a', 'commit', '-qm', 'submodule');
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out);
     });
     test('the job and the inventory agree: a new gitignored reference is neither reported nor failed', () => {
       const d = repo({ 'CLAUDE.md': 'x\n', '.gitignore': 'config/local.json\n', 'config/a.json': '{}\n' }, (d) => write(d, 'CLAUDE.md', 'x\nLocal: `config/local.json`.\n'));

@@ -18,8 +18,9 @@
 // 5. verifier sovereignty: a diff that removes or rewrites lines of existing tests, or changes a
 //    declared check/tier/test glob, together with code needs a `verifier-change:` line in the body;
 // 6. instruction references (surfaces.mjs): a diff that removes a path or package script an
-//    always-loaded or path-scoped instruction file named at the base fails (in a skill, it is
-//    reported); a reference the diff adds that does not resolve is reported. A proof that
+//    always-loaded or path-scoped instruction file named at the base, on a line the diff left as it
+//    was, fails (in a skill, or on a rewritten line, it is reported); a reference the diff adds
+//    that does not resolve is reported. A proof that
 //    says `failed_before: yes` on a diff with no test and no declared check is reported, never failed;
 // 7. --self-check: the dogfood mode for the plugin repository itself: validates its rules and runs
 //    steps 2–6 on HEAD~1..HEAD (the checks execute) without requiring a PR body (a shallow clone
@@ -68,12 +69,14 @@ function show(rev, path) {
   return r.status === 0 ? r.stdout : null;
 }
 
-// The files at a revision, how to read them, and the symlinks git records there (path → target).
+// The files at a revision, how to read them, and the symlinks (path → target) and submodules git
+// records there.
 function snapshot(rev) {
   const r = spawnSync('git', ['ls-tree', '-r', '-z', rev], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   const entries = (r.stdout || '').split('\0').filter(Boolean).map((l) => [l.slice(0, 6), l.slice(l.indexOf('\t') + 1)]);
   const links = new Map(entries.filter(([mode]) => mode === '120000').map(([, p]) => [p, show(rev, p)]));
-  return { files: entries.map(([, p]) => p), read: (p) => show(rev, p), links };
+  const modules = new Set(entries.filter(([mode]) => mode === '160000').map(([, p]) => p));
+  return { files: entries.map(([, p]) => p), read: (p) => show(rev, p), links, modules };
 }
 
 // The diff's renames, new path → old path. `-z` output is a status token, then one path, or two
@@ -198,6 +201,7 @@ if (base && rulesMod && !loaded.errors.length) {
   for (const b of refs.broken) {
     const what = `${b.path}:${b.line} names \`${b.target}\`, which resolved before this diff and does not now`;
     if (b.load === 'on-demand') note(`${what} (a skill, loaded on demand: reported, not failed)`);
+    else if (!b.stale) note(`${what} (its line was rewritten in this diff: the author's statement, reported, not failed)`);
     else fail(`${what}: point it at what replaced it, or remove it`);
   }
   for (const a of refs.added) note(`${a.path}:${a.line} names \`${a.target}\`, which does not exist (a reference this diff adds: reported, not failed)`);
