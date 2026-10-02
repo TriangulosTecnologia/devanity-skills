@@ -191,7 +191,7 @@ plugin/                         a unidade instalável: o marketplace instala só
     devanity-guard.js             PreToolUse: caminhos high-risk, autoridade de comandos
     devanity-oracle.js            Stop: mede o bloco devanity-proof
   scripts/devanity-rules-ci.mjs o job de CI de referência (o teto do guard); os modos o rodam; --self-check neste repositório
-  scripts/hotspots.mjs  calibrate.mjs  os cálculos que os modos rodam em vez de descrever: frequência × tamanho; limite de catraca pela distribuição
+  scripts/hotspots.mjs  calibrate.mjs  surfaces.mjs  os cálculos que os modos rodam em vez de descrever: frequência × tamanho; limite de catraca pela distribuição; superfícies de instrução, custo e referências que não resolvem
   templates/devanity-rules.yml  o workflow que o consumidor copia; o `init` o propõe
 scripts/
   validate.mjs                  a skill: frontmatter, referências e rotas existentes, tabela de roteamento ≡ argument-hint ≡ arquivos, linha Load: ⊇ citações, citações de degrau, cap do kernel, orçamento; o repositório: conjunto deliberado de modos e agentes, nomes aposentados, repositório canônico, versão única, protocolo, atribuição do harness

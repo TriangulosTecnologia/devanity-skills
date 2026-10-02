@@ -60,11 +60,11 @@ This list is the only home of the dimensions. Never state how many there are.
 1. **Context compressibility** (`compressibility`): can the change be explained with a small, bounded context? Bad: small behavior needs whole-system understanding; logic spread across layers; cross-cutting knowledge with no contract; a file turning into a gravity well.
 2. **Executable specification** (`executable-spec`): does important intent live in tests, types, schemas or validators rather than in conversation? Bad: new behavior without acceptance tests; a business rule hidden in a conditional; a requirement that exists only in an issue.
 3. **Co-located specs** (`co-located-spec`): where code cannot express intent, a `*.spec.md` next to it states intent, constraints, acceptance, non-goals, risk and verification commands. Bad: rewritten source, duplicated type shapes, generic prose. Doc-comment claims belong here, never to `instruction-hygiene`.
-4. **Verification loop** (`verification-loop`), two axes, both required. **Cost**: can a future agent run a focused check quickly and find it? **Fidelity**: can the check fail when the contract breaks? Bad: only manual or slow end-to-end proof; snapshots updated without reading the diff; asserting status or shape where the contract is the payload; a deployed boundary covered only by mocks.
+4. **Verification loop** (`verification-loop`), two axes, both required. **Cost**: can a future agent run a focused check quickly and find it? **Fidelity**: can the check fail when the contract breaks? Bad: only manual or slow end-to-end proof; snapshots updated without reading the diff; asserting status or shape where the contract is the payload; a deployed boundary covered only by mocks; no one command that takes a fresh environment to runnable (the repository's own setup script, the same one its CI calls).
 5. **Boundary integrity** (`boundary-integrity`): are package, layer, domain, ownership and public-API boundaries preserved **and enforced**? A boundary that lives only in prose is a candidate for an import rule. Spread across a boundary that exists (even in prose) tags here; spread where none is named tags `compressibility`.
 6. **Pattern hygiene** (`pattern-hygiene`): did the change copy or strengthen a bad local pattern (deeper nesting, more special cases in a god file, a workaround becoming the norm)? Agents copy what they see. New code seeds the pattern the next agent copies, so it is never irrelevant.
 7. **Debt containment** (`debt-containment`): debt is acceptable only when modular, visible, observable and cheap to repay. It is unacceptable when it is invisible, systemic, untested, in core logic, or likely to be copied.
-8. **Instruction and context hygiene** (`instruction-hygiene`): the instruction surfaces in scope, judged by the syndromes below. Also bad: a `CLAUDE.md` grown into a manual (keep it under 200 lines); generic advice; a local rule placed globally; a procedure that belongs in a skill; the same rule copied by hand across tools or repositories.
+8. **Instruction and context hygiene** (`instruction-hygiene`): the instruction surfaces in scope, judged by the syndromes below. Also bad: always-on text that describes instead of instructing (an overview, architecture in prose, history), which every turn pays for and which does not raise task success: what earns its place is a command, a constraint or a pointer; generic advice; a local rule placed globally; a procedure that belongs in a skill; the same rule copied by hand across tools or repositories.
 
 **Relevance.** A dimension is relevant when the change or scope touches an artifact it governs. Unsure → check it.
 
@@ -127,7 +127,7 @@ Choose the smallest correct surface:
 machine-decidable rule          → a check
 directory-scoped guidance       → nested CLAUDE.md
 file-type or cross-cutting rule → .claude/rules/*.md with a `paths:` glob
-always-relevant rule            → root CLAUDE.md (under 200 lines)
+always-relevant rule            → root CLAUDE.md (commands, constraints, pointers)
 repeatable procedure            → a skill
 domain or product intent        → co-located *.spec.md
 public API contract             → JSDoc/TSDoc

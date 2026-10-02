@@ -56,7 +56,7 @@
     "plugin/scripts/**": {
       "tier": "high-risk",
       "check": "node --test tests/rules-ci.test.mjs tests/scripts.test.mjs",
-      "purpose": "the reference CI job and the computations the modes run (hotspots, calibrate)",
+      "purpose": "the reference CI job and the computations the modes run (hotspots, calibrate, surfaces)",
       "invariants": [
         "dependency-free",
         "observation never changes the verdict"

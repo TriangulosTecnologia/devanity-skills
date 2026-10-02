@@ -268,6 +268,54 @@ describe('rules CI', () => {
     assert.ok(!text.includes('\u001b'), 'a terminal escape in the map does not reach the summary');
   });
 
+  describe('instruction references', () => {
+    const repo = (base, change) => {
+      const d = fresh(); git(d, 'init', '-q', '-b', 'main');
+      write(d, 'devanity.rules.json', JSON.stringify({ version: 1 }));
+      for (const [rel, text] of Object.entries(base)) write(d, rel, text);
+      commitAll(d, 'base'); git(d, 'checkout', '-qb', 'feature');
+      change(d); commitAll(d, 'change');
+      return d;
+    };
+    test('a diff that removes what an instruction file names fails; moving the reference with it passes', () => {
+      const base = { 'CLAUDE.md': 'Entry: `src/old.js`.\n', 'src/old.js': '1\n' };
+      let d = repo(base, (d) => git(d, 'rm', '-q', 'src/old.js'));
+      let r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 1, r.out); assert.match(r.out, /CLAUDE\.md:1 names `src\/old\.js`, which this diff removes/);
+      d = repo(base, (d) => { git(d, 'mv', 'src/old.js', 'src/new.js'); write(d, 'CLAUDE.md', 'Entry: `src/new.js`.\n'); });
+      r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out);
+    });
+    test('a removed package script that an instruction file runs fails', () => {
+      const d = repo({ 'CLAUDE.md': 'Typecheck: `npm run typecheck`.\n', 'package.json': JSON.stringify({ scripts: { typecheck: 'tsc' } }) },
+        (d) => write(d, 'package.json', JSON.stringify({ scripts: {} })));
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 1, r.out); assert.match(r.out, /names `typecheck`, which this diff removes/);
+    });
+    test('a break inside a skill (loaded on demand, often vendored) is reported, not failed', () => {
+      const d = repo({ 'skills/x/SKILL.md': 'Build: `pnpm run build`.\n', 'package.json': JSON.stringify({ scripts: { build: 'tsc' } }) },
+        (d) => write(d, 'package.json', JSON.stringify({ scripts: {} })));
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out); assert.match(r.out, /skills\/x\/SKILL\.md:1 names `build`, which this diff removes \(a skill, loaded on demand: reported, not failed\)/);
+    });
+    test('a new reference that resolves to nothing is reported, not failed: it never held', () => {
+      const d = repo({ 'CLAUDE.md': 'x\n', 'src/a.js': '1\n' }, (d) => write(d, 'CLAUDE.md', 'x\nSee `src/nope.js`.\n'));
+      const r = runCi(d, ['--base', 'main', '--no-proof-required']);
+      assert.equal(r.code, 0, r.out); assert.match(r.out, /CLAUDE\.md:2 names `src\/nope\.js`, which does not exist/);
+    });
+  });
+
+  test('a proof that claims a check failed first, on a diff no check could measure, is reported, never failed', () => {
+    const body = join(temp, `pbody${n}.md`);
+    writeFileSync(body, '```\ndevanity-proof:\n  check: npm test\n  failed_before: yes\n  passed_after: yes\n  status: VERIFIED\n  pending: 0\n```\n');
+    let d = seed({ rules: { version: 1 }, changes: { 'src/a.js': '1\n' } });
+    let r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+    assert.equal(r.code, 0, r.out); assert.match(r.out, /failed_before: yes.*nothing in this diff could have measured it/);
+    d = seed({ rules: { version: 1 }, changes: { 'src/a.js': '1\n', 'src/a.test.js': '1\n' } });
+    r = runCi(d, ['--base', 'main', '--pr-body-file', body]);
+    assert.equal(r.code, 0, r.out); assert.doesNotMatch(r.out, /could have measured/, 'a changed test is an oracle the claim can rest on');
+  });
+
   test('the old script path still runs, for a workflow copied before the script moved into the plugin', () => {
     const d = seed({ rules: { version: 1, paths: { 'docs/**': { tier: 'trivial' } } }, changes: { 'docs/a.md': 'b\n' } });
     const r = spawnSync(process.execPath, [join(root, 'scripts', 'devanity-rules-ci.mjs'), '--root', d, '--base', 'main'], { cwd: d, encoding: 'utf8', env: { ...process.env, GITHUB_EVENT_PATH: '', NODE_TEST_CONTEXT: '' } });

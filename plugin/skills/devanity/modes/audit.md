@@ -25,7 +25,8 @@ A surface is one file; for JSDoc/TSDoc, one file's doc blocks, whose claims tag 
 - A rule in force with no durable home is a finding whose fix writes that home.
 - A named target absent from disk → `absent`, and stop. An unreadable one is `absent (unreadable: <reason>)`.
 - No surfaces at all does not end the run: each rule in force with no agent-legible home and no enforcement is a finding. The absence bounds the syndromes, never reconciliation or severity.
-- `### Surfaces found / reviewed` lists every surface the Deep baseline discovers as `reviewed` (enforced or prose-only, context cost LOW|MEDIUM|HIGH) or `absent`. One missing from the list is a defect of the run; the verdict is owed only when every one is dispositioned.
+- Run `node "${CLAUDE_PLUGIN_ROOT}/scripts/surfaces.mjs"` and cite it; never recount by hand. It lists each surface with when its bytes are paid (always, scoped, on demand) and every reference to a path or package script that resolves to nothing. Each such reference is a claim-diff finding, unless its line names the file as one to look for or as another repository's; the CI job already fails a diff that breaks one that held.
+- `### Surfaces found / reviewed` lists every surface the Deep baseline discovers as `reviewed` (enforced or prose-only, with the load class and bytes `surfaces.mjs` measured) or `absent`. One missing from the list is a defect of the run; the verdict is owed only when every one is dispositioned.
 - A fix inside one surface runs as `/devanity improve <path>`, and so does one that writes a missing home: its `fix:` names the new file's path, which its Key carries. One that edits a second file runs as `/devanity improve <Key>`.
 
 ## Steps
@@ -186,7 +187,7 @@ Evidence: tier, G-001 (billing arithmetic); check, the command the CI test job r
 instruction surfaces, whole repository (Deep inventory: 1 on disk)
 
 ### Surfaces found / reviewed
-- `CLAUDE.md` — reviewed: prose-only, 412 lines, context cost HIGH
+- `CLAUDE.md` — reviewed: prose-only, always-on, 18,402 B (412 lines)
 - `AGENTS.md`, `.claude/rules/**`, `.github/copilot-instructions.md`, `.cursorrules`, skill files — absent
 
 ### Coverage
