@@ -315,12 +315,22 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       'eval "$(direnv export bash)"; npm test -- -t \'deploy\'',
       'ssh host "rm billing/x.py"',
       "ssh host <<'EOF'\nrm billing/x.py\nEOF",
-      'ssh host "grep -rn \'git merge\' /srv/app/log"',
-      'ssh ci \'grep -c "npm publish" build.log\'',
       'ssh -fN -L 5432:localhost:5432 bastion && git commit -m "fix: git merge conflict"',
       'ssh -T git@github.com; git commit -m "chore: npm publish notes"',
-      "git commit -m \"docs: git merge notes\" && ssh host <<'EOF'\nuptime\nEOF",
     ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
+  });
+
+  test('an ssh that runs something from this command counts it raw, for authority only (documented over-read)', async () => {
+    const d = repo();
+    for (const [cmd, need] of [
+      ['ssh host "grep -rn \'git merge\' /srv/app/log"', 'merge'],
+      ["git commit -m \"docs: git merge notes\" && ssh host <<'EOF'\nuptime\nEOF", 'merge'],
+      ["echo 'git push --force' > s.sh && ssh host bash < s.sh", 'merge'],
+      ["ssh host 'cat > /tmp/r.sh' <<'EOF'\ngit push --force\nEOF\nssh host 'bash /tmp/r.sh'", 'merge'],
+      ['ssh host -t ./deploy.sh', 'deploy'],
+      ["printf 'git push --force\\n' | ssh host", 'merge'],
+    ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
+    for (const cmd of ['ssh host "rm billing/x.py"', "ssh host <<'EOF'\nrm billing/x.py\nEOF"]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
   });
 
   test('what the shell does run still counts: a later line, a substitution, a script fed to a shell or ssh', async () => {
@@ -409,6 +419,7 @@ describe('guard: the shell reader stays inside the hook budget', () => {
       ['make a '.repeat(100000), null],
       ['ssh h '.repeat(3000) + 'git push --force origin main', 'merge'],
       ["cat > x.sh <<'E'\n" + 'echo a\n'.repeat(150000) + 'E\n' + 'ssh h<x.sh;'.repeat(600) + '\ngit push --force origin main', 'merge'],
+      ['echo "a" | ' + 'ssh h bash | '.repeat(16000) + 'cat; git push --force origin main', 'merge'],
       ['git' + ' -git'.repeat(20000), null],
       [' -c git'.repeat(20000), null],
     ]) {
