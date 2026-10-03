@@ -313,6 +313,10 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       'eval "$(pyenv init -)" && pytest -k "deploy"',
       'eval "$(conda shell.bash hook)" && conda activate env && pytest -k "deploy or billing"',
       'eval "$(direnv export bash)"; npm test -- -t \'deploy\'',
+      'ssh host "rm billing/x.py"',
+      "ssh host <<'EOF'\nrm billing/x.py\nEOF",
+      'ssh host "grep -rn \'git merge\' /srv/app/log"',
+      'ssh ci \'grep -c "npm publish" build.log\'',
     ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
   });
 
@@ -365,6 +369,9 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ["echo 'git merge main' | (docker exec -i c bash)", 'merge'],
       ['ssh host ./deploy.sh prod', 'deploy'],
       ['ssh -p 22 deploy@host "cd app && ./deploy.sh"', 'deploy'],
+      ['ssh host "git push --force origin main"', 'merge'],
+      ...['cp a.sh b.sh && bash b.sh', 'mv a.sh b.sh && bash b.sh', 'install -m 755 a.sh bin/run && bin/run', 'ln -s a.sh run && ./run']
+        .map((run) => [`cat > a.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
     ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
     for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"', 'cp src/x.py billing/x.py', 'cp -t billing/ src/x.py', 'install -m 644 src/x.py billing/x.py', 'mv billing/x.py src/x.py',
       'cp src/x.py billing', 'mv src/x.py billing/', 'mv src/x.py billing', 'rm billing/x.py; cp a -t',
@@ -390,6 +397,7 @@ describe('guard: the shell reader stays inside the hook budget', () => {
       ['git' + ' --git-dir=a'.repeat(40) + ' push', null],   // past 16 global options: no pattern rescans the run
       ['git push x '.repeat(16000), 'commit'],
       ['make a '.repeat(100000), null],
+      ['ssh h '.repeat(3000) + 'git push --force origin main', 'merge'],
       ['git' + ' -git'.repeat(20000), null],
       [' -c git'.repeat(20000), null],
     ]) {
