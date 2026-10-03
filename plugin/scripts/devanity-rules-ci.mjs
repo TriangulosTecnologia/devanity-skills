@@ -33,7 +33,7 @@ import { spawnSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import { compare, gitIgnored, surfacesOf } from './surfaces.mjs';
+import { compare, gitIgnored, gitRun, surfacesOf } from './surfaces.mjs';
 
 const args = process.argv.slice(2);
 const opt = (name, def) => { const i = args.indexOf(name); return i >= 0 && args[i + 1] !== undefined ? args[i + 1] : def; };
@@ -59,20 +59,20 @@ const fail = (m) => failures.push(m);
 const note = (m) => notes.push(m);
 
 function git(...a) {
-  const r = spawnSync('git', a, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = gitRun(root, a);
   return { ok: r.status === 0, out: (r.stdout || '').trim(), err: (r.stderr || '').trim() };
 }
 
 // File contents at a revision, untrimmed (line numbers count from the first byte), or null.
 function show(rev, path) {
-  const r = spawnSync('git', ['show', `${rev}:${path}`], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = gitRun(root, ['show', `${rev}:${path}`]);
   return r.status === 0 ? r.stdout : null;
 }
 
 // The files at a revision, how to read them, and the symlinks (path → target) and submodules git
 // records there.
 function snapshot(rev) {
-  const r = spawnSync('git', ['ls-tree', '-r', '-z', rev], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = gitRun(root, ['ls-tree', '-r', '-z', rev]);
   const entries = (r.stdout || '').split('\0').filter(Boolean).map((l) => [l.slice(0, 6), l.slice(l.indexOf('\t') + 1)]);
   const links = new Map(entries.filter(([mode]) => mode === '120000').map(([, p]) => [p, show(rev, p)]));
   const modules = new Set(entries.filter(([mode]) => mode === '160000').map(([, p]) => p));
@@ -82,7 +82,7 @@ function snapshot(rev) {
 // The diff's renames, new path → old path. `-z` output is a status token, then one path, or two
 // for a rename or copy: read it as records, so a file named `R` is a path, never a status.
 function renames(from) {
-  const out = (spawnSync('git', ['diff', '--name-status', '-M', '-z', from, 'HEAD'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout || '').split('\0');
+  const out = (gitRun(root, ['diff', '--name-status', '-M', '-z', from, 'HEAD']).stdout || '').split('\0');
   const map = new Map();
   for (let i = 0; i + 1 < out.length;) {
     const status = out[i];
@@ -111,7 +111,7 @@ function fromRev(base) {
 // the new path as their own records, and the new path is the one touched. Only the first two tabs
 // separate fields: a path may hold one.
 function changedFiles(base) {
-  const r = spawnSync('git', ['diff', '--numstat', '-z', '-M', fromRev(base), 'HEAD'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const r = gitRun(root, ['diff', '--numstat', '-z', '-M', fromRev(base), 'HEAD']);
   if (r.status !== 0) { fail(`git diff failed: ${(r.stderr || '').trim()}`); return []; }
   const records = (r.stdout || '').split('\0');
   const files = [];

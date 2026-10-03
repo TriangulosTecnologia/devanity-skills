@@ -5,8 +5,8 @@
 //
 //   (a) a file tool on a `high-risk` path with no human decision covering it in the ledger → block
 //   (b) a Bash command that writes into such a path (redirect, tee, sed -i, mv, cp, rm, git
-//       checkout --, git restore, truncate, dd of=, install) → same rule; heuristic, a floor,
-//       the reference CI job is the ceiling
+//       checkout --, git restore, truncate, dd of=, install) → same rule; read over what the shell
+//       runs (rules.shellCommands), still a heuristic: a floor, the reference CI job is the ceiling
 //   (c) a Bash command that needs more authority than the session holds → block
 //
 // Blocking form (Claude Code hooks reference, checked 2026-09-24 against 2.1.281): exit 2 blocks
@@ -70,26 +70,22 @@ function suggestId(rel) {
 
 const WRITERS = new Set(['tee', 'mv', 'cp', 'rm', 'truncate', 'install', 'dd', 'sed', 'git']);
 
-function unquote(tok) { return tok.replace(/^['"]|['"]$/g, ''); }
 function looksLikePath(tok) {
   if (!tok || tok.startsWith('-') || /^[a-z]+:\/\//i.test(tok) || tok === '/dev/null') return false;
   return tok.includes('/') || /\.[A-Za-z0-9]+$/.test(tok);
 }
 
-// Repository-relative paths a command may write to. Splits on `;`, `&&`, `||`, `|`, then reads
-// each simple command: redirect targets always count; for writer commands, every path-like
-// argument counts (sed only with -i; git only for checkout -- / restore; dd only of=).
+// Repository-relative paths a command may write to, over each simple command the shell runs
+// (rules.shellCommands: a heredoc body or a quoted argument is data, a later line or `$( )` runs):
+// redirect targets always count; for writer commands, every path-like argument counts (sed only
+// with -i; git only for checkout -- / restore; dd only of=; cp, install and mv their destination, and
+// mv its sources).
 function writtenPaths(command) {
   const out = new Set();
-  const spaced = String(command || '').replace(/(\d?>>?)/g, ' $1 ');
-  for (const segment of spaced.split(/;|&&|\|\||\|/)) {
-    const toks = segment.trim().split(/\s+/).filter(Boolean).map(unquote);
-    if (!toks.length) continue;
-    for (let i = 0; i < toks.length; i++) {
-      if (/^\d?>>?$/.test(toks[i]) && toks[i + 1]) { out.add(toks[i + 1]); i++; }
-    }
-    let k = 0;
-    while (k < toks.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[k]) || toks[k] === 'sudo' || toks[k] === 'env')) k++;
+  for (const c of rules.shellCommands(command).commands) {
+    c.writes.forEach((t) => out.add(t));
+    const toks = c.words.map((w) => w.value);
+    const k = c.at;
     const cmd = toks[k];
     if (!WRITERS.has(cmd)) continue;
     const args = toks.slice(k + 1);
@@ -111,6 +107,15 @@ function writtenPaths(command) {
       const sub = args[0];
       if (sub === 'checkout') { const d = args.indexOf('--'); if (d >= 0) args.slice(d + 1).filter(looksLikePath).forEach((a) => out.add(a)); }
       else if (sub === 'restore') args.slice(1).filter((a) => looksLikePath(a) && !a.startsWith('--source')).forEach((a) => out.add(a));
+    } else if (cmd === 'cp' || cmd === 'install' || cmd === 'mv') {
+      // the destination is written, and mv also removes its sources. A destination may be a
+      // directory, named with or without its `/`: each source by its name in it.
+      const { sources, dest } = rules.copyTargets(args);
+      if (cmd === 'mv') sources.filter(looksLikePath).forEach((a) => out.add(a));
+      if (dest) {
+        if (looksLikePath(dest)) out.add(dest);
+        if (args.some((a) => a === '-t' || a.startsWith('--target-directory')) || sources.length > 1 || !/\.[A-Za-z0-9]+$/.test(dest)) sources.forEach((src) => out.add(path.posix.join(dest, path.posix.basename(src))));
+      }
     } else if (cmd === 'dd') {
       args.filter((a) => a.startsWith('of=')).forEach((a) => out.add(a.slice(3)));
     } else {
@@ -194,7 +199,10 @@ function evaluate(payload, env) {
     if (target) checkPath(String(target));
   } else if (tool === 'Bash') {
     const command = String(input.command || '');
-    for (const p of writtenPaths(command)) checkPath(p, command.slice(0, 120));
+    // one guarded path blocks the command: past 50 found, the rest are only counted
+    let more = 0;
+    for (const p of writtenPaths(command)) { if (findings.length >= 50) more++; else checkPath(p, command.slice(0, 120)); }
+    if (more) findings[findings.length - 1].message += `\n  (and ${more} more path(s) in this command not checked one by one)`;
     const need = rules.commandAuthority(loaded.rules, command);
     if (need && rules.authorityRank(need) > rules.authorityRank(auth.have)) {
       findings.push({ message: authorityMessage(command, need, auth), event: { tool, command, authority: { need, have: auth.have } } });

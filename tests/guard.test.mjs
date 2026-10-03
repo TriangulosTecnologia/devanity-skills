@@ -287,6 +287,184 @@ describe('guard: confirming-gate fixes (phase V)', () => {
   });
 });
 
+describe('guard: what the shell runs, not what the text says (field report: 5 of 8 blocks were false)', () => {
+  test('heredoc bodies, comments, quoted text and look-alike subcommands are data: nothing to block', async () => {
+    const d = repo();
+    for (const cmd of [
+      "cat > docs/ops.md <<'EOF'\nAfter merge, run pnpm deploy:vm.\nEOF",
+      "cat > src/ci.yml <<'EOF'\n      - run: git push --force origin verified\nEOF",
+      'git fetch origin main && git merge-base origin/main HEAD',
+      'node -e "console.log(1)"   # never git push --force here',
+      'bash test/static.sh && grep -n "git push --force" src/x.py',
+      "git commit -m \"$(cat <<'EOF'\nci: deploy gate; don't git push --force\nEOF\n)\"",
+      "cat > docs/ops.md <<'EOF'\nRestore: cp src/x.py billing/x.py\necho hi > billing/x.py\nEOF",
+      'grep -n "=> billing/x.py" src/x.py',
+      "cat > docs/ops.md <<'EOF'\nRun pnpm deploy:vm.\nEOF\ngit add docs/ops.md && cat docs/ops.md",
+      'grep -rn ssh scripts/ deploy',
+      'pytest -k eval deploy',
+      "cat > x.sh <<'EOF'\ngit push --force\nEOF\nbash -n x.sh",
+      'echo "git push --force is banned" && which bash',
+      'grep -rln "git push --force" . | head; type zsh',
+      'man bash; echo "pnpm deploy:vm"',
+      'cp billing/x.py /tmp/x.bak',
+      'cp -p billing/x.py src/x.py',
+      'source .venv/bin/activate && pytest tests/ -k "deploy or billing" -q',
+      '. ~/.nvm/nvm.sh && npm test -- -t "deploy"',
+      'eval "$(pyenv init -)" && pytest -k "deploy"',
+      'eval "$(conda shell.bash hook)" && conda activate env && pytest -k "deploy or billing"',
+      'eval "$(direnv export bash)"; npm test -- -t \'deploy\'',
+      'ssh host "rm billing/x.py"',
+      "ssh host <<'EOF'\nrm billing/x.py\nEOF",
+      'ssh -fN -L 5432:localhost:5432 bastion && git commit -m "fix: git merge conflict"',
+      'ssh -T git@github.com; git commit -m "chore: npm publish notes"',
+      'docker compose exec -T app bash scripts/test.sh && git commit -m "fix: git merge conflict check"',
+      'apt-get install -y bash curl && grep -rn "git merge" docs/',
+      'grep -rl "git push --force" scripts/ | xargs grep -L bash',
+      "git ls-files '*.sh' | xargs shellcheck -s bash; grep -rn 'git push --force' docs",
+      'rsync -avz -e ssh dist/ host:/srv/app/ && git commit -m "release: note git merge order"',
+    ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
+  });
+
+  test('an ssh that runs something from this command counts it raw, for authority only (documented over-read)', async () => {
+    const d = repo();
+    for (const [cmd, need] of [
+      ['ssh host "grep -rn \'git merge\' /srv/app/log"', 'merge'],
+      ["git commit -m \"docs: git merge notes\" && ssh host <<'EOF'\nuptime\nEOF", 'merge'],
+      ["echo 'git push --force' > s.sh && ssh host bash < s.sh", 'merge'],
+      ["ssh host 'cat > /tmp/r.sh' <<'EOF'\ngit push --force\nEOF\nssh host 'bash /tmp/r.sh'", 'merge'],
+      ['ssh host -t ./deploy.sh', 'deploy'],
+      ["printf 'git push --force\\n' | ssh host", 'merge'],
+    ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
+    for (const cmd of ['ssh host "rm billing/x.py"', "ssh host <<'EOF'\nrm billing/x.py\nEOF"]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
+  });
+
+  test('what the shell does run still counts: a later line, a substitution, a script fed to a shell or ssh', async () => {
+    const d = repo();
+    for (const [cmd, need] of [
+      ['cd src\n./deploy.sh prod', 'deploy'],
+      ['echo "$(git push --force origin main)"', 'merge'],
+      ["cat <<'EOF' | bash\ngit push --force origin main\nEOF", 'merge'],
+      ["ssh host <<'EOF'\n./deploy.sh\nEOF", 'deploy'],
+      ["bash -c 'npm run deploy'", 'deploy'],
+      ['bash -lc "pnpm deploy:vm"', 'deploy'],
+      ['if true; then ./deploy.sh; fi', 'deploy'],
+      ["cat > run.sh <<'EOF'\n./deploy.sh prod\nEOF\nbash run.sh", 'deploy'],
+      ["{ cat <<'EOF'\ngit push --force\nEOF\n} | bash", 'merge'],
+      ["(cat <<'EOF'\ngit push --force\nEOF\n) | bash", 'merge'],
+      ['echo "git push --force" | bash', 'merge'],
+      ["printf 'git push --force\\n' | sh", 'merge'],
+      ["git commit -m \"$(cat <<'EOF'\nmsg\nEOF)\" && git push --force", 'merge'],
+      ["bash -c \"$(cat <<'EOF'\ngit push --force origin main\nEOF\n)\"", 'merge'],
+      ['"bash" -c "git push --force"', 'merge'],
+      ["tee x.sh <<'EOF'\n./deploy.sh\nEOF\nbash -o pipefail x.sh", 'deploy'],
+      ["cat > x.sh <<'EOF'\n./deploy.sh\nEOF\nbash < x.sh", 'deploy'],
+      ["ssh host bash <<'EOF'\ngit push --force\nEOF", 'merge'],
+      ...['source x.sh', '. ./x.sh', 'timeout 60 bash x.sh', 'bash -c "$(cat x.sh)"', 'eval "$(cat x.sh)"', 'docker exec -i c bash < x.sh', 'ssh host < x.sh', 'bash <(cat x.sh)']
+        .map((run) => [`cat > x.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
+      ['echo "git push --force" > p.sh && bash p.sh', 'merge'],
+      ['bash <(echo "git push --force")', 'merge'],
+      ...['sudo ./deploy.sh', 'FOO=1 ./deploy.sh', 'env FOO=1 ./deploy.sh', 'time ./deploy.sh', 'nohup ./deploy.sh', 'nice -n 5 ./deploy.sh', 'timeout 60 ./deploy.sh', '"./deploy.sh"'].map((cmd) => [cmd, 'deploy']),
+      ['"git" push --force', 'merge'],
+      ['$(pwd)/deploy.sh prod', 'deploy'],
+      ['`pwd`/deploy.sh', 'deploy'],
+      ...['stdbuf -oL bash x.sh', 'setsid bash x.sh', 'flock /tmp/l bash x.sh', 'echo x.sh | xargs bash', 'cat x.sh | busybox sh', 'cd scripts && bash x.sh', 'mv x.sh d/ && bash d/x.sh']
+        .map((run) => [`cat > ./scripts/x.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
+      ...['trap "git push --force" EXIT', 'echo "git push --force" | at now', 'env -S "git push --force"', 'su -c "git push --force"', 'echo "git push --force" | su -c bash', 'git rebase -x "git push --force" main']
+        .map((cmd) => [cmd, 'merge']),
+      ['command bash -c "git push --force origin main"', 'merge'],
+      ['echo "git push --force" | command bash', 'merge'],
+      ['xargs "bash" -c "git push --force"', 'merge'],
+      ["cat > env.sh <<'EOF'\ngit push --force origin main\nEOF\nsource env.sh", 'merge'],
+      ['source <(echo "git push --force")', 'merge'],
+      ["bash -eo pipefail -c 'git merge main'", 'merge'],
+      ["bash -euxo pipefail -c 'git merge main'", 'merge'],
+      ["cat > x.sh <<'EOF'\ngit merge main\nEOF\nbash -euo pipefail x.sh", 'merge'],
+      ['eval "$(echo git push --force)"', 'merge'],
+      ["cat > x.sh <<'EOF'\ngit push --force origin main\nEOF\neval \"$(cat x.sh)\"", 'merge'],
+      ...['bash -c "$(< s.sh)"', 'eval "$(<s.sh)"', 'bash -c "$(sed -n p s.sh)"', "eval \"$(grep -v '^#' s.sh)\""]
+        .map((run) => [`cat > s.sh <<'EOF'\ngit merge main\nEOF\n${run}`, 'merge']),
+      ["cat > g.py <<'EOF'\nprint('git merge main')\nEOF\neval \"$(python3 g.py)\"", 'merge'],
+      ["echo 'git merge main' | (docker exec -i c bash)", 'merge'],
+      ['ssh host ./deploy.sh prod', 'deploy'],
+      ['ssh -p 22 deploy@host "cd app && ./deploy.sh"', 'deploy'],
+      ['ssh host "git push --force origin main"', 'merge'],
+      ["ssh host 'bash -s' < <(echo 'git push --force')", 'merge'],
+      ["sudo -i <<'EOF'\ngit push --force\nEOF", 'merge'],
+      ...["cp /dev/stdin x.sh <<'EOF'\ngit push --force origin main\nEOF\nbash x.sh", "dd of=x.sh <<'EOF'\ngit push --force origin main\nEOF\nbash x.sh"].map((cmd) => [cmd, 'merge']),
+      ['(( y = 1 << 2 ))\ngit push --force', 'merge'],
+      ['echo $(( 1 << 2 )); git push --force origin main', 'merge'],
+      ['n=$(( $(git push --force origin main | wc -l) + 1 ))', 'merge'],
+      ['let x=1<<2\ngit merge x', 'merge'],
+      ['echo $[1<<2]\ngit merge x', 'merge'],
+      ...['./release@v2/deploy.sh', '/opt/app+1/deploy.sh', 'bash ./ops:prod/deploy.sh'].map((cmd) => [cmd, 'deploy']),
+      ...['/usr/bin/env bash -c "git push --force origin main"', '/usr/bin/sudo bash -c "git merge main"', 'sudo -iu app bash -c "git merge main"',
+        'docker run --rm --platform linux/amd64 img sh -c "git push --force origin main"', 'docker run --env-file .env -m 512m --net host img sh -c "git merge main"',
+        'docker exec -itu root app sh -c "git merge main"', 'flock --timeout 5 /tmp/l bash -c "git merge main"'].map((cmd) => [cmd, 'merge']),
+      ['xargs -I{} ssh {} "git merge main"', 'merge'],
+      ["ssh host 'bash -s' <<'EOF'\ngit push --force\nEOF", 'merge'],
+      ["ssh host \"cd /srv && bash\" <<'EOF'\ngit merge main\nEOF", 'merge'],
+      ...["ssh host 'bash -s' < x.sh", 'ssh host "sudo bash" < x.sh', "cat x.sh | ssh host 'bash -s'", 'ssh host "$(cat x.sh)"', 'ssh host "$(< x.sh)"',
+        'cp x.sh y.sh && ssh host bash < y.sh', 'mv x.sh y.sh && cat y.sh | ssh host bash', 'scp x.sh host:/tmp/ && ssh host bash /tmp/x.sh',
+        'ssh host -- bash -s < x.sh', "ssh host 'sudo -i' < x.sh", "ssh host 'bash /dev/stdin' < x.sh", 'ssh host "docker exec -i c sh" < x.sh', 'ssh jump ssh host bash -s < x.sh']
+        .map((run) => [`cat > x.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
+      ...['cp a.sh b.sh && bash b.sh', 'mv a.sh b.sh && bash b.sh', 'install -m 755 a.sh bin/run && bin/run', 'ln -s a.sh run && ./run']
+        .map((run) => [`cat > a.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
+    ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
+    for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"', 'cp src/x.py billing/x.py', 'cp -t billing/ src/x.py', 'install -m 644 src/x.py billing/x.py', 'mv billing/x.py src/x.py',
+      'cp src/x.py billing', 'mv src/x.py billing/', 'mv src/x.py billing', 'rm billing/x.py; cp a -t', 'install src/x.py billing/x.py -m 644', 'cp src/x.py billing/x.py -S .bak', 'install src/x.py billing/x.py --owner root', 'cp src/x.py billing/x.py --suffix .bak',
+      'echo ' + '"$('.repeat(20) + 'x' + ')"'.repeat(20) + '; rm billing/x.py']) {
+      assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), 'billing/x.py');
+    }
+    assertBlocked(await run(GUARD, { input: bash(d, 'cp -r src billing'), cwd: d }), 'billing/src');
+  });
+});
+
+describe('guard: the shell reader stays inside the hook budget', () => {
+  test('deep nesting, long chains, repeated heredocs and option runs: an answer in time, never a throw', { timeout: 30000 }, () => {
+    const rules = require(join(hooksDir, 'devanity-rules.js'));
+    const loaded = rules.parseRules(JSON.stringify(RULES)).rules;
+    for (const [cmd, need] of [
+      ['echo ' + '"$('.repeat(3000) + 'git push --force origin main' + ')"'.repeat(3000), 'merge'],
+      ['eval '.repeat(3000) + 'git push --force', 'merge'],
+      ["cat > a.sh <<'E'\nx\nE\n".repeat(4000) + 'git push --force', 'merge'],
+      ['x <<< a '.repeat(20000) + '; git push --force origin main', 'merge'],
+      ['cat <<E '.repeat(20000) + '\n' + 'E\n'.repeat(20000) + 'git push', 'commit'],
+      ['git' + ' --git-dir=a'.repeat(12) + ' push', 'commit'],
+      ['git' + ' -c'.repeat(24) + ' push', 'commit'],
+      ['git' + ' --git-dir=a'.repeat(40) + ' push', null],   // past 16 global options: no pattern rescans the run
+      ['git push x '.repeat(16000), 'commit'],
+      ['make a '.repeat(100000), null],
+      ['ssh h '.repeat(3000) + 'git push --force origin main', 'merge'],
+      ["cat > x.sh <<'E'\n" + 'echo a\n'.repeat(150000) + 'E\n' + 'ssh h<x.sh;'.repeat(600) + '\ngit push --force origin main', 'merge'],
+      ['echo "a" | ' + 'ssh h bash | '.repeat(16000) + 'cat; git push --force origin main', 'merge'],
+      ['git' + ' -git'.repeat(20000), null],
+      [' -c git'.repeat(20000), null],
+    ]) {
+      const started = Date.now();
+      assert.equal(rules.commandAuthority(loaded, cmd), need);
+      assert.ok(Date.now() - started < 1000, `${cmd.slice(0, 30)}…: ${Date.now() - started} ms`);
+    }
+  });
+});
+
+describe('guard: a command naming many guarded paths', () => {
+  test('100000 high-risk paths block inside the hook budget: the first 50 decide it', async () => {
+    const d = repo();
+    const started = Date.now();
+    const r = await run(GUARD, { input: bash(d, `rm ${Array.from({ length: 100000 }, (_, k) => `billing/f${k}.py`).join(' ')}`), cwd: d, timeoutMs: 15000 });
+    assertBlocked(r, 'billing/f0.py', 'more');
+    assert.ok(Date.now() - started < 3000, `${Date.now() - started} ms`);
+  });
+
+  test('300 high-risk paths block in about the time of one: the ledger is located once per run', async () => {
+    const d = repo();
+    const started = Date.now();
+    const r = await run(GUARD, { input: bash(d, `rm ${Array.from({ length: 300 }, (_, k) => `billing/f${k}.py`).join(' ')}`), cwd: d, timeoutMs: 10000 });
+    assertBlocked(r, 'billing/f0.py', 'billing/f49.py', '250 more');
+    assert.ok(Date.now() - started < 2000, `${Date.now() - started} ms`);
+  });
+});
+
 describe('guard: enforcement by install origin (f) (g) (h)', () => {
   test('no rules file: everything is normal, nothing blocks, no event', async () => {
     const d = repo({ rules: null });

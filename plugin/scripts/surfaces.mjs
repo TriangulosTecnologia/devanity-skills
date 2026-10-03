@@ -240,19 +240,30 @@ export function compare(before, after, renamed = new Map(), ignored = () => new 
   return out;
 }
 
+// Every git call of the scripts here. One that did not finish (killed, not spawned) or whose output
+// passed maxBuffer (even when git exited first: status 0 beside ENOBUFS) left partial output that
+// would read as complete, so it throws instead. Any other error leaves git judged by its status: one
+// that refuses a batch exits 128 with its stdin unread (EPIPE), and the caller falls back.
+export function gitRun(cwd, args, input) {
+  const r = spawnSync('git', args, { cwd, input, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  const sub = args.find((a) => !a.startsWith('-') && !a.includes('='));   // past `-c name=value`
+  if (r.status === null || r.error?.code === 'ENOBUFS') throw new Error(`git ${sub} did not finish (${r.error ? r.error.code || r.error.message : r.signal})`);
+  return r;
+}
+
 // The subset of paths git ignores. A batch git refuses (exit 128) is asked path by path, so one
 // unanswerable path never cancels the filter for the rest.
 export const gitIgnored = (root) => (paths) => {
   // -z both ways: without it git quotes a name with non-ASCII bytes, `"` or `\`, which then
   // never matches the raw path asked.
-  const ask = (list) => spawnSync('git', ['check-ignore', '-z', '--stdin'], { cwd: root, input: list.join('\0'), encoding: 'utf8' });
+  const ask = (list) => gitRun(root, ['check-ignore', '-z', '--stdin'], list.join('\0'));
   const r = ask(paths);
   const lines = (x) => (x.stdout || '').split('\0').filter(Boolean);
   return new Set(r.status === 0 || r.status === 1 ? lines(r) : paths.flatMap((p) => lines(ask([p]))));
 };
 
 function inventory(root) {
-  const git = (...a) => spawnSync('git', a, { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).stdout || '';
+  const git = (...a) => gitRun(root, a).stdout || '';
   const staged = git('ls-files', '-s', '-z').split('\0').filter(Boolean).map((l) => [l.slice(0, 6), l.slice(l.indexOf('\t') + 1)]);
   const files = [...new Set([...staged.map(([, p]) => p), ...git('ls-files', '-z', '--others', '--exclude-standard').split('\0').filter(Boolean)])];
   const links = new Map();
@@ -275,7 +286,7 @@ function inventory(root) {
 // Run as a script, also through a symlinked path: node resolves the module to its real path.
 const invoked = () => { try { return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch (e) { return false; } };
 if (process.argv[1] && invoked()) {
-  const top = spawnSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' });
+  const top = gitRun(process.cwd(), ['rev-parse', '--show-toplevel']);
   if (top.status !== 0) { process.stderr.write('surfaces: not a git repository\n'); process.exit(1); }
   const r = inventory(top.stdout.trim());
   if (process.argv.includes('--json')) process.stdout.write(`${JSON.stringify(r, null, 2)}\n`);

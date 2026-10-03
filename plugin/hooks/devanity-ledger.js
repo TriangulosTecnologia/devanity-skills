@@ -23,8 +23,16 @@ const CONTRACT_PHASES = ['FRAME', 'INSPECT', 'PROVE', 'EXECUTE', 'VERIFY', 'ASSU
 const CLOSED_PHASES = ['DONE', 'ABANDONED'];
 const CONTRACT_TTL_MS = 24 * 3600000;
 
-// The repository's common git dir for `cwd` (worktrees share it), or null outside git.
+// The repository's common git dir for `cwd` (worktrees share it), or null outside git. Found once
+// per directory in a hook's run: a command naming many guarded paths asks for each of them.
+const commonDirs = new Map();
 function gitCommonDir(cwd) {
+  const key = cwd || process.cwd();
+  if (!commonDirs.has(key)) { const dir = findCommonDir(key); if (dir) commonDirs.set(key, dir); else return null; }
+  return commonDirs.get(key);
+}
+
+function findCommonDir(cwd) {
   try {
     const r = spawnSync('git', ['rev-parse', '--git-common-dir'], { cwd: cwd || process.cwd(), encoding: 'utf8', timeout: 3000 });
     if (r.status !== 0) return null;
@@ -128,9 +136,12 @@ function isClosed(c) {
 
 // Unclosed contracts declared within the last 24 h, newest first.
 function openContracts(cwd, now = Date.now()) {
+  // newest first; two declared in the same millisecond, the later written first
+  const written = new Map();
+  read(cwd, 'contracts').forEach((r, k) => { if (r && r.id) written.set(r.id, k); });
   return contracts(cwd)
     .filter((c) => !isClosed(c) && contractAge(c, now) <= CONTRACT_TTL_MS)
-    .sort((a, b) => contractAge(a, now) - contractAge(b, now));
+    .sort((a, b) => contractAge(a, now) - contractAge(b, now) || written.get(b.id) - written.get(a.id));
 }
 
 // The one open contract the next session continues from (the most recently declared), or null.
