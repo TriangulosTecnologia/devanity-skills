@@ -319,6 +319,7 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       'ssh -T git@github.com; git commit -m "chore: npm publish notes"',
       'docker compose exec -T app bash scripts/test.sh && git commit -m "fix: git merge conflict check"',
       'apt-get install -y bash curl && grep -rn "git merge" docs/',
+      'grep -rl "git push --force" scripts/ | xargs grep -L bash',
     ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
   });
 
@@ -390,6 +391,7 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ...["cp /dev/stdin x.sh <<'EOF'\ngit push --force origin main\nEOF\nbash x.sh", "dd of=x.sh <<'EOF'\ngit push --force origin main\nEOF\nbash x.sh"].map((cmd) => [cmd, 'merge']),
       ['(( y = 1 << 2 ))\ngit push --force', 'merge'],
       ['echo $(( 1 << 2 )); git push --force origin main', 'merge'],
+      ['n=$(( $(git push --force origin main | wc -l) + 1 ))', 'merge'],
       ['xargs -I{} ssh {} "git merge main"', 'merge'],
       ["ssh host 'bash -s' <<'EOF'\ngit push --force\nEOF", 'merge'],
       ["ssh host \"cd /srv && bash\" <<'EOF'\ngit merge main\nEOF", 'merge'],
@@ -401,7 +403,7 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
         .map((run) => [`cat > a.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
     ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
     for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"', 'cp src/x.py billing/x.py', 'cp -t billing/ src/x.py', 'install -m 644 src/x.py billing/x.py', 'mv billing/x.py src/x.py',
-      'cp src/x.py billing', 'mv src/x.py billing/', 'mv src/x.py billing', 'rm billing/x.py; cp a -t', 'install src/x.py billing/x.py -m 644', 'cp src/x.py billing/x.py -S .bak',
+      'cp src/x.py billing', 'mv src/x.py billing/', 'mv src/x.py billing', 'rm billing/x.py; cp a -t', 'install src/x.py billing/x.py -m 644', 'cp src/x.py billing/x.py -S .bak', 'install src/x.py billing/x.py --owner root', 'cp src/x.py billing/x.py --suffix .bak',
       'echo ' + '"$('.repeat(20) + 'x' + ')"'.repeat(20) + '; rm billing/x.py']) {
       assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), 'billing/x.py');
     }

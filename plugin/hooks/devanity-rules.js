@@ -293,7 +293,7 @@ function copyTargets(args) {
   const t = args.findIndex((a) => a === '-t' || a.startsWith('--target-directory'));
   const operands = [];
   for (let k = 0; k < args.length; k++) {
-    if (/^-[mogSt]$/.test(args[k])) { k++; continue; }
+    if (/^-[mogSt]$|^--(?:owner|group|mode|suffix|strip-program)$/.test(args[k])) { k++; continue; }
     if (!args[k].startsWith('-')) operands.push(args[k]);
   }
   const dest = t >= 0 ? (args[t].includes('=') ? args[t].split('=')[1] : args[t + 1]) || null : operands.pop() || null;
@@ -340,8 +340,10 @@ function analyse(cmd) {
   // a shell at the command word, or unquoted anywhere after it: whatever runs it (`xargs`, `stdbuf`,
   // `flock`, `docker exec -i c`, `busybox`), the shell runs its operand, its -c or its stdin
   // (a quoted shell word counts only with its -c: `xargs "bash" -c …`)
+  // (past a namer it is a name, after a runner too: `xargs grep -L bash`)
   const j = SHELL.test(name) ? at : NAMERS.has(name) ? -1
-    : cmd.words.findIndex((x, k) => k > at && SHELL.test(base(x.value)) && (!x.quoted || /^-[A-Za-z]*c[A-Za-z]*$/.test(v[k + 1] || '')));
+    : cmd.words.findIndex((x, k) => k > at && SHELL.test(base(x.value)) && (!x.quoted || /^-[A-Za-z]*c[A-Za-z]*$/.test(v[k + 1] || ''))
+      && !v.slice(at + 1, k).some((y) => NAMERS.has(base(y))));
   if (j < 0) return;
   const a = shellArgs(v, j);
   cmd.script = a.noexec ? null : a.operand;
@@ -401,7 +403,7 @@ function readShell(s, i, inner, out) {
     const x = w(); x.quoted = true; x.shown += '""';
     for (j++; j < s.length && s[j] !== '"'; j++) {
       if (s[j] === '\\') { j++; if (s[j] !== '\n') x.value += '$`"\\'.includes(s[j]) ? s[j] : `\\${s[j] || ''}`; }
-      else if (s[j] === '$' && s[j + 1] === '(' && s[j + 2] === '(') { const k = arithEnd(s, j + 3); x.value += s.slice(j, k); j = k - 1; }
+      else if (s[j] === '$' && s[j + 1] === '(' && s[j + 2] === '(') { const k = arithEnd(s, j + 3); substitutionsIn(s.slice(j + 3, k), out); x.value += s.slice(j, k); j = k - 1; }
       else if (s[j] === '$' && s[j + 1] === '(') { const k = sub(j + 1); x.value += s.slice(j, k); j = k - 1; }
       else if (s[j] === '`') { const k = backtick(j); x.value += s.slice(j, k); j = k - 1; }
       else x.value += s[j];
@@ -440,7 +442,7 @@ function readShell(s, i, inner, out) {
     else if (c === '|' && s[i + 1] === '|') { endCmd('||'); i += 2; }
     else if (c === '|') { const both = s[i + 1] === '&'; endCmd(both ? '|&' : '|'); i += both ? 2 : 1; }
     else if (c === '&' && s[i + 1] !== '>') { endCmd('&'); i++; }
-    else if (c === '(' && s[i + 1] === '(' && !word) i = arithEnd(s, i + 2);   // `(( y = 1 << 2 ))`: arithmetic, no command, no heredoc
+    else if (c === '(' && s[i + 1] === '(' && !word) { const k = arithEnd(s, i + 2); substitutionsIn(s.slice(i + 2, k), out); i = k; }   // `(( y = 1 << 2 ))`: arithmetic, no heredoc
     else if (c === '(' && !word) { if (cmd) endCmd(';'); depth++; i++; }   // `| ( … )` stays a pipe
     else if (c === ')') {
       if (depth) { endCmd(';'); depth--; i++; }
@@ -464,7 +466,7 @@ function readShell(s, i, inner, out) {
       let k = i + 2; while (k < s.length && s[k] !== "'") k += s[k] === '\\' ? 2 : 1;
       const x = w(); x.value += s.slice(i + 2, k); x.shown += '""'; x.quoted = true; i = k + 1;
     } else if (c === '"') i = dquote(i);
-    else if (c === '$' && s[i + 1] === '(' && s[i + 2] === '(') { const k = arithEnd(s, i + 3); w().value += s.slice(i, k); w().shown += '$_'; i = k; }
+    else if (c === '$' && s[i + 1] === '(' && s[i + 2] === '(') { const k = arithEnd(s, i + 3); substitutionsIn(s.slice(i + 3, k), out); w().value += s.slice(i, k); w().shown += '$_'; i = k; }
     else if (c === '$' && s[i + 1] === '(') { const k = sub(i + 1); w().value += s.slice(i, k); w().shown += '$_'; i = k; }
     else if (c === '$' && s[i + 1] === '{') { const e = s.indexOf('}', i); const stop = e < 0 ? s.length : e + 1; w().value += s.slice(i, stop); w().shown += s.slice(i, stop); i = stop; }
     else if (c === '`') { const k = backtick(i); w().value += s.slice(i, k); w().shown += '$_'; i = k; }
@@ -497,7 +499,7 @@ function closingParen(s, i) {
   return s.length;
 }
 
-// `$( )` and backticks inside an unquoted heredoc body: the shell expands them, so they run.
+// `$( )` and backticks inside an unquoted heredoc body or an arithmetic expression: they run.
 function substitutionsIn(body, out) {
   for (let j = 0; j < body.length; j++) {
     if (body[j] === '\\') j++;
