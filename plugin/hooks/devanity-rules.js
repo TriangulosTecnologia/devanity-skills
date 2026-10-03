@@ -209,7 +209,8 @@ const ONLY_SUB = /^(?:\$\([\s\S]*\)|`[\s\S]*`)$/;
 // Words that open or close a compound command: the command proper is the word after them.
 const RESERVED = new Set(['if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'while', 'until', 'for', 'case', 'esac', '!', '{', '}']);
 // Words that run the command after them: [options that take a value, operands before the command].
-const PREFIXES = new Map([['sudo', [/^-[ugCDhpRrT]$/, 0]], ['env', [/^-[uCS]$/, 0]], ['nice', [/^-n$/, 0]], ['exec', [/^-a$/, 0]],
+// (combined flags: the last letter takes the value, as in `sudo -iu app`)
+const PREFIXES = new Map([['sudo', [/^-[A-Za-z]*[ugCDhpRrT]$/, 0]], ['env', [/^-[uCS]$/, 0]], ['nice', [/^-n$/, 0]], ['exec', [/^-a$/, 0]],
   ['timeout', [/^-[sk]$/, 1]], ['time', [null, 0]], ['nohup', [null, 0]]]);
 // Commands that run text as a script: eval, ssh's remote side, a trap, a scheduled job, another
 // user's shell, a repeated command. (`source`/`.` run a file, as a shell does its operand.)
@@ -222,9 +223,9 @@ const skipOpts = (v, i, valued) => {
   while (k < v.length && v[k].startsWith('-') && v[k] !== '--') k += valued && valued.test(v[k]) ? 2 : 1;
   return v[k] === '--' ? k + 1 : k;
 };
-const inContainer = (v, i) => {   // docker|podman [compose] exec|run [opts] CONTAINER|IMAGE cmd
+const inContainer = (v, i) => {   // docker|podman [compose] exec|run [opts] CONTAINER|IMAGE cmd: a shell or ssh there is its command
   const e = v.findIndex((a, k) => k > i && (a === 'exec' || a === 'run'));
-  return e < 0 ? -1 : skipOpts(v, e, /^-[euwvp]$|^--(?:env|user|workdir|volume|name|network|entrypoint|mount|publish)$/) + 1;
+  return e < 0 ? -1 : v.findIndex((a, k) => k > e && (SHELL.test(base(a)) || base(a) === 'ssh') && v[k - 1] !== '--entrypoint');
 };
 const RUNNERS = {
   xargs: (v, i) => skipOpts(v, i, /^-[IdEaLnPs]$|^--(?:delimiter|eof|arg-file|max-lines|max-args|max-procs|max-chars|replace)$/),
@@ -235,7 +236,7 @@ const RUNNERS = {
   ionice: (v, i) => skipOpts(v, i, /^-[cnp]$/),
   doas: (v, i) => skipOpts(v, i, /^-[uC]$/),
   runuser: (v, i) => skipOpts(v, i, /^-[ug]$/),
-  flock: (v, i) => skipOpts(v, i, /^-[wE]$/) + 1,
+  flock: (v, i) => skipOpts(v, i, /^-[wE]$|^--(?:timeout|conflict-exit-code)$/) + 1,
   chroot: (v, i) => skipOpts(v, i, null) + 1,
   find: (v, i) => { const e = v.findIndex((a, k) => k > i && /^-(?:exec|execdir|ok|okdir)$/.test(a)); return e < 0 ? -1 : e + 1; },
   docker: inContainer,
@@ -297,9 +298,10 @@ function commandAt(v) {
   let k = 0;
   for (;;) {
     while (k < v.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(v[k])) k++;
-    if (v[k] === 'command' && !/^-[vV]$/.test(v[k + 1] || '')) { k++; while (/^-p$/.test(v[k] || '')) k++; continue; }   // `command -v x` names x
-    if (!PREFIXES.has(v[k])) return k;
-    const [valued, operands] = PREFIXES.get(v[k]); k++;
+    const name = base(v[k]);   // `/usr/bin/env bash` as `env bash`
+    if (name === 'command' && !/^-[vV]$/.test(v[k + 1] || '')) { k++; while (/^-p$/.test(v[k] || '')) k++; continue; }   // `command -v x` names x
+    if (!PREFIXES.has(name)) return k;
+    const [valued, operands] = PREFIXES.get(name); k++;
     while (k < v.length && v[k].startsWith('-')) k += valued && valued.test(v[k]) ? 2 : 1;
     k += operands;
   }
