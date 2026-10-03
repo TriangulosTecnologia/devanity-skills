@@ -228,8 +228,34 @@ let lastRead = { text: null, result: null };
 function shellCommands(src) {
   const text = String(src || '');
   if (lastRead.text === text) return lastRead.result;
+  const { out, dynamic } = readAll(text);
+  const pipe = (c) => c.op === '|' || c.op === '|&';
+  // what ssh runs on another host: its remote command, what a substitution in it prints, and,
+  // when it reads its script on stdin, what reaches its stdin: its heredoc or here-string, the
+  // commands piped into it, a written file it reads; never anything else in the command
+  const fed = (cmds) => cmds.flatMap((x) => [...x.data, ...[...x.words.map((y) => y.value), ...x.reads].map(base).filter((b) => out.bodies.has(b)).map((b) => out.bodies.get(b))]);
+  const remote = [];   // {text, stdin}: a remote command, and what reaches its stdin should it read a script there
+  out.forEach((c, i) => {
+    if (!c.ssh) return;
+    const upstream = [];
+    for (let k = i - 1; k >= 0 && pipe(out[k + 1]); k--) upstream.push(out[k]);
+    const stdin = fed([c, ...upstream]);
+    if (c.remote) remote.push({ text: c.remote, stdin });
+    else remote.push(...stdin.map((text) => ({ text })));
+    remote.push(...fed(c.words.flatMap((x) => x.subs || [])).map((text) => ({ text })));
+  });
+  // whether this text reads a script on stdin (`bash -s`, `sudo bash`, `cd /srv && bash`, a bare ssh)
+  const stdinShell = out.some((c) => c.interprets || (c.ssh && !c.remote));
+  const result = { dynamic, remote, stdinShell, commands: out.map(({ op, words, at, writes, reads, shown }) => ({ op, words, at, writes, reads, shown })) };
+  lastRead = { text, result };
+  return result;
+}
+
+
+function readAll(text) {
   const out = [];
-  out.data = [];   // what quotes, heredocs and here-strings hold
+  out.data = [];          // what quotes, heredocs and here-strings hold
+  out.bodies = new Map(); // a heredoc written to a file: its name → its text
   out.depth = 0; out.work = 0; out.budget = WORK * text.length + 4096;
   parseShell(text, 0, false, out);
   // a file this command wrote, run by name from wherever (`cd d && bash x.sh`, `mv x.sh d/ && d/x.sh`),
@@ -248,11 +274,7 @@ function shellCommands(src) {
   const dynamic = out.some((c) => c.interprets || (c.script && written.has(base(c.script))) || (c.printedBy && (!c.printedBy.length || c.printedBy.some(ownText))));
   // `\n` as printf and echo -e print it: data handed to a shell runs line by line
   if (dynamic) for (const d of out.data.slice()) parseShell(d.replace(/\\n/g, '\n'), 0, false, out);
-  // what ssh runs on another host: its remote commands, and every datum when it reads its script on stdin
-  const remote = [...out.filter((c) => c.remote).map((c) => c.remote), ...(out.some((c) => c.remoteStdin) ? out.data : [])];
-  const result = { dynamic, remote, commands: out.map(({ op, words, at, writes, reads, shown }) => ({ op, words, at, writes, reads, shown })) };
-  lastRead = { text, result };
-  return result;
+  return { out, dynamic };
 }
 
 // Index of the command word in a simple command's values: past assignments and runners like sudo.
@@ -304,8 +326,8 @@ function analyse(cmd) {
     // authority patterns and never as a local write
     let k = at + 1;
     while (k < v.length && v[k].startsWith('-')) k += SSH_VALUED.test(v[k]) ? 2 : 1;
+    cmd.ssh = true;
     if (k + 1 < v.length) cmd.remote = v.slice(k + 1).join(' ');
-    cmd.remoteStdin = !cmd.remote || SHELL.test(base(v[k + 1]));
     return;
   }
   if (INTERPRETERS.has(name) || v.slice(0, at).some((a) => /^(?:-S|--split-string)/.test(a))   // env -S splits its text into a command
@@ -332,7 +354,7 @@ function parseShell(s, i, inner, out) {
   if (out.depth >= MAX_DEPTH || out.work > out.budget) {
     // dynamic: the raw text counts for the patterns; a substitution is skipped to its `)`, so what
     // follows it is still read
-    out.push({ op: ';', words: [], at: 0, writes: [], reads: [], files: [], shown: '', interprets: true });
+    out.push({ op: ';', words: [], at: 0, writes: [], reads: [], files: [], data: [], shown: '', interprets: true });
     return inner ? closingParen(s, i) : s.length;
   }
   out.depth++;
@@ -345,16 +367,17 @@ function readShell(s, i, inner, out) {
   let cmd = null; let word = null; let redirect = null; let op = ';'; let depth = 0;
   const heredocs = [];
   const w = () => (word = word || { value: '', shown: '', quoted: false });
-  const startCmd = () => (cmd = cmd || { op, words: [], writes: [], reads: [] });
+  const startCmd = () => (cmd = cmd || { op, words: [], writes: [], reads: [], data: [] });
   const endWord = () => {
     if (!word) return;
     const r = redirect; redirect = null;
     if (word.quoted) out.data.push(word.value);
+    if (word.quoted && !r) startCmd().data.push(word.value);
     if (!r) { if (word.quoted || (cmd && cmd.words.length) || !RESERVED.has(word.value)) startCmd().words.push(word); }
     else if (r === 'write') startCmd().writes.push(word.value);
     else if (r === 'in') startCmd().reads.push(word.value);
-    else if (r === 'herestring') { startCmd().reads.push(''); out.data.push(word.value); }
-    else { startCmd().reads.push(''); heredocs.push({ delim: word.value, strip: r === 'heredoc-', expand: !word.quoted }); }
+    else if (r === 'herestring') { startCmd().reads.push(''); out.data.push(word.value); cmd.data.push(word.value); }
+    else { startCmd().reads.push(''); heredocs.push({ delim: word.value, strip: r === 'heredoc-', expand: !word.quoted, cmd }); }
     word = null;
   };
   const endCmd = (next) => {
@@ -402,7 +425,8 @@ function readShell(s, i, inner, out) {
           lines.push(line);
         }
         const body = lines.join('\n');
-        out.data.push(body);
+        out.data.push(body); h.cmd.data.push(body);
+        for (const f of h.cmd.files || []) out.bodies.set(base(f), body);
         if (h.expand) substitutionsIn(body, out);
       }
     } else if (c === '#' && !word) { const e = s.indexOf('\n', i); i = e < 0 ? s.length : e; }
@@ -471,7 +495,7 @@ function substitutionsIn(body, out) {
 // The command as the shell runs it, for the `commands` patterns: each simple command after the
 // operator that joins it to the one before, and again from its command word when runners or a
 // quoted name come first (`sudo ./deploy.sh`, `"git" push`); a dynamic input adds its raw text.
-function commandText(command, hops = 0, left = { work: WORK * String(command || '').length + 4096 }) {
+function commandText(command, hops = 0, left = { work: String(command || '').length + 4096 }) {   // remote re-reads: once the input
   if (hops >= MAX_DEPTH) return String(command);   // ssh inside ssh: past the bound, the raw text
   const { dynamic, commands, remote } = shellCommands(command);
   const parts = [];
@@ -482,7 +506,12 @@ function commandText(command, hops = 0, left = { work: WORK * String(command || 
   });
   if (dynamic) parts.push(`; ${String(command)}`);
   // one budget for every hop: past it, a remote text counts raw
-  for (const r of remote) parts.push(`; ${(left.work -= r.length) < 0 ? r : commandText(r, hops + 1, left)}`);
+  const hop = (t) => parts.push(`; ${(left.work -= t.length) < 0 ? t : commandText(t, hops + 1, left)}`);
+  for (const r of remote) {
+    const reads = r.stdin && r.stdin.length && left.work >= r.text.length && shellCommands(r.text).stdinShell;
+    hop(r.text);
+    if (reads) r.stdin.forEach(hop);
+  }
   return parts.join(' ');
 }
 

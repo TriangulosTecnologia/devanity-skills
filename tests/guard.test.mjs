@@ -317,6 +317,9 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       "ssh host <<'EOF'\nrm billing/x.py\nEOF",
       'ssh host "grep -rn \'git merge\' /srv/app/log"',
       'ssh ci \'grep -c "npm publish" build.log\'',
+      'ssh -fN -L 5432:localhost:5432 bastion && git commit -m "fix: git merge conflict"',
+      'ssh -T git@github.com; git commit -m "chore: npm publish notes"',
+      "git commit -m \"docs: git merge notes\" && ssh host <<'EOF'\nuptime\nEOF",
     ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
   });
 
@@ -370,6 +373,10 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ['ssh host ./deploy.sh prod', 'deploy'],
       ['ssh -p 22 deploy@host "cd app && ./deploy.sh"', 'deploy'],
       ['ssh host "git push --force origin main"', 'merge'],
+      ["ssh host 'bash -s' <<'EOF'\ngit push --force\nEOF", 'merge'],
+      ["ssh host \"cd /srv && bash\" <<'EOF'\ngit merge main\nEOF", 'merge'],
+      ...["ssh host 'bash -s' < x.sh", 'ssh host "sudo bash" < x.sh', "cat x.sh | ssh host 'bash -s'", 'ssh host "$(cat x.sh)"', 'ssh host "$(< x.sh)"']
+        .map((run) => [`cat > x.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
       ...['cp a.sh b.sh && bash b.sh', 'mv a.sh b.sh && bash b.sh', 'install -m 755 a.sh bin/run && bin/run', 'ln -s a.sh run && ./run']
         .map((run) => [`cat > a.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
     ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);

@@ -116,7 +116,7 @@ function writtenPaths(command) {
       if (cmd === 'mv') operands.filter(looksLikePath).forEach((a) => out.add(a));
       if (dest) {
         if (looksLikePath(dest)) out.add(dest);
-        operands.forEach((src) => out.add(path.posix.join(dest, path.posix.basename(src))));
+        if (t >= 0 || operands.length > 1 || !/\.[A-Za-z0-9]+$/.test(dest)) operands.forEach((src) => out.add(path.posix.join(dest, path.posix.basename(src))));
       }
     } else if (cmd === 'dd') {
       args.filter((a) => a.startsWith('of=')).forEach((a) => out.add(a.slice(3)));
