@@ -320,6 +320,8 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       'docker compose exec -T app bash scripts/test.sh && git commit -m "fix: git merge conflict check"',
       'apt-get install -y bash curl && grep -rn "git merge" docs/',
       'grep -rl "git push --force" scripts/ | xargs grep -L bash',
+      "git ls-files '*.sh' | xargs shellcheck -s bash; grep -rn 'git push --force' docs",
+      'rsync -avz -e ssh dist/ host:/srv/app/ && git commit -m "release: note git merge order"',
     ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
   });
 
@@ -392,6 +394,9 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ['(( y = 1 << 2 ))\ngit push --force', 'merge'],
       ['echo $(( 1 << 2 )); git push --force origin main', 'merge'],
       ['n=$(( $(git push --force origin main | wc -l) + 1 ))', 'merge'],
+      ['let x=1<<2\ngit merge x', 'merge'],
+      ['echo $[1<<2]\ngit merge x', 'merge'],
+      ...['./release@v2/deploy.sh', '/opt/app+1/deploy.sh', 'bash ./ops:prod/deploy.sh'].map((cmd) => [cmd, 'deploy']),
       ['xargs -I{} ssh {} "git merge main"', 'merge'],
       ["ssh host 'bash -s' <<'EOF'\ngit push --force\nEOF", 'merge'],
       ["ssh host \"cd /srv && bash\" <<'EOF'\ngit merge main\nEOF", 'merge'],

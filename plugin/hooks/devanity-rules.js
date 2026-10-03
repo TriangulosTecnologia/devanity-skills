@@ -40,7 +40,7 @@ const BUILTIN_COMMANDS = {
   // (`cat docs/deploy.md`, `grep deploy`).
   // (the directory prefix stops at the first character no path name holds: `\S*` backtracked over
   // every long word, quadratic in its length)
-  '(?:^|[;&|(]\\s*)(?:(?:ba|z)?sh\\s+)?(?:[\\w.~${}-]*/)*deploy(?:\\.sh)?(?=\\s|$)': 'deploy',
+  '(?:^|[;&|(]\\s*)(?:(?:ba|z)?sh\\s+)?(?:[\\w.~${}@+:-]*/)*deploy(?:\\.sh)?(?=\\s|$)': 'deploy',
   '\\b(?:npm|pnpm|yarn|bun)\\s+(?:run\\s+)?deploy\\b|\\bmake\\s+(?:\\S+\\s+){0,16}deploy\\b': 'deploy',
 };
 
@@ -215,9 +215,43 @@ const PREFIXES = new Map([['sudo', [/^-[ugCDhpRrT]$/, 0]], ['env', [/^-[uCS]$/, 
 // user's shell, a repeated command. (`source`/`.` run a file, as a shell does its operand.)
 const INTERPRETERS = new Set(['eval', 'trap', 'at', 'batch', 'su', 'watch', 'parallel', 'script']);
 const SSH_VALUED = /^-[bcDEeFIiJLlmOopQRSWw]$/;
-// Commands that only name what follows them: a shell word there is a name, not a shell started.
-const NAMERS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'which', 'type', 'whereis', 'command', 'man', 'info', 'help',
-  'ls', 'cat', 'echo', 'printf', 'head', 'tail', 'wc', 'file', 'stat', 'readlink', 'realpath']);
+// Runners: commands that run another command, and where that command's word is. A shell or ssh
+// there runs; anywhere else it is an argument (`shellcheck -s bash`, `rsync -e ssh`, `which bash`).
+const skipOpts = (v, i, valued) => {
+  let k = i + 1;
+  while (k < v.length && v[k].startsWith('-') && v[k] !== '--') k += valued && valued.test(v[k]) ? 2 : 1;
+  return v[k] === '--' ? k + 1 : k;
+};
+const inContainer = (v, i) => {   // docker|podman [compose] exec|run [opts] CONTAINER|IMAGE cmd
+  const e = v.findIndex((a, k) => k > i && (a === 'exec' || a === 'run'));
+  return e < 0 ? -1 : skipOpts(v, e, /^-[euwvp]$|^--(?:env|user|workdir|volume|name|network|entrypoint|mount|publish)$/) + 1;
+};
+const RUNNERS = {
+  xargs: (v, i) => skipOpts(v, i, /^-[IdEaLnPs]$|^--(?:delimiter|eof|arg-file|max-lines|max-args|max-procs|max-chars|replace)$/),
+  stdbuf: (v, i) => skipOpts(v, i, /^-[ioe]$/),
+  setsid: (v, i) => skipOpts(v, i, null),
+  unbuffer: (v, i) => skipOpts(v, i, null),
+  busybox: (v, i) => skipOpts(v, i, null),
+  ionice: (v, i) => skipOpts(v, i, /^-[cnp]$/),
+  doas: (v, i) => skipOpts(v, i, /^-[uC]$/),
+  runuser: (v, i) => skipOpts(v, i, /^-[ug]$/),
+  flock: (v, i) => skipOpts(v, i, /^-[wE]$/) + 1,
+  chroot: (v, i) => skipOpts(v, i, null) + 1,
+  find: (v, i) => { const e = v.findIndex((a, k) => k > i && /^-(?:exec|execdir|ok|okdir)$/.test(a)); return e < 0 ? -1 : e + 1; },
+  docker: inContainer,
+  podman: inContainer,
+  kubectl: (v, i) => { const d = v.indexOf('--', i); return d < 0 ? -1 : d + 1; },
+};
+// The index of the command a runner at `at` runs, through runners and prefixes; -1 when none.
+function runnedAt(v, at) {
+  let k = at;
+  for (let hops = 0; RUNNERS[base(v[k])] && hops < MAX_DEPTH; hops++) {
+    const n = RUNNERS[base(v[k])](v, k);
+    if (n < 0 || n >= v.length) return -1;
+    k = n + commandAt(v.slice(n));
+  }
+  return k === at || k >= v.length ? -1 : k;
+}
 const MAX_DEPTH = 16;
 const WORK = 4;
 const REDIRECT = /(?:\d*|&)(<<<|<<-|<<|<&|<|>>|>\||>&|>|&>>|&>)/y;
@@ -321,7 +355,8 @@ function analyse(cmd) {
   // this command's text when the substitution uses anything of it.
   const printed = (words) => (words.length && words.every((x) => ONLY_SUB.test(x.value)) ? words.flatMap((x) => x.subs || []) : null);
   if (name === 'eval' && (cmd.printedBy = printed(cmd.words.slice(at + 1)))) return;
-  const sshAt = name === 'ssh' ? at : NAMERS.has(name) ? -1 : cmd.words.findIndex((x, k) => k > at && !x.quoted && x.value === 'ssh');
+  const ran = runnedAt(v, at);
+  const sshAt = name === 'ssh' ? at : ran >= 0 && base(v[ran]) === 'ssh' ? ran : -1;
   if (sshAt >= 0) {
     // runs on another host: its remote command, or the script it reads on stdin, counts for the
     // authority patterns and never as a local write
@@ -337,13 +372,9 @@ function analyse(cmd) {
   }
   if (INTERPRETERS.has(name) || v.slice(0, at).some((a) => /^(?:-S|--split-string)/.test(a))   // env -S splits its text into a command
     || (name === 'git' && (rest.some((a) => /^(?:-x|--exec)(?:=|$)/.test(a)) || /^bisect run\b/.test(rest.slice(0, 2).join(' '))))) { cmd.interprets = true; return; }
-  // a shell at the command word, or unquoted anywhere after it: whatever runs it (`xargs`, `stdbuf`,
-  // `flock`, `docker exec -i c`, `busybox`), the shell runs its operand, its -c or its stdin
-  // (a quoted shell word counts only with its -c: `xargs "bash" -c …`)
-  // (past a namer it is a name, after a runner too: `xargs grep -L bash`)
-  const j = SHELL.test(name) ? at : NAMERS.has(name) ? -1
-    : cmd.words.findIndex((x, k) => k > at && SHELL.test(base(x.value)) && (!x.quoted || /^-[A-Za-z]*c[A-Za-z]*$/.test(v[k + 1] || ''))
-      && !v.slice(at + 1, k).some((y) => NAMERS.has(base(y))));
+  // a shell at the command word, or the command a runner runs (`xargs bash`, `docker exec -i c sh`,
+  // `find … -exec sh -c`): it runs its -c, its operand or its stdin
+  const j = SHELL.test(name) ? at : ran >= 0 && SHELL.test(base(v[ran])) ? ran : -1;
   if (j < 0) return;
   const a = shellArgs(v, j);
   cmd.script = a.noexec ? null : a.operand;
@@ -448,7 +479,8 @@ function readShell(s, i, inner, out) {
       if (depth) { endCmd(';'); depth--; i++; }
       else if (inner) { i++; break; }
       else { endCmd(';'); i++; }
-    } else if ((c === '<' || c === '>') && s[i + 1] === '(') { const k = sub(i + 1); w().value += s.slice(i, k); w().shown += '$_'; i = k; }
+    } else if (c === '<' && s[i + 1] === '<' && cmd && cmd.words.length && cmd.words[0].value === 'let') { const x = w(); x.value += '<<'; x.shown += '<<'; i += 2; }   // `let x=1<<2`: a shift
+    else if ((c === '<' || c === '>') && s[i + 1] === '(') { const k = sub(i + 1); w().value += s.slice(i, k); w().shown += '$_'; i = k; }
     else if (c === '<' || c === '>' || (c === '&' && s[i + 1] === '>') || (/\d/.test(c) && !word && /^\d+[<>]/.test(s.slice(i, i + 12)))) {
       endWord();
       REDIRECT.lastIndex = i;
@@ -466,6 +498,7 @@ function readShell(s, i, inner, out) {
       let k = i + 2; while (k < s.length && s[k] !== "'") k += s[k] === '\\' ? 2 : 1;
       const x = w(); x.value += s.slice(i + 2, k); x.shown += '""'; x.quoted = true; i = k + 1;
     } else if (c === '"') i = dquote(i);
+    else if (c === '$' && s[i + 1] === '[') { const e = s.indexOf(']', i); const k = e < 0 ? s.length : e + 1; substitutionsIn(s.slice(i + 2, k), out); w().value += s.slice(i, k); w().shown += '$_'; i = k; }   // `$[ ]`: arithmetic
     else if (c === '$' && s[i + 1] === '(' && s[i + 2] === '(') { const k = arithEnd(s, i + 3); substitutionsIn(s.slice(i + 3, k), out); w().value += s.slice(i, k); w().shown += '$_'; i = k; }
     else if (c === '$' && s[i + 1] === '(') { const k = sub(i + 1); w().value += s.slice(i, k); w().shown += '$_'; i = k; }
     else if (c === '$' && s[i + 1] === '{') { const e = s.indexOf('}', i); const stop = e < 0 ? s.length : e + 1; w().value += s.slice(i, stop); w().shown += s.slice(i, stop); i = stop; }
