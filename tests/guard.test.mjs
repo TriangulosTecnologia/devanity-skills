@@ -310,6 +310,9 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       'cp -p billing/x.py src/x.py',
       'source .venv/bin/activate && pytest tests/ -k "deploy or billing" -q',
       '. ~/.nvm/nvm.sh && npm test -- -t "deploy"',
+      'eval "$(pyenv init -)" && pytest -k "deploy"',
+      'eval "$(conda shell.bash hook)" && conda activate env && pytest -k "deploy or billing"',
+      'eval "$(direnv export bash)"; npm test -- -t \'deploy\'',
     ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
   });
 
@@ -351,9 +354,15 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ['xargs "bash" -c "git push --force"', 'merge'],
       ["cat > env.sh <<'EOF'\ngit push --force origin main\nEOF\nsource env.sh", 'merge'],
       ['source <(echo "git push --force")', 'merge'],
+      ["bash -eo pipefail -c 'git merge main'", 'merge'],
+      ["bash -euxo pipefail -c 'git merge main'", 'merge'],
+      ["cat > x.sh <<'EOF'\ngit merge main\nEOF\nbash -euo pipefail x.sh", 'merge'],
+      ['eval "$(echo git push --force)"', 'merge'],
+      ["cat > x.sh <<'EOF'\ngit push --force origin main\nEOF\neval \"$(cat x.sh)\"", 'merge'],
     ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
     for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"', 'cp src/x.py billing/x.py', 'cp -t billing/ src/x.py', 'install -m 644 src/x.py billing/x.py', 'mv billing/x.py src/x.py',
-      'cp src/x.py billing', 'mv src/x.py billing/', 'mv src/x.py billing', 'rm billing/x.py; cp a -t']) {
+      'cp src/x.py billing', 'mv src/x.py billing/', 'mv src/x.py billing', 'rm billing/x.py; cp a -t',
+      'echo ' + '"$('.repeat(20) + 'x' + ')"'.repeat(20) + '; rm billing/x.py']) {
       assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), 'billing/x.py');
     }
     assertBlocked(await run(GUARD, { input: bash(d, 'cp -r src billing'), cwd: d }), 'billing/src');

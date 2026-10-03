@@ -201,7 +201,11 @@ function isTestPath(rules, rel) {
 // ends with the text. Bounded: past MAX_DEPTH nested readings, or once re-reading costs WORK times
 // the input, the rest counts as raw text, so a hook never runs past its budget.
 const SHELL = /^(?:ba|z|da|k)?sh$/;
-const SHELL_VALUED = /^[-+][oO]$|^--(?:rcfile|init-file)$/;
+const SHELL_VALUED = /^[-+][A-Za-z]*[oO]$|^--(?:rcfile|init-file)$/;   // -o pipefail, -eo pipefail, -euxo pipefail
+// Commands whose output is text this command holds: what a substitution of them prints is data from here.
+const PRINTERS = new Set(['echo', 'printf', 'cat', 'head', 'tail', 'tee']);
+// A word that is one substitution and nothing else: `"$(pyenv init -)"`.
+const ONLY_SUB = /^(?:\$\([\s\S]*\)|`[\s\S]*`)$/;
 // Words that open or close a compound command: the command proper is the word after them.
 const RESERVED = new Set(['if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'while', 'until', 'for', 'case', 'esac', '!', '{', '}']);
 // Words that run the command after them: [options that take a value, operands before the command].
@@ -259,7 +263,7 @@ function shellArgs(v, j) {
     if (SHELL_VALUED.test(a)) { k++; continue; }
     if (a === '--') return { noexec, stdin: stdin || !v[k + 1], operand: v[k + 1] || null };
     if (a === '-') return { noexec, stdin: true, operand: null };
-    if (/^-[A-Za-z]*c[A-Za-z]*$/.test(a)) return { noexec: noexec || a.includes('n'), script: true };
+    if (/^-[A-Za-z]*c[A-Za-z]*$/.test(a)) return { noexec: noexec || a.includes('n'), script: k + 1 };
     if (/^[-+]./.test(a)) { if (/^-[A-Za-z]*n/.test(a)) noexec = true; if (/^-[A-Za-z]*s/.test(a)) stdin = true; continue; }
     return { noexec, stdin, operand: a };
   }
@@ -276,6 +280,11 @@ function analyse(cmd) {
   cmd.script = v[at];
   const rest = v.slice(at + 1);
   if (name === 'source' || name === '.') { cmd.script = rest[0]; cmd.interprets = /^(?:[<>]\(|\/dev\/(?:stdin|fd\/))/.test(rest[0] || ''); return; }
+  // `eval "$(pyenv init -)"`, `bash -c "$(curl …)"`: the text is what a program on disk prints, as
+  // unseen as a script on disk; it is this command's data only when a printer of it makes it
+  const printed = (words) => words.length && words.every((x) => ONLY_SUB.test(x.value))
+    && !words.some((x) => (x.subs || []).some((c) => PRINTERS.has(base((c.words[c.at] || {}).value)) || c.reads.length));
+  if (name === 'eval' && printed(cmd.words.slice(at + 1))) return;
   if (INTERPRETERS.has(name) || v.slice(0, at).some((a) => /^(?:-S|--split-string)/.test(a))   // env -S splits its text into a command
     || (name === 'git' && (rest.some((a) => /^(?:-x|--exec)(?:=|$)/.test(a)) || /^bisect run\b/.test(rest.slice(0, 2).join(' '))))) { cmd.interprets = true; return; }
   // a shell at the command word, or unquoted anywhere after it: whatever runs it (`xargs`, `stdbuf`,
@@ -286,7 +295,10 @@ function analyse(cmd) {
   if (j < 0) return;
   const a = shellArgs(v, j);
   cmd.script = a.noexec ? null : a.operand;
-  if (j !== at) { cmd.interprets = !a.noexec; return; }
+  if (a.script !== undefined && printed(cmd.words.slice(a.script, a.script + 1))) return;
+  // after a runner, a shell runs something only with a -c, a file, or input it is given
+  // (`echo x.sh | xargs bash`, `docker exec -i c sh <<EOF`); a last word `bash` is a name (`direnv export bash`)
+  if (j !== at) { cmd.interprets = !a.noexec && Boolean(a.script || a.operand || cmd.op === '|' || cmd.op === '|&' || cmd.reads.length); return; }
   cmd.interprets = !a.noexec && Boolean(a.script || a.stdin || cmd.reads.length || /^[<>]\(/.test(a.operand || ''));
 }
 
@@ -295,8 +307,10 @@ function analyse(cmd) {
 function parseShell(s, i, inner, out) {
   if (!inner) out.work += s.length - i + 64;   // a new text read, and its fixed cost (a `$( )` continues the one being read)
   if (out.depth >= MAX_DEPTH || out.work > out.budget) {
-    out.push({ op: ';', words: [], at: 0, writes: [], reads: [], files: [], shown: '', interprets: true });   // dynamic: the raw text counts
-    return s.length;
+    // dynamic: the raw text counts for the patterns; a substitution is skipped to its `)`, so what
+    // follows it is still read
+    out.push({ op: ';', words: [], at: 0, writes: [], reads: [], files: [], shown: '', interprets: true });
+    return inner ? closingParen(s, i) : s.length;
   }
   out.depth++;
   const end = readShell(s, i, inner, out);
@@ -330,7 +344,7 @@ function readShell(s, i, inner, out) {
     cmd = null; op = next;
   };
   // `$( )`, `<( )` and `>( )` from j (at the `(`): the commands inside, and the index after.
-  const sub = (j) => parseShell(s, j + 1, true, out);
+  const sub = (j) => { const from = out.length; const k = parseShell(s, j + 1, true, out); (w().subs = w().subs || []).push(...out.slice(from)); return k; };
   // A double-quoted string from j (at the `"`): its text into the word, and the index after.
   const dquote = (j) => {
     const x = w(); x.quoted = true; x.shown += '""';
@@ -407,6 +421,19 @@ function readShell(s, i, inner, out) {
   }
   endCmd(';');
   return i;
+}
+
+// The index after the `)` that closes the substitution open at i, quotes skipped; the end if none.
+function closingParen(s, i) {
+  let depth = 1;
+  for (let k = i; k < s.length; k++) {
+    const c = s[k];
+    if (c === '\\') k++;
+    else if (c === "'" || c === '"') { const e = s.indexOf(c, k + 1); k = e < 0 ? s.length : e; }
+    else if (c === '(') depth++;
+    else if (c === ')' && --depth === 0) return k + 1;
+  }
+  return s.length;
 }
 
 // `$( )` and backticks inside an unquoted heredoc body: the shell expands them, so they run.
