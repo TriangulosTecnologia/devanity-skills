@@ -359,6 +359,12 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ["cat > x.sh <<'EOF'\ngit merge main\nEOF\nbash -euo pipefail x.sh", 'merge'],
       ['eval "$(echo git push --force)"', 'merge'],
       ["cat > x.sh <<'EOF'\ngit push --force origin main\nEOF\neval \"$(cat x.sh)\"", 'merge'],
+      ...['bash -c "$(< s.sh)"', 'eval "$(<s.sh)"', 'bash -c "$(sed -n p s.sh)"', "eval \"$(grep -v '^#' s.sh)\""]
+        .map((run) => [`cat > s.sh <<'EOF'\ngit merge main\nEOF\n${run}`, 'merge']),
+      ["cat > g.py <<'EOF'\nprint('git merge main')\nEOF\neval \"$(python3 g.py)\"", 'merge'],
+      ["echo 'git merge main' | (docker exec -i c bash)", 'merge'],
+      ['ssh host ./deploy.sh prod', 'deploy'],
+      ['ssh -p 22 deploy@host "cd app && ./deploy.sh"', 'deploy'],
     ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
     for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"', 'cp src/x.py billing/x.py', 'cp -t billing/ src/x.py', 'install -m 644 src/x.py billing/x.py', 'mv billing/x.py src/x.py',
       'cp src/x.py billing', 'mv src/x.py billing/', 'mv src/x.py billing', 'rm billing/x.py; cp a -t',

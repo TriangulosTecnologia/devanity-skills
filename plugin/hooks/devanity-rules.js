@@ -202,8 +202,8 @@ function isTestPath(rules, rel) {
 // the input, the rest counts as raw text, so a hook never runs past its budget.
 const SHELL = /^(?:ba|z|da|k)?sh$/;
 const SHELL_VALUED = /^[-+][A-Za-z]*[oO]$|^--(?:rcfile|init-file)$/;   // -o pipefail, -eo pipefail, -euxo pipefail
-// Commands whose output is text this command holds: what a substitution of them prints is data from here.
-const PRINTERS = new Set(['echo', 'printf', 'cat', 'head', 'tail', 'tee']);
+// Commands that print their own arguments: a substitution of them prints this command's text.
+const PRINTERS = new Set(['echo', 'printf']);
 // A word that is one substitution and nothing else: `"$(pyenv init -)"`.
 const ONLY_SUB = /^(?:\$\([\s\S]*\)|`[\s\S]*`)$/;
 // Words that open or close a compound command: the command proper is the word after them.
@@ -214,6 +214,7 @@ const PREFIXES = new Map([['sudo', [/^-[ugCDhpRrT]$/, 0]], ['env', [/^-[uCS]$/, 
 // Commands that run text as a script: eval, ssh's remote side, a trap, a scheduled job, another
 // user's shell, a repeated command. (`source`/`.` run a file, as a shell does its operand.)
 const INTERPRETERS = new Set(['eval', 'ssh', 'trap', 'at', 'batch', 'su', 'watch', 'parallel', 'script']);
+const SSH_VALUED = /^-[bcDEeFIiJLlmOopQRSWw]$/;
 // Commands that only name what follows them: a shell word there is a name, not a shell started.
 const NAMERS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'which', 'type', 'whereis', 'command', 'man', 'info', 'help',
   'ls', 'cat', 'echo', 'printf', 'head', 'tail', 'wc', 'file', 'stat', 'readlink', 'realpath']);
@@ -233,10 +234,13 @@ function shellCommands(src) {
   parseShell(text, 0, false, out);
   // a file this command wrote, run by name from wherever (`cd d && bash x.sh`, `mv x.sh d/ && d/x.sh`)
   const written = new Set(out.flatMap((c) => c.files.map(base)));
-  const dynamic = out.some((c) => c.interprets || (c.script && written.has(base(c.script))));
+  // a substitution uses this command's text: a printer of its arguments, input, quoted text, a written file
+  const ownText = (c) => PRINTERS.has(base((c.words[c.at] || {}).value)) || c.reads.length || c.op === '|' || c.op === '|&'
+    || c.words.some((x) => x.quoted || written.has(base(x.value)));
+  const dynamic = out.some((c) => c.interprets || (c.script && written.has(base(c.script))) || (c.printedBy && (!c.printedBy.length || c.printedBy.some(ownText))));
   // `\n` as printf and echo -e print it: data handed to a shell runs line by line
   if (dynamic) for (const d of out.data.slice()) parseShell(d.replace(/\\n/g, '\n'), 0, false, out);
-  const result = { dynamic, commands: out.map(({ op, words, at, writes, reads, shown }) => ({ op, words, at, writes, reads, shown })) };
+  const result = { dynamic, commands: out.map(({ op, words, at, writes, reads, shown, remote }) => ({ op, words, at, writes, reads, shown, remote })) };
   lastRead = { text, result };
   return result;
 }
@@ -281,10 +285,15 @@ function analyse(cmd) {
   const rest = v.slice(at + 1);
   if (name === 'source' || name === '.') { cmd.script = rest[0]; cmd.interprets = /^(?:[<>]\(|\/dev\/(?:stdin|fd\/))/.test(rest[0] || ''); return; }
   // `eval "$(pyenv init -)"`, `bash -c "$(curl …)"`: the text is what a program on disk prints, as
-  // unseen as a script on disk; it is this command's data only when a printer of it makes it
-  const printed = (words) => words.length && words.every((x) => ONLY_SUB.test(x.value))
-    && !words.some((x) => (x.subs || []).some((c) => PRINTERS.has(base((c.words[c.at] || {}).value)) || c.reads.length));
-  if (name === 'eval' && printed(cmd.words.slice(at + 1))) return;
+  // unseen as a script on disk. Decided once the written files are known (shellCommands): it is
+  // this command's text when the substitution uses anything of it.
+  const printed = (words) => (words.length && words.every((x) => ONLY_SUB.test(x.value)) ? words.flatMap((x) => x.subs || []) : null);
+  if (name === 'eval' && (cmd.printedBy = printed(cmd.words.slice(at + 1)))) return;
+  if (name === 'ssh') {   // its remote command is read as a command too, for the patterns
+    let k = at + 1;
+    while (k < v.length && v[k].startsWith('-')) k += SSH_VALUED.test(v[k]) ? 2 : 1;
+    if (k + 1 < v.length) cmd.remote = v.slice(k + 1).join(' ');   // runs on another host: authority, never a local write
+  }
   if (INTERPRETERS.has(name) || v.slice(0, at).some((a) => /^(?:-S|--split-string)/.test(a))   // env -S splits its text into a command
     || (name === 'git' && (rest.some((a) => /^(?:-x|--exec)(?:=|$)/.test(a)) || /^bisect run\b/.test(rest.slice(0, 2).join(' '))))) { cmd.interprets = true; return; }
   // a shell at the command word, or unquoted anywhere after it: whatever runs it (`xargs`, `stdbuf`,
@@ -295,7 +304,7 @@ function analyse(cmd) {
   if (j < 0) return;
   const a = shellArgs(v, j);
   cmd.script = a.noexec ? null : a.operand;
-  if (a.script !== undefined && printed(cmd.words.slice(a.script, a.script + 1))) return;
+  if (a.script !== undefined && (cmd.printedBy = printed(cmd.words.slice(a.script, a.script + 1)))) return;
   // after a runner, a shell runs something only with a -c, a file, or input it is given
   // (`echo x.sh | xargs bash`, `docker exec -i c sh <<EOF`); a last word `bash` is a name (`direnv export bash`)
   if (j !== at) { cmd.interprets = !a.noexec && Boolean(a.script || a.operand || cmd.op === '|' || cmd.op === '|&' || cmd.reads.length); return; }
@@ -336,7 +345,7 @@ function readShell(s, i, inner, out) {
   };
   const endCmd = (next) => {
     endWord(); redirect = null;
-    if (cmd && (cmd.words.length || cmd.writes.length)) {
+    if (cmd && (cmd.words.length || cmd.writes.length || cmd.reads.length)) {
       cmd.shown = [...cmd.words.map((x) => x.shown), ...cmd.writes.map((t) => `> ${t}`)].join(' ');
       analyse(cmd);
       out.push(cmd);
@@ -388,7 +397,7 @@ function readShell(s, i, inner, out) {
     else if (c === '|' && s[i + 1] === '|') { endCmd('||'); i += 2; }
     else if (c === '|') { const both = s[i + 1] === '&'; endCmd(both ? '|&' : '|'); i += both ? 2 : 1; }
     else if (c === '&' && s[i + 1] !== '>') { endCmd('&'); i++; }
-    else if (c === '(' && !word) { endCmd(';'); depth++; i++; }
+    else if (c === '(' && !word) { if (cmd) endCmd(';'); depth++; i++; }   // `| ( … )` stays a pipe
     else if (c === ')') {
       if (depth) { endCmd(';'); depth--; i++; }
       else if (inner) { i++; break; }
@@ -455,6 +464,7 @@ function commandText(command) {
     parts.push(i ? `${c.op} ${c.shown}` : c.shown);
     const head = c.words[c.at];
     if (head && (c.at > 0 || head.quoted)) parts.push(`; ${[head.value, ...c.words.slice(c.at + 1).map((x) => x.shown)].join(' ')}`);
+    if (c.remote) parts.push(`; ${commandText(c.remote)}`);
   });
   if (dynamic) parts.push(`; ${String(command)}`);
   return parts.join(' ');
