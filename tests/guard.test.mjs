@@ -317,6 +317,8 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       "ssh host <<'EOF'\nrm billing/x.py\nEOF",
       'ssh -fN -L 5432:localhost:5432 bastion && git commit -m "fix: git merge conflict"',
       'ssh -T git@github.com; git commit -m "chore: npm publish notes"',
+      'docker compose exec -T app bash scripts/test.sh && git commit -m "fix: git merge conflict check"',
+      'apt-get install -y bash curl && grep -rn "git merge" docs/',
     ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
   });
 
@@ -384,6 +386,11 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ['ssh -p 22 deploy@host "cd app && ./deploy.sh"', 'deploy'],
       ['ssh host "git push --force origin main"', 'merge'],
       ["ssh host 'bash -s' < <(echo 'git push --force')", 'merge'],
+      ["sudo -i <<'EOF'\ngit push --force\nEOF", 'merge'],
+      ...["cp /dev/stdin x.sh <<'EOF'\ngit push --force origin main\nEOF\nbash x.sh", "dd of=x.sh <<'EOF'\ngit push --force origin main\nEOF\nbash x.sh"].map((cmd) => [cmd, 'merge']),
+      ['(( y = 1 << 2 ))\ngit push --force', 'merge'],
+      ['echo $(( 1 << 2 )); git push --force origin main', 'merge'],
+      ['xargs -I{} ssh {} "git merge main"', 'merge'],
       ["ssh host 'bash -s' <<'EOF'\ngit push --force\nEOF", 'merge'],
       ["ssh host \"cd /srv && bash\" <<'EOF'\ngit merge main\nEOF", 'merge'],
       ...["ssh host 'bash -s' < x.sh", 'ssh host "sudo bash" < x.sh', "cat x.sh | ssh host 'bash -s'", 'ssh host "$(cat x.sh)"', 'ssh host "$(< x.sh)"',
@@ -394,7 +401,7 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
         .map((run) => [`cat > a.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
     ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
     for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"', 'cp src/x.py billing/x.py', 'cp -t billing/ src/x.py', 'install -m 644 src/x.py billing/x.py', 'mv billing/x.py src/x.py',
-      'cp src/x.py billing', 'mv src/x.py billing/', 'mv src/x.py billing', 'rm billing/x.py; cp a -t',
+      'cp src/x.py billing', 'mv src/x.py billing/', 'mv src/x.py billing', 'rm billing/x.py; cp a -t', 'install src/x.py billing/x.py -m 644', 'cp src/x.py billing/x.py -S .bak',
       'echo ' + '"$('.repeat(20) + 'x' + ')"'.repeat(20) + '; rm billing/x.py']) {
       assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), 'billing/x.py');
     }
@@ -431,11 +438,19 @@ describe('guard: the shell reader stays inside the hook budget', () => {
 });
 
 describe('guard: a command naming many guarded paths', () => {
+  test('100000 high-risk paths block inside the hook budget: the first 50 decide it', async () => {
+    const d = repo();
+    const started = Date.now();
+    const r = await run(GUARD, { input: bash(d, `rm ${Array.from({ length: 100000 }, (_, k) => `billing/f${k}.py`).join(' ')}`), cwd: d, timeoutMs: 15000 });
+    assertBlocked(r, 'billing/f0.py', 'more');
+    assert.ok(Date.now() - started < 3000, `${Date.now() - started} ms`);
+  });
+
   test('300 high-risk paths block in about the time of one: the ledger is located once per run', async () => {
     const d = repo();
     const started = Date.now();
     const r = await run(GUARD, { input: bash(d, `rm ${Array.from({ length: 300 }, (_, k) => `billing/f${k}.py`).join(' ')}`), cwd: d, timeoutMs: 10000 });
-    assertBlocked(r, 'billing/f0.py', 'billing/f299.py');
+    assertBlocked(r, 'billing/f0.py', 'billing/f49.py', '250 more');
     assert.ok(Date.now() - started < 2000, `${Date.now() - started} ms`);
   });
 });

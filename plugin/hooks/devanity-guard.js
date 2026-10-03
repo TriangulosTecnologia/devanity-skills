@@ -108,15 +108,13 @@ function writtenPaths(command) {
       if (sub === 'checkout') { const d = args.indexOf('--'); if (d >= 0) args.slice(d + 1).filter(looksLikePath).forEach((a) => out.add(a)); }
       else if (sub === 'restore') args.slice(1).filter((a) => looksLikePath(a) && !a.startsWith('--source')).forEach((a) => out.add(a));
     } else if (cmd === 'cp' || cmd === 'install' || cmd === 'mv') {
-      // the destination is written (`-t DIR` or the last operand), and mv also removes its sources.
-      // A destination may be a directory, named with or without its `/`: each source by its name in it.
-      const t = args.findIndex((a) => a === '-t' || a.startsWith('--target-directory'));
-      const operands = args.filter((a, j) => !a.startsWith('-') && !(t >= 0 && j === t + 1 && !args[t].includes('=')));
-      const dest = t >= 0 ? (args[t].includes('=') ? args[t].split('=')[1] : args[t + 1]) : operands.pop();
-      if (cmd === 'mv') operands.filter(looksLikePath).forEach((a) => out.add(a));
+      // the destination is written, and mv also removes its sources. A destination may be a
+      // directory, named with or without its `/`: each source by its name in it.
+      const { sources, dest } = rules.copyTargets(args);
+      if (cmd === 'mv') sources.filter(looksLikePath).forEach((a) => out.add(a));
       if (dest) {
         if (looksLikePath(dest)) out.add(dest);
-        if (t >= 0 || operands.length > 1 || !/\.[A-Za-z0-9]+$/.test(dest)) operands.forEach((src) => out.add(path.posix.join(dest, path.posix.basename(src))));
+        if (args.some((a) => a === '-t' || a.startsWith('--target-directory')) || sources.length > 1 || !/\.[A-Za-z0-9]+$/.test(dest)) sources.forEach((src) => out.add(path.posix.join(dest, path.posix.basename(src))));
       }
     } else if (cmd === 'dd') {
       args.filter((a) => a.startsWith('of=')).forEach((a) => out.add(a.slice(3)));
@@ -201,7 +199,10 @@ function evaluate(payload, env) {
     if (target) checkPath(String(target));
   } else if (tool === 'Bash') {
     const command = String(input.command || '');
-    for (const p of writtenPaths(command)) checkPath(p, command.slice(0, 120));
+    // one guarded path blocks the command: past 50 found, the rest are only counted
+    let more = 0;
+    for (const p of writtenPaths(command)) { if (findings.length >= 50) more++; else checkPath(p, command.slice(0, 120)); }
+    if (more) findings[findings.length - 1].message += `\n  (and ${more} more path(s) in this command not checked one by one)`;
     const need = rules.commandAuthority(loaded.rules, command);
     if (need && rules.authorityRank(need) > rules.authorityRank(auth.have)) {
       findings.push({ message: authorityMessage(command, need, auth), event: { tool, command, authority: { need, have: auth.have } } });

@@ -287,25 +287,45 @@ function shellArgs(v, j) {
   return { noexec, stdin: true, operand: null };
 }
 
+// The sources and destination of cp, install or mv (`-t DIR` or the last operand), past options
+// that take a value wherever they stand (`install a b -m 644`). dest is null when none is named.
+function copyTargets(args) {
+  const t = args.findIndex((a) => a === '-t' || a.startsWith('--target-directory'));
+  const operands = [];
+  for (let k = 0; k < args.length; k++) {
+    if (/^-[mogSt]$/.test(args[k])) { k++; continue; }
+    if (!args[k].startsWith('-')) operands.push(args[k]);
+  }
+  const dest = t >= 0 ? (args[t].includes('=') ? args[t].split('=')[1] : args[t + 1]) || null : operands.pop() || null;
+  return { sources: operands, dest };
+}
+
 // How a finished command runs code: `interprets` when it hands a script to an interpreter,
 // `script` the file it runs (its own path, or a shell's operand), `files` the files it writes.
 function analyse(cmd) {
   const v = cmd.words.map((x) => x.value);
   const at = commandAt(v); const name = base(v[at]);
   cmd.at = at;
-  cmd.files = [...cmd.writes, ...(name === 'tee' ? v.slice(at + 1).filter((a) => !a.startsWith('-')) : [])];
-  cmd.script = v[at];
   const rest = v.slice(at + 1);
+  // the files it writes: redirects, tee, a cp/install/mv destination (`cp /dev/stdin x.sh <<EOF`), dd of=
+  const copied = ['cp', 'install', 'mv'].includes(name) ? copyTargets(rest).dest : null;
+  cmd.files = [...cmd.writes, ...(name === 'tee' ? rest.filter((a) => !a.startsWith('-')) : []), ...(copied ? [copied] : []),
+    ...(name === 'dd' ? rest.filter((a) => a.startsWith('of=')).map((a) => a.slice(3)) : [])];
+  cmd.script = v[at];
+  const fed = Boolean(cmd.reads.length || cmd.op === '|' || cmd.op === '|&');
+  // `sudo -i`, `sudo -s` with no command: a root shell reading its script from what it is given
+  if (at >= v.length && v.includes('sudo') && v.some((a) => /^-(?:[A-Za-z]*[is][A-Za-z]*|-login|-shell)$/.test(a))) { cmd.interprets = fed; return; }
   if (name === 'source' || name === '.') { cmd.script = rest[0]; cmd.interprets = /^(?:[<>]\(|\/dev\/(?:stdin|fd\/))/.test(rest[0] || ''); return; }
   // `eval "$(pyenv init -)"`, `bash -c "$(curl …)"`: the text is what a program on disk prints, as
   // unseen as a script on disk. Decided once the written files are known (shellCommands): it is
   // this command's text when the substitution uses anything of it.
   const printed = (words) => (words.length && words.every((x) => ONLY_SUB.test(x.value)) ? words.flatMap((x) => x.subs || []) : null);
   if (name === 'eval' && (cmd.printedBy = printed(cmd.words.slice(at + 1)))) return;
-  if (name === 'ssh') {
+  const sshAt = name === 'ssh' ? at : NAMERS.has(name) ? -1 : cmd.words.findIndex((x, k) => k > at && !x.quoted && x.value === 'ssh');
+  if (sshAt >= 0) {
     // runs on another host: its remote command, or the script it reads on stdin, counts for the
     // authority patterns and never as a local write
-    let k = at + 1;
+    let k = sshAt + 1;
     while (k < v.length && v[k].startsWith('-')) k += SSH_VALUED.test(v[k]) ? 2 : 1;
     cmd.ssh = true;
     // options may follow the host too (`ssh host -t cmd`), up to a `--`
@@ -326,9 +346,10 @@ function analyse(cmd) {
   const a = shellArgs(v, j);
   cmd.script = a.noexec ? null : a.operand;
   if (a.script !== undefined && (cmd.printedBy = printed(cmd.words.slice(a.script, a.script + 1)))) return;
-  // after a runner, a shell runs something only with a -c, a file, or input it is given
-  // (`echo x.sh | xargs bash`, `docker exec -i c sh <<EOF`); a last word `bash` is a name (`direnv export bash`)
-  if (j !== at) { cmd.interprets = !a.noexec && Boolean(a.script || a.operand || cmd.op === '|' || cmd.op === '|&' || cmd.reads.length); return; }
+  // after a runner, a shell runs its -c, or the input it is given (`echo x.sh | xargs bash`,
+  // `docker exec -i c sh <<EOF`); its operand is a file, as at the command word; a last word
+  // `bash` is a name (`direnv export bash`)
+  if (j !== at) { cmd.interprets = !a.noexec && Boolean(a.script || (!a.operand && fed)); return; }
   cmd.interprets = !a.noexec && Boolean(a.script || a.stdin || cmd.reads.length || /^[<>]\(/.test(a.operand || ''));
 }
 
@@ -380,6 +401,7 @@ function readShell(s, i, inner, out) {
     const x = w(); x.quoted = true; x.shown += '""';
     for (j++; j < s.length && s[j] !== '"'; j++) {
       if (s[j] === '\\') { j++; if (s[j] !== '\n') x.value += '$`"\\'.includes(s[j]) ? s[j] : `\\${s[j] || ''}`; }
+      else if (s[j] === '$' && s[j + 1] === '(' && s[j + 2] === '(') { const k = arithEnd(s, j + 3); x.value += s.slice(j, k); j = k - 1; }
       else if (s[j] === '$' && s[j + 1] === '(') { const k = sub(j + 1); x.value += s.slice(j, k); j = k - 1; }
       else if (s[j] === '`') { const k = backtick(j); x.value += s.slice(j, k); j = k - 1; }
       else x.value += s[j];
@@ -418,6 +440,7 @@ function readShell(s, i, inner, out) {
     else if (c === '|' && s[i + 1] === '|') { endCmd('||'); i += 2; }
     else if (c === '|') { const both = s[i + 1] === '&'; endCmd(both ? '|&' : '|'); i += both ? 2 : 1; }
     else if (c === '&' && s[i + 1] !== '>') { endCmd('&'); i++; }
+    else if (c === '(' && s[i + 1] === '(' && !word) i = arithEnd(s, i + 2);   // `(( y = 1 << 2 ))`: arithmetic, no command, no heredoc
     else if (c === '(' && !word) { if (cmd) endCmd(';'); depth++; i++; }   // `| ( … )` stays a pipe
     else if (c === ')') {
       if (depth) { endCmd(';'); depth--; i++; }
@@ -441,6 +464,7 @@ function readShell(s, i, inner, out) {
       let k = i + 2; while (k < s.length && s[k] !== "'") k += s[k] === '\\' ? 2 : 1;
       const x = w(); x.value += s.slice(i + 2, k); x.shown += '""'; x.quoted = true; i = k + 1;
     } else if (c === '"') i = dquote(i);
+    else if (c === '$' && s[i + 1] === '(' && s[i + 2] === '(') { const k = arithEnd(s, i + 3); w().value += s.slice(i, k); w().shown += '$_'; i = k; }
     else if (c === '$' && s[i + 1] === '(') { const k = sub(i + 1); w().value += s.slice(i, k); w().shown += '$_'; i = k; }
     else if (c === '$' && s[i + 1] === '{') { const e = s.indexOf('}', i); const stop = e < 0 ? s.length : e + 1; w().value += s.slice(i, stop); w().shown += s.slice(i, stop); i = stop; }
     else if (c === '`') { const k = backtick(i); w().value += s.slice(i, k); w().shown += '$_'; i = k; }
@@ -451,6 +475,13 @@ function readShell(s, i, inner, out) {
   }
   endCmd(';');
   return i;
+}
+
+// The index after the `))` that closes an arithmetic expression whose text starts at i; the end if none.
+function arithEnd(s, i) {
+  let depth = 2;
+  for (let k = i; k < s.length; k++) if (s[k] === '(') depth++; else if (s[k] === ')' && --depth === 0) return k + 1;
+  return s.length;
 }
 
 // The index after the `)` that closes the substitution open at i, quotes skipped; the end if none.
@@ -512,5 +543,5 @@ function commandAuthority(rules, command) {
 
 module.exports = {
   AUTHORITIES, AUTONOMY_AUTHORITIES, FILE, TIERS,
-  authorityRank, commandAuthority, globToRegExp, isTestPath, loadRules, parseRules, relPath, ruleFor, shellCommands, validate,
+  authorityRank, commandAuthority, copyTargets, globToRegExp, isTestPath, loadRules, parseRules, relPath, ruleFor, shellCommands, validate,
 };
