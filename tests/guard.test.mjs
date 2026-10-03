@@ -308,6 +308,8 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       'man bash; echo "pnpm deploy:vm"',
       'cp billing/x.py /tmp/x.bak',
       'cp -p billing/x.py src/x.py',
+      'source .venv/bin/activate && pytest tests/ -k "deploy or billing" -q',
+      '. ~/.nvm/nvm.sh && npm test -- -t "deploy"',
     ]) assertAllowed(await run(GUARD, { input: bash(d, cmd), cwd: d }));
   });
 
@@ -347,10 +349,14 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ['command bash -c "git push --force origin main"', 'merge'],
       ['echo "git push --force" | command bash', 'merge'],
       ['xargs "bash" -c "git push --force"', 'merge'],
+      ["cat > env.sh <<'EOF'\ngit push --force origin main\nEOF\nsource env.sh", 'merge'],
+      ['source <(echo "git push --force")', 'merge'],
     ]) assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), `needs authority: ${need}`);
-    for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"', 'cp src/x.py billing/x.py', 'cp -t billing/ src/x.py', 'install -m 644 src/x.py billing/x.py', 'mv billing/x.py src/x.py']) {
+    for (const cmd of ['true\nrm billing/x.py', "bash <<'EOF'\nrm billing/x.py\nEOF", 'echo "$(rm billing/x.py)"', 'cp src/x.py billing/x.py', 'cp -t billing/ src/x.py', 'install -m 644 src/x.py billing/x.py', 'mv billing/x.py src/x.py',
+      'cp src/x.py billing', 'mv src/x.py billing/', 'mv src/x.py billing', 'rm billing/x.py; cp a -t']) {
       assertBlocked(await run(GUARD, { input: bash(d, cmd), cwd: d }), 'billing/x.py');
     }
+    assertBlocked(await run(GUARD, { input: bash(d, 'cp -r src billing'), cwd: d }), 'billing/src');
   });
 });
 

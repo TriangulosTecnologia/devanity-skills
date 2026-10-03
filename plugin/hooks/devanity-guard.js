@@ -78,7 +78,8 @@ function looksLikePath(tok) {
 // Repository-relative paths a command may write to, over each simple command the shell runs
 // (rules.shellCommands: a heredoc body or a quoted argument is data, a later line or `$( )` runs):
 // redirect targets always count; for writer commands, every path-like argument counts (sed only
-// with -i; git only for checkout -- / restore; dd only of=; cp and install only their destination).
+// with -i; git only for checkout -- / restore; dd only of=; cp, install and mv their destination, and
+// mv its sources).
 function writtenPaths(command) {
   const out = new Set();
   for (const c of rules.shellCommands(command).commands) {
@@ -106,15 +107,17 @@ function writtenPaths(command) {
       const sub = args[0];
       if (sub === 'checkout') { const d = args.indexOf('--'); if (d >= 0) args.slice(d + 1).filter(looksLikePath).forEach((a) => out.add(a)); }
       else if (sub === 'restore') args.slice(1).filter((a) => looksLikePath(a) && !a.startsWith('--source')).forEach((a) => out.add(a));
-    } else if (cmd === 'cp' || cmd === 'install') {
-      // only the destination is written: `-t DIR` or the last operand; into a directory (`-t`, a
-      // trailing `/`, several sources), each source by its name
+    } else if (cmd === 'cp' || cmd === 'install' || cmd === 'mv') {
+      // the destination is written (`-t DIR` or the last operand), and mv also removes its sources.
+      // A destination may be a directory, named with or without its `/`: each source by its name in it.
       const t = args.findIndex((a) => a === '-t' || a.startsWith('--target-directory'));
       const operands = args.filter((a, j) => !a.startsWith('-') && !(t >= 0 && j === t + 1 && !args[t].includes('=')));
       const dest = t >= 0 ? (args[t].includes('=') ? args[t].split('=')[1] : args[t + 1]) : operands.pop();
-      const into = t >= 0 || /\/$/.test(dest || '') || operands.length > 1;
-      if (into) operands.forEach((src) => out.add(path.posix.join(dest, path.posix.basename(src))));
-      else if (looksLikePath(dest)) out.add(dest);
+      if (cmd === 'mv') operands.filter(looksLikePath).forEach((a) => out.add(a));
+      if (dest) {
+        if (looksLikePath(dest)) out.add(dest);
+        operands.forEach((src) => out.add(path.posix.join(dest, path.posix.basename(src))));
+      }
     } else if (cmd === 'dd') {
       args.filter((a) => a.startsWith('of=')).forEach((a) => out.add(a.slice(3)));
     } else {

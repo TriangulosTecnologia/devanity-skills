@@ -207,9 +207,9 @@ const RESERVED = new Set(['if', 'then', 'else', 'elif', 'fi', 'do', 'done', 'whi
 // Words that run the command after them: [options that take a value, operands before the command].
 const PREFIXES = new Map([['sudo', [/^-[ugCDhpRrT]$/, 0]], ['env', [/^-[uCS]$/, 0]], ['nice', [/^-n$/, 0]], ['exec', [/^-a$/, 0]],
   ['timeout', [/^-[sk]$/, 1]], ['time', [null, 0]], ['nohup', [null, 0]]]);
-// Commands that run text as a script: eval, source, ssh's remote side, a trap, a scheduled job,
-// another user's shell, a repeated command.
-const INTERPRETERS = new Set(['eval', 'source', '.', 'ssh', 'trap', 'at', 'batch', 'su', 'watch', 'parallel', 'script']);
+// Commands that run text as a script: eval, ssh's remote side, a trap, a scheduled job, another
+// user's shell, a repeated command. (`source`/`.` run a file, as a shell does its operand.)
+const INTERPRETERS = new Set(['eval', 'ssh', 'trap', 'at', 'batch', 'su', 'watch', 'parallel', 'script']);
 // Commands that only name what follows them: a shell word there is a name, not a shell started.
 const NAMERS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'which', 'type', 'whereis', 'command', 'man', 'info', 'help',
   'ls', 'cat', 'echo', 'printf', 'head', 'tail', 'wc', 'file', 'stat', 'readlink', 'realpath']);
@@ -275,6 +275,7 @@ function analyse(cmd) {
   cmd.files = [...cmd.writes, ...(name === 'tee' ? v.slice(at + 1).filter((a) => !a.startsWith('-')) : [])];
   cmd.script = v[at];
   const rest = v.slice(at + 1);
+  if (name === 'source' || name === '.') { cmd.script = rest[0]; cmd.interprets = /^(?:[<>]\(|\/dev\/(?:stdin|fd\/))/.test(rest[0] || ''); return; }
   if (INTERPRETERS.has(name) || v.slice(0, at).some((a) => /^(?:-S|--split-string)/.test(a))   // env -S splits its text into a command
     || (name === 'git' && (rest.some((a) => /^(?:-x|--exec)(?:=|$)/.test(a)) || /^bisect run\b/.test(rest.slice(0, 2).join(' '))))) { cmd.interprets = true; return; }
   // a shell at the command word, or unquoted anywhere after it: whatever runs it (`xargs`, `stdbuf`,
