@@ -373,9 +373,12 @@ describe('guard: what the shell runs, not what the text says (field report: 5 of
       ['ssh host ./deploy.sh prod', 'deploy'],
       ['ssh -p 22 deploy@host "cd app && ./deploy.sh"', 'deploy'],
       ['ssh host "git push --force origin main"', 'merge'],
+      ["ssh host 'bash -s' < <(echo 'git push --force')", 'merge'],
       ["ssh host 'bash -s' <<'EOF'\ngit push --force\nEOF", 'merge'],
       ["ssh host \"cd /srv && bash\" <<'EOF'\ngit merge main\nEOF", 'merge'],
-      ...["ssh host 'bash -s' < x.sh", 'ssh host "sudo bash" < x.sh', "cat x.sh | ssh host 'bash -s'", 'ssh host "$(cat x.sh)"', 'ssh host "$(< x.sh)"']
+      ...["ssh host 'bash -s' < x.sh", 'ssh host "sudo bash" < x.sh', "cat x.sh | ssh host 'bash -s'", 'ssh host "$(cat x.sh)"', 'ssh host "$(< x.sh)"',
+        'cp x.sh y.sh && ssh host bash < y.sh', 'mv x.sh y.sh && cat y.sh | ssh host bash', 'scp x.sh host:/tmp/ && ssh host bash /tmp/x.sh',
+        'ssh host -- bash -s < x.sh', "ssh host 'sudo -i' < x.sh", "ssh host 'bash /dev/stdin' < x.sh", 'ssh host "docker exec -i c sh" < x.sh', 'ssh jump ssh host bash -s < x.sh']
         .map((run) => [`cat > x.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
       ...['cp a.sh b.sh && bash b.sh', 'mv a.sh b.sh && bash b.sh', 'install -m 755 a.sh bin/run && bin/run', 'ln -s a.sh run && ./run']
         .map((run) => [`cat > a.sh <<'EOF'\ngit push --force origin main\nEOF\n${run}`, 'merge']),
@@ -405,6 +408,7 @@ describe('guard: the shell reader stays inside the hook budget', () => {
       ['git push x '.repeat(16000), 'commit'],
       ['make a '.repeat(100000), null],
       ['ssh h '.repeat(3000) + 'git push --force origin main', 'merge'],
+      ["cat > x.sh <<'E'\n" + 'echo a\n'.repeat(150000) + 'E\n' + 'ssh h<x.sh;'.repeat(600) + '\ngit push --force origin main', 'merge'],
       ['git' + ' -git'.repeat(20000), null],
       [' -c git'.repeat(20000), null],
     ]) {

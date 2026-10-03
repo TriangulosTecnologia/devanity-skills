@@ -230,27 +230,37 @@ function shellCommands(src) {
   if (lastRead.text === text) return lastRead.result;
   const { out, dynamic } = readAll(text);
   const pipe = (c) => c.op === '|' || c.op === '|&';
-  // what ssh runs on another host: its remote command, what a substitution in it prints, and,
-  // when it reads its script on stdin, what reaches its stdin: its heredoc or here-string, the
-  // commands piped into it, a written file it reads; never anything else in the command
-  const fed = (cmds) => cmds.flatMap((x) => [...x.data, ...[...x.words.map((y) => y.value), ...x.reads].map(base).filter((b) => out.bodies.has(b)).map((b) => out.bodies.get(b))]);
-  const remote = [];   // {text, stdin}: a remote command, and what reaches its stdin should it read a script there
+  // what ssh runs on another host counts for the patterns, never as a local write: its remote
+  // command, what a substitution in it prints, and, when this command gives it input (a heredoc, a
+  // here-string, `<`, a pipe) that the remote side may run (any remote command but a reader of
+  // data, like grep or cat), what feeds it: its own text, the commands piped into it, a `<( )`, and
+  // every file this command wrote, under whatever name it reaches the host (cp, mv, scp…)
+  const subData = (subs) => subs.flatMap((x) => x.data);
+  const remote = []; let bodies = false;
   out.forEach((c, i) => {
     if (!c.ssh) return;
+    if (c.remote) remote.push({ text: c.remote });
+    const subs = c.words.flatMap((x) => x.subs || []);
+    remote.push(...subData(subs).map((text) => ({ text })));
+    if (subs.some((x) => [...x.words.map((y) => y.value), ...x.reads].some((v) => out.bodies.has(base(v))))) bodies = true;   // `"$(cat x.sh)"`
+    if (!(c.reads.length || pipe(c)) || (c.remote && readerOnly(c.remote))) return;
     const upstream = [];
     for (let k = i - 1; k >= 0 && pipe(out[k + 1]); k--) upstream.push(out[k]);
-    const stdin = fed([c, ...upstream]);
-    if (c.remote) remote.push({ text: c.remote, stdin });
-    else remote.push(...stdin.map((text) => ({ text })));
-    remote.push(...fed(c.words.flatMap((x) => x.subs || [])).map((text) => ({ text })));
+    remote.push(...[c, ...upstream].flatMap((x) => [...x.data, ...subData(x.inSubs || [])]).map((text) => ({ text })));
+    bodies = true;
   });
-  // whether this text reads a script on stdin (`bash -s`, `sudo bash`, `cd /srv && bash`, a bare ssh)
-  const stdinShell = out.some((c) => c.interprets || (c.ssh && !c.remote));
-  const result = { dynamic, remote, stdinShell, commands: out.map(({ op, words, at, writes, reads, shown }) => ({ op, words, at, writes, reads, shown })) };
+  // a written file copied to a host and run there (`scp x.sh host: && ssh host bash x.sh`)
+  if (out.some((c) => c.ssh) && out.some((c) => ['scp', 'rsync', 'sftp'].includes(base((c.words[c.at] || {}).value)))) bodies = true;
+  if (bodies) remote.push(...[...new Set(out.bodies.values())].map((text) => ({ text })));
+  const result = { dynamic, remote, commands: out.map(({ op, words, at, writes, reads, shown }) => ({ op, words, at, writes, reads, shown })) };
   lastRead = { text, result };
   return result;
 }
 
+
+// Commands that only read their input as data: a remote one of them never runs what ssh feeds it.
+const READERS = new Set([...NAMERS, 'sort', 'uniq', 'cut', 'tr', 'jq', 'tee', 'gzip', 'tar', 'base64', 'sha256sum', 'md5sum']);
+const readerOnly = (remote) => readAll(remote).out.every((c) => READERS.has(base((c.words[c.at] || {}).value)));
 
 function readAll(text) {
   const out = [];
@@ -375,7 +385,7 @@ function readShell(s, i, inner, out) {
     if (word.quoted && !r) startCmd().data.push(word.value);
     if (!r) { if (word.quoted || (cmd && cmd.words.length) || !RESERVED.has(word.value)) startCmd().words.push(word); }
     else if (r === 'write') startCmd().writes.push(word.value);
-    else if (r === 'in') startCmd().reads.push(word.value);
+    else if (r === 'in') { startCmd().reads.push(word.value); if (word.subs) (cmd.inSubs = cmd.inSubs || []).push(...word.subs); }
     else if (r === 'herestring') { startCmd().reads.push(''); out.data.push(word.value); cmd.data.push(word.value); }
     else { startCmd().reads.push(''); heredocs.push({ delim: word.value, strip: r === 'heredoc-', expand: !word.quoted, cmd }); }
     word = null;
@@ -495,7 +505,7 @@ function substitutionsIn(body, out) {
 // The command as the shell runs it, for the `commands` patterns: each simple command after the
 // operator that joins it to the one before, and again from its command word when runners or a
 // quoted name come first (`sudo ./deploy.sh`, `"git" push`); a dynamic input adds its raw text.
-function commandText(command, hops = 0, left = { work: String(command || '').length + 4096 }) {   // remote re-reads: once the input
+function commandText(command, hops = 0, left = { work: String(command || '').length + 4096, root: String(command || '') }) {   // remote re-reads: once the input
   if (hops >= MAX_DEPTH) return String(command);   // ssh inside ssh: past the bound, the raw text
   const { dynamic, commands, remote } = shellCommands(command);
   const parts = [];
@@ -505,12 +515,10 @@ function commandText(command, hops = 0, left = { work: String(command || '').len
     if (head && (c.at > 0 || head.quoted)) parts.push(`; ${[head.value, ...c.words.slice(c.at + 1).map((x) => x.shown)].join(' ')}`);
   });
   if (dynamic) parts.push(`; ${String(command)}`);
-  // one budget for every hop: past it, a remote text counts raw
-  const hop = (t) => parts.push(`; ${(left.work -= t.length) < 0 ? t : commandText(t, hops + 1, left)}`);
+  // one budget for every hop: past it, the whole command counts raw, once
   for (const r of remote) {
-    const reads = r.stdin && r.stdin.length && left.work >= r.text.length && shellCommands(r.text).stdinShell;
-    hop(r.text);
-    if (reads) r.stdin.forEach(hop);
+    if ((left.work -= r.text.length) >= 0) parts.push(`; ${commandText(r.text, hops + 1, left)}`);
+    else if (!left.spent) { left.spent = true; parts.push(`; ${left.root}`); }
   }
   return parts.join(' ');
 }
